@@ -2,7 +2,9 @@
 set -euo pipefail
 
 out="${1:-dist/bootup-initramfs.cpio}"
+zstd_out="${BOOTUP_INITRAMFS_ZSTD:-${out}.zst}"
 mkdir -p "$(dirname "${out}")"
+mkdir -p "$(dirname "${zstd_out}")"
 
 export GOOS="${GOOS:-linux}"
 export GOARCH="${GOARCH:-amd64}"
@@ -23,3 +25,5 @@ go run github.com/u-root/u-root \
 	github.com/u-root/u-root/cmds/core/wget \
 	github.com/u-root/u-root/cmds/core/mount \
 	./cmd/bootup
+
+zstd -q -f -19 --keep "${out}" -o "${zstd_out}"

@@ -11,7 +11,8 @@ default and must be supplied explicitly to the reusable verification hooks.
 
 ## QEMU
 
-Build the initramfs:
+Build the initramfs. The script writes both a raw cpio and a zstd-compressed
+initramfs:
 
 ```sh
 scripts/build-initramfs.sh
@@ -23,16 +24,17 @@ Run with a local kernel:
 scripts/run-qemu.sh
 ```
 
-Override the kernel or initramfs path with `BOOTUP_KERNEL` and
-`BOOTUP_INITRAMFS`.
+Override the kernel, initramfs, or kernel command line with `BOOTUP_KERNEL`,
+`BOOTUP_INITRAMFS`, and `BOOTUP_CMDLINE`. The default command line includes
+`panic=30` so kernel panics remain visible briefly and then reboot.
 
 ## iPXE
 
 `examples/bootup.ipxe` shows the minimal shape:
 
 ```text
-kernel http://boot.example/bootup/vmlinuz console=ttyS0
-initrd http://boot.example/bootup/bootup-initramfs.cpio
+kernel http://boot.example/bootup/vmlinuz console=ttyS0 panic=30
+initrd http://boot.example/bootup/bootup-initramfs.cpio.zst
 boot
 ```
 

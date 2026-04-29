@@ -1,0 +1,6 @@
+#!ipxe
+
+set base-url http://boot.example/bootup
+kernel ${base-url}/vmlinuz console=ttyS0
+initrd ${base-url}/bootup-initramfs.cpio
+boot

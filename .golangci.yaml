@@ -1,0 +1,67 @@
+# golangci-lint v2 configuration for bootup.
+#
+# Philosophy: keep the standard preset, then add checks that catch concrete bug
+# classes or low-risk modern Go improvements. Avoid format/style policy linters
+# such as gofumpt, lll, funlen, varnamelen, exhaustive style suites, and broad
+# revive/gocritic rule sets unless a future change has a specific reason to add
+# them.
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  relative-path-mode: gomod
+
+linters:
+  # Standard preset: errcheck, govet, ineffassign, staticcheck, and unused.
+  default: standard
+  enable:
+    # Resource leak prevention.
+    - bodyclose
+
+    # Error handling correctness.
+    - errchkjson
+    - errorlint
+    - nilerr
+    - nilnesserr
+    - nilnil
+
+    # Modern Go.
+    - copyloopvar
+    - intrange
+    - modernize
+
+    # Subtle bug classes.
+    - asasalint
+    - bidichk
+    - durationcheck
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - loggercheck
+    - makezero
+    - nosprintfhostport
+    - sloglint
+
+    # Dead code, redundancy, and simple cleanups beyond the standard preset.
+    - dupword
+    - misspell
+    - nolintlint
+    - perfsprint
+    - unconvert
+    - usestdlibvars
+    - wastedassign
+
+    # Test hygiene.
+    - thelper
+    - usetesting
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    misspell:
+      locale: US
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0

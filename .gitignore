@@ -1,0 +1,5 @@
+/bootup
+/dist/
+/coverage.out
+*.test
+*.prof

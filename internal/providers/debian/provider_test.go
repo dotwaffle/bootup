@@ -39,6 +39,15 @@ func TestProviderTargetsDebianTrixieAMD64(t *testing.T) {
 	if target.Architecture != "amd64" {
 		t.Fatalf("architecture = %q, want amd64", target.Architecture)
 	}
+	if target.Distribution != "debian" {
+		t.Fatalf("distribution = %q, want debian", target.Distribution)
+	}
+	if target.Release != "trixie" {
+		t.Fatalf("release = %q, want trixie", target.Release)
+	}
+	if target.Kind != "installer" {
+		t.Fatalf("kind = %q, want installer", target.Kind)
+	}
 }
 
 func TestProviderPlanResolvesInstallerURLs(t *testing.T) {

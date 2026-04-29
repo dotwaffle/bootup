@@ -18,8 +18,8 @@ initramfs:
 scripts/build-initramfs.sh
 ```
 
-The script also accepts an output path, a uinit command, and optional Go build
-tags:
+The script also accepts an output path, a uinit command, optional Go build
+tags, and optional extra files:
 
 ```sh
 scripts/build-initramfs.sh dist/bootup-initramfs.cpio 'bootup --mode=menu --prepare-runtime' ''
@@ -44,6 +44,42 @@ OpenPGP public keyring before building the initramfs:
 go run ./cmd/bootup-keyring-source -o internal/trustmaterial/debian_archive_keyring_generated.go /usr/share/keyrings/debian-archive-keyring.gpg
 scripts/build-initramfs.sh dist/bootup-initramfs.cpio 'bootup --mode=menu --prepare-runtime' ''
 ```
+
+`--prepare-runtime` does not run a user-space DHCP client. Network addressing
+should already be provided by the kernel command line, the boot loader, or the
+initramfs command used by a local smoke helper. With a purpose-built bootup
+kernel, prefer kernel autoconfiguration: build the NIC driver into the kernel,
+enable `CONFIG_IP_PNP_DHCP`, and append `ip=::::::dhcp`. DNS servers learned
+by the kernel are exposed through `/proc/net/pnp`; bootup copies those hints
+into `/etc/resolv.conf` when that file is absent.
+
+The helper below performs the same build and removes the ignored generated
+source after the initramfs has been created:
+
+```sh
+scripts/build-debian-initramfs.sh /usr/share/keyrings/debian-archive-keyring.gpg
+```
+
+To attempt a real QEMU boot into Debian Installer:
+
+```sh
+scripts/smoke-real-debian.sh /usr/share/keyrings/debian-archive-keyring.gpg
+```
+
+Expected local failure modes:
+
+- Missing or unreadable keyring: the helper exits before building.
+- No network in the VM: bootup reports route, DNS, TLS, or fetch failures.
+- Kernel NIC driver is modular and unavailable: the smoke helper tries to
+  include and load the host `e1000` module for QEMU user networking.
+- The host kernel used by the helper may not provide DNS/route state through
+  kernel autoconfiguration, because `CONFIG_IP_PNP` can be unset and QEMU NIC
+  drivers can be modules. The smoke helper therefore configures
+  `10.0.2.15/24` directly, then sets the expected `10.0.2.2` default route and
+  `10.0.2.3` resolver before starting bootup.
+- Missing QEMU or kernel: the smoke script exits before or during VM launch.
+- kexec blocked by the platform: bootup renders a failure screen and leaves the
+  stage-1 environment available for diagnosis.
 
 ## iPXE
 

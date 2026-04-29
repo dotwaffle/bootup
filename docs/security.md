@@ -44,3 +44,8 @@ Local builders can generate an ignored Go source file from their chosen Debian
 archive public keyring with `go run ./cmd/bootup-keyring-source`. That makes
 the resulting binary self-contained while keeping trust-root selection explicit
 and outside repository history.
+
+`scripts/build-debian-initramfs.sh` wraps that flow for local smoke testing and
+removes the ignored generated source after building. The initramfs still
+contains the selected trust material because it is compiled into the bootup
+binary produced during the build.

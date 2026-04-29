@@ -77,3 +77,17 @@ source from an OpenPGP public keyring, then building normally:
 go run ./cmd/bootup-keyring-source -o internal/trustmaterial/debian_archive_keyring_generated.go /usr/share/keyrings/debian-archive-keyring.gpg
 go build -trimpath -o /tmp/bootup ./cmd/bootup
 ```
+
+Build a Debian-capable initramfs without leaving generated keyring source in the
+worktree:
+
+```sh
+scripts/build-debian-initramfs.sh /usr/share/keyrings/debian-archive-keyring.gpg
+```
+
+Attempt a real QEMU smoke boot that stages live Debian Installer artifacts and
+loads them through kexec:
+
+```sh
+scripts/smoke-real-debian.sh /usr/share/keyrings/debian-archive-keyring.gpg
+```

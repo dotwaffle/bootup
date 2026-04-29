@@ -31,7 +31,7 @@ func run(ctx context.Context, args []string) error {
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
 	hold := flags.Bool("hold", false, "wait after the selected mode completes")
-	prepareRuntime := flags.Bool("prepare-runtime", false, "configure network, CA roots, and time before provider operations")
+	prepareRuntime := flags.Bool("prepare-runtime", false, "validate network, CA roots, and time before provider operations")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
 	}

@@ -40,11 +40,14 @@ func (p providerStub) Stage(context.Context, provider.StageConfig) (provider.Boo
 
 type executorStub struct {
 	executed *provider.BootPlan
+	err      error
 }
 
 func (e executorStub) Execute(_ context.Context, plan provider.BootPlan) error {
-	*e.executed = plan
-	return nil
+	if e.executed != nil {
+		*e.executed = plan
+	}
+	return e.err
 }
 
 func TestRunListsTargetsInNonInteractiveMode(t *testing.T) {
@@ -244,6 +247,11 @@ func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 	if !strings.Contains(stdout.String(), "/tmp/bootup/linux") {
 		t.Fatalf("stdout = %q, want staged kernel path", stdout.String())
 	}
+	for _, phase := range []string{"[planning]", "[verifying]", "[staging]"} {
+		if !strings.Contains(stdout.String(), phase) {
+			t.Fatalf("stdout = %q, want phase %s", stdout.String(), phase)
+		}
+	}
 }
 
 func TestRunBootsSelectedTargetInNonInteractiveMode(t *testing.T) {
@@ -335,5 +343,52 @@ func TestRunMenuSelectsAndBootsTarget(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "target> ") {
 		t.Fatalf("stdout = %q, want prompt", stdout.String())
+	}
+}
+
+func TestRunBootRendersKexecFailure(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+	}
+	staged := provider.BootPlan{
+		Target: target,
+		Kernel: provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+		Initrd: provider.Artifact{Name: "initrd.gz", Path: "/tmp/bootup/initrd.gz"},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		plan:    provider.BootPlan{Target: target},
+		staged:  staged,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdout:     &stdout,
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:       app.ModeBootTarget,
+		TargetID:   "debian-trixie-amd64-netboot",
+		StagingDir: t.TempDir(),
+		Executor:   executorStub{err: errors.New("operation not permitted")},
+	})
+
+	err := runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("run app succeeded, want kexec error")
+	}
+	if !strings.Contains(stdout.String(), "bootup failure") {
+		t.Fatalf("stdout = %q, want failure screen", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "operation not permitted") {
+		t.Fatalf("stdout = %q, want executor error", stdout.String())
 	}
 }

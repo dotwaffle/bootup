@@ -71,6 +71,9 @@ func (*Provider) Targets(context.Context) ([]provider.Target, error) {
 		ProviderID:   providerID,
 		Name:         "Debian trixie amd64 netboot",
 		Architecture: "amd64",
+		Distribution: "debian",
+		Release:      "trixie",
+		Kind:         "installer",
 	}}, nil
 }
 
@@ -92,7 +95,7 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 			Name: "initrd.gz",
 			URL:  installerBase + "/debian-installer/amd64/initrd.gz",
 		},
-		Cmdline: "priority=low",
+		Cmdline: "priority=low console=ttyS0",
 		Verification: provider.Verification{
 			MetadataURL: p.mirrorURL + "/dists/trixie/InRelease",
 			ChecksumURL: imagesBase + "/SHA256SUMS",

@@ -71,3 +71,25 @@ func TestBootupStagesDebianFixture(t *testing.T) {
 		t.Fatalf("kill VM: %v", err)
 	}
 }
+
+func TestBootupAttemptsRealDebianKexec(t *testing.T) {
+	qemu.SkipWithoutQEMU(t)
+	initramfs := os.Getenv("VMTEST_REAL_DEBIAN_INITRAMFS")
+	if initramfs == "" {
+		t.Skip("VMTEST_REAL_DEBIAN_INITRAMFS is required")
+	}
+	t.Setenv("VMTEST_INITRAMFS", initramfs)
+
+	vm := qemu.StartT(t, "bootup", qemu.ArchUseEnvv,
+		qemu.WithAppendKernel("console=ttyS0 panic=30"),
+		qemu.WithQEMUArgs("-netdev", "user,id=net0", "-device", "e1000,netdev=net0"),
+		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
+	)
+	if _, err := vm.Console.ExpectString("[loading] Debian trixie amd64 netboot"); err != nil {
+		vm.Kill()
+		t.Fatalf("expect kexec loading status: %v", err)
+	}
+	if err := vm.Kill(); err != nil {
+		t.Fatalf("kill VM: %v", err)
+	}
+}

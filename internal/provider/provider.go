@@ -24,6 +24,9 @@ type Target struct {
 	ProviderID   string
 	Name         string
 	Architecture string
+	Distribution string
+	Release      string
+	Kind         string
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.

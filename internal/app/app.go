@@ -165,8 +165,8 @@ func (a *App) planTarget(ctx context.Context) error {
 	}
 
 	menu := ui.TextMenu{Width: 80}
-	if err := menu.RenderProgress(a.config.Stdout, "planning "+target.Name); err != nil {
-		return fmt.Errorf("render progress: %w", err)
+	if err := menu.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
+		return fmt.Errorf("render status: %w", err)
 	}
 	plan, err := a.config.Registry.Plan(ctx, target)
 	if err != nil {
@@ -199,12 +199,21 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target) (
 	}
 
 	menu := ui.TextMenu{Width: 80}
-	if err := menu.RenderProgress(a.config.Stdout, "staging "+target.Name); err != nil {
-		return provider.BootPlan{}, fmt.Errorf("render progress: %w", err)
+	if err := menu.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
+		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
 	plan, err := a.config.Registry.Plan(ctx, target)
 	if err != nil {
+		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+			return provider.BootPlan{}, fmt.Errorf("render fatal error: %w", renderErr)
+		}
 		return provider.BootPlan{}, err
+	}
+	if err := menu.RenderStatus(a.config.Stdout, "verifying", target.Name); err != nil {
+		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
+	}
+	if err := menu.RenderStatus(a.config.Stdout, "staging", target.Name); err != nil {
+		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
 	staged, err := a.config.Registry.Stage(ctx, provider.StageConfig{
 		Plan:       plan,
@@ -232,10 +241,16 @@ func (a *App) bootTarget(ctx context.Context) error {
 		return errors.New("executor is required")
 	}
 	menu := ui.TextMenu{Width: 80}
-	if err := menu.RenderProgress(a.config.Stdout, "loading "+staged.Target.Name); err != nil {
-		return fmt.Errorf("render progress: %w", err)
+	if err := menu.RenderStatus(a.config.Stdout, "loading", staged.Target.Name); err != nil {
+		return fmt.Errorf("render status: %w", err)
 	}
-	return executor.Execute(ctx, staged)
+	if err := executor.Execute(ctx, staged); err != nil {
+		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+			return fmt.Errorf("render fatal error: %w", renderErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *App) menu(ctx context.Context) error {
@@ -270,10 +285,16 @@ func (a *App) menu(ctx context.Context) error {
 	if executor == nil {
 		return errors.New("executor is required")
 	}
-	if err := menu.RenderProgress(a.config.Stdout, "loading "+staged.Target.Name); err != nil {
-		return fmt.Errorf("render progress: %w", err)
+	if err := menu.RenderStatus(a.config.Stdout, "loading", staged.Target.Name); err != nil {
+		return fmt.Errorf("render status: %w", err)
 	}
-	return executor.Execute(ctx, staged)
+	if err := executor.Execute(ctx, staged); err != nil {
+		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+			return fmt.Errorf("render fatal error: %w", renderErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (a *App) selectTarget(ctx context.Context) (provider.Target, error) {

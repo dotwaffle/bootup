@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -25,37 +27,74 @@ func (r *fakeCommandRunner) Run(_ context.Context, name string, args ...string) 
 	return r.err
 }
 
-func TestNetworkPreparerRunsDHCPClient(t *testing.T) {
+func TestNetworkPreparerAcceptsConfiguredInterface(t *testing.T) {
 	t.Parallel()
 
-	runner := &fakeCommandRunner{}
-	preparer := runtime.NetworkPreparer{Runner: runner}
+	preparer := runtime.NetworkPreparer{
+		Interfaces: func() ([]net.Interface, error) {
+			return []net.Interface{
+				{Name: "lo", Flags: net.FlagUp | net.FlagLoopback},
+				{Name: "eth0", Flags: net.FlagUp},
+			}, nil
+		},
+		ReadFile: func(string) ([]byte, error) {
+			return []byte("nameserver 192.0.2.53\n"), nil
+		},
+	}
 
 	if err := preparer.Prepare(context.Background()); err != nil {
 		t.Fatalf("prepare network: %v", err)
 	}
+}
 
-	if len(runner.calls) != 1 {
-		t.Fatalf("command calls = %d, want 1", len(runner.calls))
+func TestNetworkPreparerCopiesKernelResolver(t *testing.T) {
+	t.Parallel()
+
+	writes := map[string]string{}
+	preparer := runtime.NetworkPreparer{
+		Interfaces: func() ([]net.Interface, error) {
+			return []net.Interface{{Name: "eth0", Flags: net.FlagUp}}, nil
+		},
+		ReadFile: func(name string) ([]byte, error) {
+			switch name {
+			case "/etc/resolv.conf":
+				return nil, os.ErrNotExist
+			case "/proc/net/pnp":
+				return []byte("nameserver 10.0.2.3\n"), nil
+			default:
+				t.Fatalf("unexpected read path %q", name)
+				return nil, nil
+			}
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			writes[name] = string(data)
+			return nil
+		},
 	}
-	call := runner.calls[0]
-	if call.name != "dhclient" {
-		t.Fatalf("command name = %q, want dhclient", call.name)
+
+	if err := preparer.Prepare(context.Background()); err != nil {
+		t.Fatalf("prepare network: %v", err)
 	}
-	if len(call.args) != 2 || call.args[0] != "-ipv4" || call.args[1] != "-ipv6=false" {
-		t.Fatalf("command args = %#v, want IPv4-only dhclient args", call.args)
+	if writes["/etc/resolv.conf"] != "nameserver 10.0.2.3\n" {
+		t.Fatalf("resolver write = %q, want kernel DNS", writes["/etc/resolv.conf"])
 	}
 }
 
-func TestNetworkPreparerWrapsCommandFailure(t *testing.T) {
+func TestNetworkPreparerRejectsMissingInterface(t *testing.T) {
 	t.Parallel()
 
-	wantErr := errors.New("link unavailable")
-	preparer := runtime.NetworkPreparer{Runner: &fakeCommandRunner{err: wantErr}}
+	preparer := runtime.NetworkPreparer{
+		Interfaces: func() ([]net.Interface, error) {
+			return []net.Interface{{Name: "lo", Flags: net.FlagUp | net.FlagLoopback}}, nil
+		},
+		ReadFile: func(string) ([]byte, error) {
+			return nil, os.ErrNotExist
+		},
+	}
 
 	err := preparer.Prepare(context.Background())
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("prepare error = %v, want wrapped %v", err, wantErr)
+	if err == nil {
+		t.Fatal("prepare network succeeded, want missing interface error")
 	}
 }
 

@@ -36,3 +36,32 @@ VMTEST_STAGE_INITRAMFS=dist/bootup-fixture-initramfs.cpio.zst \
 go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
   go test -tags vmtest ./test/vmtest
 ```
+
+Compile-only VM tests remain part of normal CI. Actual VM execution is opt-in
+because it requires `VMTEST_QEMU`.
+
+For live Debian staging outside a VM, enable the opt-in live smoke test:
+
+```sh
+BOOTUP_LIVE_DEBIAN_SMOKE=1 go test -count=1 ./test/live
+```
+
+For a real Debian kexec VM smoke, first build a Debian-capable initramfs:
+
+```sh
+NET_MODULE="$(modinfo -n e1000)"
+scripts/build-debian-initramfs.sh \
+  /usr/share/keyrings/debian-archive-keyring.gpg \
+  dist/bootup-debian-smoke-initramfs.cpio \
+  "gosh -c 'insmod ${NET_MODULE} || true; ip link set eth0 up; ip addr add 10.0.2.15/24 dev eth0 || true; ip route add default via 10.0.2.2 dev eth0 || true; echo nameserver 10.0.2.3 >/etc/resolv.conf; bootup --mode=boot-target --target=debian-trixie-amd64-netboot --staging-dir=/tmp/bootup'" \
+  "${NET_MODULE}"
+```
+
+Then run the opt-in VM test:
+
+```sh
+VMTEST_QEMU=qemu-system-x86_64 \
+VMTEST_REAL_DEBIAN_INITRAMFS=dist/bootup-debian-smoke-initramfs.cpio.zst \
+go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
+  go test -count=1 -tags vmtest ./test/vmtest
+```

@@ -19,6 +19,9 @@ func TestTextMenuRendersTargetsWithinSerialWidth(t *testing.T) {
 		ProviderID:   "debian",
 		Name:         "Debian trixie amd64 netboot installer with an intentionally long description",
 		Architecture: "amd64",
+		Distribution: "debian",
+		Release:      "trixie",
+		Kind:         "installer",
 	}}
 
 	if err := menu.RenderTargets(&out, targets); err != nil {
@@ -33,6 +36,9 @@ func TestTextMenuRendersTargetsWithinSerialWidth(t *testing.T) {
 	if !strings.Contains(out.String(), "debian-trixie-amd64-netboot") {
 		t.Fatalf("output = %q, want target id", out.String())
 	}
+	if !strings.Contains(out.String(), "debian/trixie/amd64/installer") {
+		t.Fatalf("output = %q, want catalog label", out.String())
+	}
 }
 
 func TestTextMenuRendersProgressAndFatalError(t *testing.T) {
@@ -41,19 +47,22 @@ func TestTextMenuRendersProgressAndFatalError(t *testing.T) {
 	var out bytes.Buffer
 	menu := ui.TextMenu{Width: 80}
 
-	if err := menu.RenderProgress(&out, "verifying Debian metadata"); err != nil {
-		t.Fatalf("render progress: %v", err)
+	if err := menu.RenderStatus(&out, "verifying", "Debian metadata"); err != nil {
+		t.Fatalf("render status: %v", err)
 	}
 	if err := menu.RenderFatal(&out, "signature validation failed"); err != nil {
 		t.Fatalf("render fatal: %v", err)
 	}
 
 	got := out.String()
-	if !strings.Contains(got, "verifying Debian metadata") {
-		t.Fatalf("output = %q, want progress", got)
+	if !strings.Contains(got, "[verifying] Debian metadata") {
+		t.Fatalf("output = %q, want status", got)
 	}
 	if !strings.Contains(got, "signature validation failed") {
 		t.Fatalf("output = %q, want fatal error", got)
+	}
+	if !strings.Contains(got, "bootup failure") {
+		t.Fatalf("output = %q, want failure header", got)
 	}
 }
 

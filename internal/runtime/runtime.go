@@ -4,8 +4,13 @@ package runtime
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"io/fs"
+	"net"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -26,19 +31,79 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) error {
 	return nil
 }
 
-// NetworkPreparer configures networking before provider operations.
+// NetworkPreparer validates networking before provider operations.
 type NetworkPreparer struct {
-	Runner CommandRunner
+	Interfaces    func() ([]net.Interface, error)
+	ReadFile      func(string) ([]byte, error)
+	WriteFile     func(string, []byte, fs.FileMode) error
+	ResolverPath  string
+	KernelPNPPath string
 }
 
-// Prepare runs the configured DHCP client.
+// Prepare checks for an already configured non-loopback interface. If the
+// kernel was asked to configure networking with ip=, DNS hints from
+// /proc/net/pnp are copied into resolv.conf when resolv.conf is absent.
 func (p NetworkPreparer) Prepare(ctx context.Context) error {
-	runner := p.Runner
-	if runner == nil {
-		runner = ExecRunner{}
+	_ = ctx
+
+	if err := p.installKernelResolver(); err != nil {
+		return err
 	}
-	if err := runner.Run(ctx, "dhclient", "-ipv4", "-ipv6=false"); err != nil {
-		return fmt.Errorf("configure dhcp: %w", err)
+
+	interfaces := p.Interfaces
+	if interfaces == nil {
+		interfaces = net.Interfaces
+	}
+	links, err := interfaces()
+	if err != nil {
+		return fmt.Errorf("list network interfaces: %w", err)
+	}
+	for _, link := range links {
+		if link.Flags&net.FlagLoopback == 0 && link.Flags&net.FlagUp != 0 {
+			return nil
+		}
+	}
+	return errors.New("no configured non-loopback network interface")
+}
+
+func (p NetworkPreparer) installKernelResolver() error {
+	resolverPath := p.ResolverPath
+	if resolverPath == "" {
+		resolverPath = "/etc/resolv.conf"
+	}
+	kernelPNPPath := p.KernelPNPPath
+	if kernelPNPPath == "" {
+		kernelPNPPath = "/proc/net/pnp"
+	}
+	readFile := p.ReadFile
+	if readFile == nil {
+		readFile = os.ReadFile
+	}
+	writeFile := p.WriteFile
+	if writeFile == nil {
+		writeFile = os.WriteFile
+	}
+
+	resolver, err := readFile(resolverPath)
+	if err == nil && strings.TrimSpace(string(resolver)) != "" {
+		return nil
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("read resolver config: %w", err)
+	}
+
+	kernelPNP, err := readFile(kernelPNPPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read kernel network config: %w", err)
+	}
+	if !strings.Contains(string(kernelPNP), "nameserver") {
+		return nil
+	}
+	if err := writeFile(resolverPath, kernelPNP, 0o644); err != nil {
+		return fmt.Errorf("write resolver config: %w", err)
 	}
 	return nil
 }

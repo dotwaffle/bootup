@@ -1,6 +1,6 @@
 #!ipxe
 
 set base-url http://boot.example/bootup
-kernel ${base-url}/vmlinuz console=ttyS0 panic=30
+kernel ${base-url}/vmlinuz ip=::::::dhcp console=ttyS0 panic=30
 initrd ${base-url}/bootup-initramfs.cpio.zst
 boot

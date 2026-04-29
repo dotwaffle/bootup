@@ -36,6 +36,8 @@ Override the kernel, initramfs, or kernel command line with `BOOTUP_KERNEL`,
 `panic=30` so kernel panics remain visible briefly and then reboot.
 The initramfs build runs `bootup --hold` by default so smoke-test boots do not
 exit PID 1 after printing the target list; override it with `BOOTUP_UINITCMD`.
+Purpose-built bootup kernels should also include `ip=::::::dhcp` so the kernel
+configures networking before bootup starts.
 
 For a Debian-capable single binary, generate ignored Go source from a local
 OpenPGP public keyring before building the initramfs:
@@ -51,7 +53,8 @@ initramfs command used by a local smoke helper. With a purpose-built bootup
 kernel, prefer kernel autoconfiguration: build the NIC driver into the kernel,
 enable `CONFIG_IP_PNP_DHCP`, and append `ip=::::::dhcp`. DNS servers learned
 by the kernel are exposed through `/proc/net/pnp`; bootup copies those hints
-into `/etc/resolv.conf` when that file is absent.
+into `/etc/resolv.conf` when that file is absent. See `docs/kernel.md` for the
+kernel config fragment and validator.
 
 The helper below performs the same build and removes the ignored generated
 source after the initramfs has been created:
@@ -86,7 +89,7 @@ Expected local failure modes:
 `examples/bootup.ipxe` shows the minimal shape:
 
 ```text
-kernel http://boot.example/bootup/vmlinuz console=ttyS0 panic=30
+kernel http://boot.example/bootup/vmlinuz ip=::::::dhcp console=ttyS0 panic=30
 initrd http://boot.example/bootup/bootup-initramfs.cpio.zst
 boot
 ```
@@ -99,7 +102,7 @@ environment.
 `examples/grub.cfg` contains a matching menu entry:
 
 ```text
-linux /bootup/vmlinuz console=ttyS0
+linux /bootup/vmlinuz ip=::::::dhcp console=ttyS0 panic=30
 initrd /bootup/bootup-initramfs.cpio
 ```
 

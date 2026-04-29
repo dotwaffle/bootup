@@ -57,6 +57,12 @@ Run QEMU with a local kernel and the generated initramfs:
 scripts/run-qemu.sh
 ```
 
+Check whether a kernel config is suitable for kernel-side DHCP with bootup:
+
+```sh
+scripts/check-kernel-config.sh /path/to/.config
+```
+
 Stage a target non-interactively. Providers that require distribution trust
 material must be configured by the application code that compiles them in:
 

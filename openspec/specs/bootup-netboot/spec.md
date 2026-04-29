@@ -28,6 +28,10 @@ image at build time.
 - **THEN** bootup SHALL list that provider's supported boot targets through the
   operator interface
 
+#### Scenario: Ubuntu provider is available in the image
+- **WHEN** bootup starts with the default provider set
+- **THEN** bootup SHALL list Ubuntu 26.04 amd64 netboot as a selectable target
+
 #### Scenario: Catalog metadata is available
 - **WHEN** a provider exposes targets
 - **THEN** each target SHOULD include catalog metadata that allows future UIs to
@@ -72,7 +76,8 @@ installation.
 
 ### Requirement: Verified artifact chain
 Bootup SHALL verify downloaded target boot artifacts before staging them for
-kexec.
+kexec when provider verification material is available, and SHALL otherwise
+constrain explicitly documented HTTPS-only provider paths to HTTPS URLs.
 
 #### Scenario: Debian metadata verifies successfully
 - **WHEN** the Debian provider downloads archive metadata and installer
@@ -95,6 +100,17 @@ kexec.
 - **WHEN** signature validation or artifact checksum validation fails
 - **THEN** bootup SHALL fail closed, report the verification error, and MUST NOT
   execute kexec
+
+#### Scenario: Ubuntu netboot hashes are absent
+- **WHEN** the selected Ubuntu provider lacks explicit netboot kernel and
+  initrd hashes
+- **THEN** bootup SHALL stage Ubuntu netboot artifacts only from HTTPS URLs
+
+#### Scenario: Ubuntu netboot hashes are present
+- **WHEN** the Ubuntu provider has release signing trust material and explicit
+  netboot kernel and initrd hashes
+- **THEN** bootup SHALL verify the signed release checksum file and each
+  downloaded netboot artifact before staging it
 
 ### Requirement: Network and time preparation
 Bootup SHALL prepare enough network and time state to perform trusted remote

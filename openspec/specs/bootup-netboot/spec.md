@@ -28,6 +28,11 @@ image at build time.
 - **THEN** bootup SHALL list that provider's supported boot targets through the
   operator interface
 
+#### Scenario: Catalog metadata is available
+- **WHEN** a provider exposes targets
+- **THEN** each target SHOULD include catalog metadata that allows future UIs to
+  group entries without loading runtime plugins
+
 #### Scenario: Runtime provider loading is absent
 - **WHEN** bootup is running in the target environment
 - **THEN** bootup MUST NOT require loading provider code from the network or
@@ -54,6 +59,11 @@ installation.
 - **WHEN** bootup starts with the Debian provider compiled in
 - **THEN** the operator interface SHALL offer Debian trixie amd64 netboot as a
   selectable target
+
+#### Scenario: Debian trixie target carries catalog metadata
+- **WHEN** bootup lists the Debian trixie amd64 netboot target
+- **THEN** the target SHALL include distribution, release, architecture, and
+  target-kind metadata suitable for catalog grouping
 
 #### Scenario: Debian provider resolves installer artifacts
 - **WHEN** the operator selects Debian trixie amd64 netboot
@@ -110,6 +120,20 @@ IPMI consoles, and console-like KVM sessions.
 - **THEN** bootup SHALL render target selection and failure messages in a
   text-mode interface that remains usable in an 80x25 viewport
 
+#### Scenario: Operator chooses a target by index
+- **WHEN** bootup renders the serial menu
+- **THEN** each target SHALL have a stable numeric index for selection
+
+#### Scenario: Boot progress is visible
+- **WHEN** bootup is planning, staging, verifying, or loading a selected target
+- **THEN** the serial interface SHALL render a concise status message that fits
+  inside an 80-column viewport
+
+#### Scenario: Boot failure is visible
+- **WHEN** planning, verification, staging, or kexec fails
+- **THEN** the serial interface SHALL render a readable fatal error and keep the
+  current environment available for diagnosis
+
 #### Scenario: Framebuffer is unavailable
 - **WHEN** bootup cannot use a framebuffer display
 - **THEN** bootup SHALL still allow target selection and boot execution through
@@ -143,3 +167,13 @@ and Debian provider path under a virtual machine.
 - **THEN** the test SHALL verify that bootup resolves, verifies, and stages the
   Debian Installer boot artifacts before kexec handoff using hermetic fixture
   metadata and trust material
+
+#### Scenario: Real Debian smoke is explicitly enabled
+- **WHEN** the operator provides QEMU, local kernel/initramfs inputs, network
+  access, and local Debian archive trust material
+- **THEN** bootup SHALL provide a repeatable smoke path that attempts to stage
+  live Debian Installer artifacts and kexec into the installer
+
+#### Scenario: Real Debian smoke inputs are absent
+- **WHEN** required live-smoke inputs are missing
+- **THEN** the smoke test SHALL skip without failing the default test suite

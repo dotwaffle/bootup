@@ -25,7 +25,8 @@ MVP.
   stages, and kexecs the Debian Installer netboot kernel and initrd.
 - Keep bootup's runtime payload to a single binary where practical; TLS roots
   are compiled into the binary and distro archive keyrings are not committed or
-  packaged by default.
+  packaged by default. Debian archive trust material is supplied by application
+  builds that intentionally compile it into their own binary.
 - Make the plain serial interface first-class for IPMI, KVM, and console-only
   workflows.
 - Keep the runtime architecture ready for framebuffer UI without requiring it
@@ -94,9 +95,10 @@ Alternatives considered:
 
 ### Treat verification as part of planning, not a post-download detail
 
-Provider boot plans include the trust material, metadata, checksums, and
-artifacts required for verification. Bootup MUST fail closed if it cannot
-establish a trusted path from explicit trust material to downloaded artifacts.
+Provider boot plans include the metadata, checksums, and artifacts required for
+verification. Provider configuration supplies the trust material. Bootup MUST
+fail closed if it cannot establish a trusted path from explicit trust material
+to downloaded artifacts.
 
 Alternatives considered:
 - HTTPS-only trust: protects transport but does not provide distro release

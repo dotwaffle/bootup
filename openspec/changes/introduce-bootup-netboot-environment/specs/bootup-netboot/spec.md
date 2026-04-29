@@ -62,8 +62,14 @@ kexec.
 #### Scenario: Debian metadata verifies successfully
 - **WHEN** the Debian provider downloads archive metadata and installer
   checksum data
-- **THEN** bootup SHALL validate the signed metadata against embedded Debian
-  archive trust roots before trusting installer checksums
+- **THEN** bootup SHALL validate the signed metadata against explicitly
+  configured Debian archive trust material before trusting installer checksums
+
+#### Scenario: Debian trust material is absent
+- **WHEN** the selected Debian provider has no configured archive trust
+  material
+- **THEN** bootup SHALL fail closed before staging artifacts and MUST NOT
+  execute kexec
 
 #### Scenario: Artifact checksum matches trusted metadata
 - **WHEN** bootup downloads the selected Debian Installer kernel and initrd
@@ -130,4 +136,5 @@ and Debian provider path under a virtual machine.
 #### Scenario: VM test verifies Debian handoff preparation
 - **WHEN** the integration test selects Debian trixie amd64 netboot
 - **THEN** the test SHALL verify that bootup resolves, verifies, and stages the
-  Debian Installer boot artifacts before kexec handoff
+  Debian Installer boot artifacts before kexec handoff using hermetic fixture
+  metadata and trust material

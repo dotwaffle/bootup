@@ -22,7 +22,7 @@
 
 - [x] 4.1 Implement Debian trixie amd64 target discovery
 - [x] 4.2 Resolve Debian Installer netboot kernel, initrd, metadata, and checksum URLs
-- [x] 4.3 Embed or package Debian archive trust roots for the provider
+- [x] 4.3 Add a compile-time Debian archive trust-material hook without committing keyrings
 - [x] 4.4 Verify signed Debian archive metadata before trusting installer checksums
 - [x] 4.5 Download and verify the selected Debian Installer kernel and initrd
 - [x] 4.6 Return a complete boot plan with kernel path, initrd path, and command line

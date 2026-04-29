@@ -11,14 +11,15 @@ selected kernel and initrd, and hands off with kexec.
 
 - Build-time Go providers.
 - Debian trixie amd64 netboot target.
+- Ubuntu 26.04 amd64 netboot target.
 - Serial-friendly text interface.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
 - Reusable verification hooks for hashes, SHA256SUMS files, and OpenPGP
   signatures.
 
-Bootup does not commit or package Debian archive keyrings. Callers must supply
-trust material to verification hooks when verifying signed distribution
+Bootup does not commit or package distribution archive keyrings. Callers must
+supply trust material to verification hooks when verifying signed distribution
 metadata.
 
 ```go
@@ -63,12 +64,16 @@ Check whether a kernel config is suitable for kernel-side DHCP with bootup:
 scripts/check-kernel-config.sh /path/to/.config
 ```
 
-Stage a target non-interactively. Providers that require distribution trust
-material must be configured by the application code that compiles them in:
+Stage a target non-interactively. Providers with stronger distribution trust
+requirements must be configured by the application code that compiles them in:
 
 ```sh
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot
 ```
+
+Ubuntu 26.04 netboot can be staged from the official HTTPS release URLs by
+default. Custom builds can additionally provide Ubuntu release key material and
+pinned netboot artifact hashes.
 
 Run the serial selection flow in a Debian-capable build:
 

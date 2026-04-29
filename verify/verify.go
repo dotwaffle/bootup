@@ -207,7 +207,8 @@ func ParseSHA256Sums(reader io.Reader) (map[string]string, error) {
 	return checksums, nil
 }
 
-// ArmoredDetachedSignature verifies an armored detached OpenPGP signature.
+// ArmoredDetachedSignature verifies an armored or binary detached OpenPGP
+// signature.
 //
 // Keyring must contain OpenPGP public keys, either as ASCII armor such as an
 // exported "-----BEGIN PGP PUBLIC KEY BLOCK-----" key or as a binary OpenPGP
@@ -224,7 +225,18 @@ func ArmoredDetachedSignature(input SignatureInput) error {
 	if err != nil {
 		return err
 	}
-	if _, err := openpgp.CheckArmoredDetachedSignature(keyring, input.Artifact, input.Signature, nil); err != nil {
+	artifact, err := io.ReadAll(input.Artifact)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", displayName(input.Name), err)
+	}
+	signature, err := io.ReadAll(input.Signature)
+	if err != nil {
+		return fmt.Errorf("read signature for %s: %w", displayName(input.Name), err)
+	}
+	if _, err := openpgp.CheckArmoredDetachedSignature(keyring, bytes.NewReader(artifact), bytes.NewReader(signature), nil); err == nil {
+		return nil
+	}
+	if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewReader(artifact), bytes.NewReader(signature), nil); err != nil {
 		return fmt.Errorf("verify detached signature for %s: %w", displayName(input.Name), err)
 	}
 	return nil

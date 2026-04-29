@@ -168,6 +168,23 @@ func TestArmoredDetachedSignatureAcceptsTrustedSignature(t *testing.T) {
 	}
 }
 
+func TestArmoredDetachedSignatureAcceptsBinarySignature(t *testing.T) {
+	t.Parallel()
+
+	entity := testEntity(t)
+	signature := binaryDetachedSignature(t, entity, []byte("payload"))
+	keyring := publicKeyring(t, entity)
+
+	if err := verify.ArmoredDetachedSignature(verify.SignatureInput{
+		Artifact:  bytes.NewReader([]byte("payload")),
+		Signature: bytes.NewReader(signature),
+		Keyring:   bytes.NewReader(keyring),
+		Name:      "artifact",
+	}); err != nil {
+		t.Fatalf("verify detached signature: %v", err)
+	}
+}
+
 func TestArmoredDetachedSignatureRejectsUntrustedSignature(t *testing.T) {
 	t.Parallel()
 
@@ -246,6 +263,16 @@ func detachedSignature(t *testing.T, entity *openpgp.Entity, data []byte) []byte
 
 	var signature bytes.Buffer
 	if err := openpgp.ArmoredDetachSign(&signature, entity, bytes.NewReader(data), nil); err != nil {
+		t.Fatalf("detach sign: %v", err)
+	}
+	return signature.Bytes()
+}
+
+func binaryDetachedSignature(t *testing.T, entity *openpgp.Entity, data []byte) []byte {
+	t.Helper()
+
+	var signature bytes.Buffer
+	if err := openpgp.DetachSign(&signature, entity, bytes.NewReader(data), nil); err != nil {
 		t.Fatalf("detach sign: %v", err)
 	}
 	return signature.Bytes()

@@ -69,6 +69,18 @@ To attempt a real QEMU boot into Debian Installer:
 scripts/smoke-real-debian.sh /usr/share/keyrings/debian-archive-keyring.gpg
 ```
 
+The default provider set also lists Ubuntu 26.04 amd64 netboot. Its boot plan
+uses the official release netboot kernel and initrd:
+
+```text
+https://releases.ubuntu.com/26.04/netboot/amd64/linux
+https://releases.ubuntu.com/26.04/netboot/amd64/initrd
+```
+
+Ubuntu staging uses HTTPS transport trust by default. Custom builds can supply
+Ubuntu release signing key material and explicit SHA-256 hashes for the netboot
+kernel/initrd if they need stronger verification.
+
 Expected local failure modes:
 
 - Missing or unreadable keyring: the helper exits before building.

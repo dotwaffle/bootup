@@ -40,6 +40,13 @@ application-level configuration. The default binary does not provide global
 trust-material configuration, commit keyrings, generate keyrings, or embed a
 distribution keyring.
 
+The Debian provider fails closed unless Debian archive trust material is
+compiled in by the application. The Ubuntu provider can stage the official
+26.04 netboot kernel and initrd over HTTPS by default; callers that need a
+stronger chain can configure Ubuntu release key material plus pinned SHA-256
+hashes for those netboot artifacts. Ubuntu's signed release `SHA256SUMS`
+currently covers the ISO set, not the extracted netboot kernel and initrd.
+
 Local builders can generate an ignored Go source file from their chosen Debian
 archive public keyring with `go run ./cmd/bootup-keyring-source`. That makes
 the resulting binary self-contained while keeping trust-root selection explicit

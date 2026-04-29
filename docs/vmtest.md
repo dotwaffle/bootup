@@ -46,6 +46,15 @@ For live Debian staging outside a VM, enable the opt-in live smoke test:
 BOOTUP_LIVE_DEBIAN_SMOKE=1 go test -count=1 ./test/live
 ```
 
+For live Ubuntu staging outside a VM, enable the matching opt-in smoke test:
+
+```sh
+BOOTUP_LIVE_UBUNTU_SMOKE=1 go test -count=1 ./test/live
+```
+
+The Ubuntu live staging test uses the provider's default HTTPS-only netboot
+path. It does not require Ubuntu keyring material or pinned artifact hashes.
+
 For a real Debian kexec VM smoke, first build a Debian-capable initramfs:
 
 ```sh
@@ -65,3 +74,13 @@ VMTEST_REAL_DEBIAN_INITRAMFS=dist/bootup-debian-smoke-initramfs.cpio.zst \
 go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
   go test -count=1 -tags vmtest ./test/vmtest
 ```
+
+For a real Ubuntu kexec VM smoke, use the helper:
+
+```sh
+scripts/smoke-real-ubuntu.sh
+```
+
+The helper exits with the timeout status if QEMU remains in the target
+installer after a successful kexec. Check the serial output for
+`[loading] Ubuntu 26.04 amd64 netboot` and the target kernel boot log.

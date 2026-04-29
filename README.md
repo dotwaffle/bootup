@@ -102,3 +102,9 @@ loads them through kexec:
 ```sh
 scripts/smoke-real-debian.sh /usr/share/keyrings/debian-archive-keyring.gpg
 ```
+
+Attempt the matching Ubuntu 26.04 HTTPS netboot smoke:
+
+```sh
+scripts/smoke-real-ubuntu.sh
+```

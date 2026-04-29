@@ -81,6 +81,17 @@ Ubuntu staging uses HTTPS transport trust by default. Custom builds can supply
 Ubuntu release signing key material and explicit SHA-256 hashes for the netboot
 kernel/initrd if they need stronger verification.
 
+To attempt a real QEMU boot into Ubuntu 26.04 netboot:
+
+```sh
+scripts/smoke-real-ubuntu.sh
+```
+
+The Ubuntu smoke builds a normal bootup initramfs, configures QEMU user
+networking in the initramfs for host kernels without kernel DHCP support, stages
+the Ubuntu netboot artifacts over HTTPS, and attempts kexec. A timeout after
+the target kernel starts is expected for a manual smoke run.
+
 Expected local failure modes:
 
 - Missing or unreadable keyring: the helper exits before building.

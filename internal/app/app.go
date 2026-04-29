@@ -2,6 +2,7 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,10 @@ import (
 type Mode string
 
 const (
+	// ModeMenu prompts on the text interface, then stages and boots the chosen
+	// target.
+	ModeMenu Mode = "menu"
+
 	// ModeListTargets prints targets and exits. It is useful for tests and
 	// non-interactive diagnostics.
 	ModeListTargets Mode = "list-targets"
@@ -53,6 +58,7 @@ type Executor interface {
 // Config contains immutable app startup dependencies.
 type Config struct {
 	Registry            *provider.Registry
+	Stdin               io.Reader
 	Stdout              io.Writer
 	Stderr              io.Writer
 	Logger              *slog.Logger
@@ -72,6 +78,9 @@ type App struct {
 
 // New creates an App from config.
 func New(config Config) *App {
+	if config.Stdin == nil {
+		config.Stdin = os.Stdin
+	}
 	if config.Stdout == nil {
 		config.Stdout = os.Stdout
 	}
@@ -118,6 +127,8 @@ func hold(ctx context.Context) error {
 
 func (a *App) runMode(ctx context.Context) error {
 	switch a.config.Mode {
+	case ModeMenu:
+		return a.menu(ctx)
 	case "", ModeListTargets:
 		return a.listTargets(ctx)
 	case ModePlanTarget:
@@ -175,6 +186,10 @@ func (a *App) stageTarget(ctx context.Context) (provider.BootPlan, error) {
 	if err != nil {
 		return provider.BootPlan{}, err
 	}
+	return a.stageSelectedTarget(ctx, target)
+}
+
+func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target) (provider.BootPlan, error) {
 	stagingDir := a.config.StagingDir
 	if stagingDir == "" {
 		stagingDir = "/tmp/bootup"
@@ -217,6 +232,44 @@ func (a *App) bootTarget(ctx context.Context) error {
 		return errors.New("executor is required")
 	}
 	menu := ui.TextMenu{Width: 80}
+	if err := menu.RenderProgress(a.config.Stdout, "loading "+staged.Target.Name); err != nil {
+		return fmt.Errorf("render progress: %w", err)
+	}
+	return executor.Execute(ctx, staged)
+}
+
+func (a *App) menu(ctx context.Context) error {
+	targets, err := a.config.Registry.Targets(ctx)
+	if err != nil {
+		return fmt.Errorf("list targets: %w", err)
+	}
+	menu := ui.TextMenu{Width: 80}
+	if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
+		return fmt.Errorf("render targets: %w", err)
+	}
+	if err := menu.RenderPrompt(a.config.Stdout, "target> "); err != nil {
+		return err
+	}
+
+	input, err := bufio.NewReader(a.config.Stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("read target selection: %w", err)
+	}
+	target, err := ui.SelectTargetByInput(targets, input)
+	if err != nil {
+		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+			return fmt.Errorf("render fatal error: %w", renderErr)
+		}
+		return err
+	}
+	staged, err := a.stageSelectedTarget(ctx, target)
+	if err != nil {
+		return err
+	}
+	executor := a.config.Executor
+	if executor == nil {
+		return errors.New("executor is required")
+	}
 	if err := menu.RenderProgress(a.config.Stdout, "loading "+staged.Target.Name); err != nil {
 		return fmt.Errorf("render progress: %w", err)
 	}

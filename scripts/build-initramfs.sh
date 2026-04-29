@@ -10,12 +10,20 @@ export GOOS="${GOOS:-linux}"
 export GOARCH="${GOARCH:-amd64}"
 export GOAMD64="${GOAMD64:-v1}"
 
-uinitcmd="${BOOTUP_UINITCMD:-bootup --hold}"
+uinitcmd="${2:-${BOOTUP_UINITCMD:-bootup --hold}}"
+go_build_tags="${3:-}"
+
+u_root_args=(
+	-build=gbb
+	-o "${out}"
+	-uinitcmd="${uinitcmd}"
+)
+if [[ -n "${go_build_tags}" ]]; then
+	u_root_args+=(-go-build-tags "${go_build_tags}")
+fi
 
 go run github.com/u-root/u-root \
-	-build=gbb \
-	-o "${out}" \
-	-uinitcmd="${uinitcmd}" \
+	"${u_root_args[@]}" \
 	github.com/u-root/u-root/cmds/core/init \
 	github.com/u-root/u-root/cmds/core/gosh \
 	github.com/u-root/u-root/cmds/core/ls \

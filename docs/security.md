@@ -39,3 +39,8 @@ Providers that need distribution trust material receive it through their
 application-level configuration. The default binary does not provide global
 trust-material configuration, commit keyrings, generate keyrings, or embed a
 distribution keyring.
+
+Local builders can generate an ignored Go source file from their chosen Debian
+archive public keyring with `go run ./cmd/bootup-keyring-source`. That makes
+the resulting binary self-contained while keeping trust-root selection explicit
+and outside repository history.

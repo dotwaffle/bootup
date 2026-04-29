@@ -3,3 +3,4 @@
 /coverage.out
 *.test
 *.prof
+/internal/trustmaterial/debian_archive_keyring_generated.go

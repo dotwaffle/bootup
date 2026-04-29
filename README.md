@@ -63,3 +63,17 @@ material must be configured by the application code that compiles them in:
 ```sh
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot
 ```
+
+Run the serial selection flow in a Debian-capable build:
+
+```sh
+bootup --mode=menu --prepare-runtime
+```
+
+Build a local single-binary Debian-capable image by generating ignored Go
+source from an OpenPGP public keyring, then building normally:
+
+```sh
+go run ./cmd/bootup-keyring-source -o internal/trustmaterial/debian_archive_keyring_generated.go /usr/share/keyrings/debian-archive-keyring.gpg
+go build -trimpath -o /tmp/bootup ./cmd/bootup
+```

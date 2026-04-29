@@ -73,3 +73,22 @@ func TestSelectTargetByID(t *testing.T) {
 		t.Fatalf("target ID = %q, want Debian", target.ID)
 	}
 }
+
+func TestSelectTargetByInputAcceptsIndexOrID(t *testing.T) {
+	t.Parallel()
+
+	targets := []provider.Target{
+		{ID: "alpine", ProviderID: "alpine"},
+		{ID: "debian-trixie-amd64-netboot", ProviderID: "debian"},
+	}
+
+	for _, input := range []string{"2", "debian-trixie-amd64-netboot"} {
+		target, err := ui.SelectTargetByInput(targets, input)
+		if err != nil {
+			t.Fatalf("select target %q: %v", input, err)
+		}
+		if target.ID != "debian-trixie-amd64-netboot" {
+			t.Fatalf("target ID = %q, want Debian", target.ID)
+		}
+	}
+}

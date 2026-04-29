@@ -289,3 +289,51 @@ func TestRunBootsSelectedTargetInNonInteractiveMode(t *testing.T) {
 		t.Fatalf("executed plan = %#v, want %#v", executed, staged)
 	}
 }
+
+func TestRunMenuSelectsAndBootsTarget(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+	}
+	staged := provider.BootPlan{
+		Target:  target,
+		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+		Initrd:  provider.Artifact{Name: "initrd.gz", Path: "/tmp/bootup/initrd.gz"},
+		Cmdline: "priority=low",
+	}
+	var executed provider.BootPlan
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		plan:    provider.BootPlan{Target: target},
+		staged:  staged,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdin:      strings.NewReader("1\n"),
+		Stdout:     &stdout,
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:       app.ModeMenu,
+		StagingDir: t.TempDir(),
+		Executor:   executorStub{executed: &executed},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if executed.Kernel.Path != staged.Kernel.Path {
+		t.Fatalf("executed plan = %#v, want %#v", executed, staged)
+	}
+	if !strings.Contains(stdout.String(), "target> ") {
+		t.Fatalf("stdout = %q, want prompt", stdout.String())
+	}
+}

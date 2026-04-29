@@ -4,6 +4,7 @@ package ui
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/dotwaffle/bootup/internal/provider"
@@ -21,8 +22,8 @@ func (m TextMenu) RenderTargets(w io.Writer, targets []provider.Target) error {
 	if _, err := fmt.Fprintln(w, "bootup targets"); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
-	for _, target := range targets {
-		line := fmt.Sprintf("%s  %s  %s", target.ID, target.Architecture, target.Name)
+	for index, target := range targets {
+		line := fmt.Sprintf("%d  %s  %s  %s", index+1, target.ID, target.Architecture, target.Name)
 		if _, err := fmt.Fprintln(w, truncate(line, m.width())); err != nil {
 			return fmt.Errorf("write target %s: %w", target.ID, err)
 		}
@@ -46,6 +47,14 @@ func (m TextMenu) RenderFatal(w io.Writer, message string) error {
 	return nil
 }
 
+// RenderPrompt writes an input prompt.
+func (m TextMenu) RenderPrompt(w io.Writer, prompt string) error {
+	if _, err := fmt.Fprint(w, truncate(prompt, m.width())); err != nil {
+		return fmt.Errorf("write prompt: %w", err)
+	}
+	return nil
+}
+
 // SelectTargetByID returns the target with id.
 func SelectTargetByID(targets []provider.Target, id string) (provider.Target, error) {
 	for _, target := range targets {
@@ -54,6 +63,18 @@ func SelectTargetByID(targets []provider.Target, id string) (provider.Target, er
 		}
 	}
 	return provider.Target{}, fmt.Errorf("target %q not found", id)
+}
+
+// SelectTargetByInput returns the target selected by 1-based index or ID.
+func SelectTargetByInput(targets []provider.Target, input string) (provider.Target, error) {
+	input = strings.TrimSpace(input)
+	if index, err := strconv.Atoi(input); err == nil {
+		if index >= 1 && index <= len(targets) {
+			return targets[index-1], nil
+		}
+		return provider.Target{}, fmt.Errorf("target index %d out of range", index)
+	}
+	return SelectTargetByID(targets, input)
 }
 
 func (m TextMenu) width() int {

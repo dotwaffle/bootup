@@ -18,6 +18,13 @@ initramfs:
 scripts/build-initramfs.sh
 ```
 
+The script also accepts an output path, a uinit command, and optional Go build
+tags:
+
+```sh
+scripts/build-initramfs.sh dist/bootup-initramfs.cpio 'bootup --mode=menu --prepare-runtime' ''
+```
+
 Run with a local kernel:
 
 ```sh
@@ -29,6 +36,14 @@ Override the kernel, initramfs, or kernel command line with `BOOTUP_KERNEL`,
 `panic=30` so kernel panics remain visible briefly and then reboot.
 The initramfs build runs `bootup --hold` by default so smoke-test boots do not
 exit PID 1 after printing the target list; override it with `BOOTUP_UINITCMD`.
+
+For a Debian-capable single binary, generate ignored Go source from a local
+OpenPGP public keyring before building the initramfs:
+
+```sh
+go run ./cmd/bootup-keyring-source -o internal/trustmaterial/debian_archive_keyring_generated.go /usr/share/keyrings/debian-archive-keyring.gpg
+scripts/build-initramfs.sh dist/bootup-initramfs.cpio 'bootup --mode=menu --prepare-runtime' ''
+```
 
 ## iPXE
 

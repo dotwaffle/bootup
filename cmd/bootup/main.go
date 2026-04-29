@@ -11,7 +11,6 @@ import (
 	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
 	"github.com/dotwaffle/bootup/internal/provider"
-	"github.com/dotwaffle/bootup/internal/providers/debian"
 	"github.com/dotwaffle/bootup/internal/runtime"
 
 	_ "github.com/breml/rootcerts"
@@ -49,8 +48,8 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	registry := provider.NewRegistry()
-	if err := registry.Register(debian.NewProvider(debian.Config{})); err != nil {
-		return fmt.Errorf("register Debian provider: %w", err)
+	if err := registerProviders(registry); err != nil {
+		return err
 	}
 
 	runner := app.New(app.Config{

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/ui"
@@ -45,6 +46,7 @@ type Config struct {
 	Logger              *slog.Logger
 	Mode                Mode
 	TargetID            string
+	Hold                bool
 	Preparers           []Preparer
 	OnBeforeListTargets func()
 }
@@ -80,6 +82,27 @@ func (a *App) Run(ctx context.Context) error {
 		}
 	}
 
+	if err := a.runMode(ctx); err != nil {
+		return err
+	}
+	if a.config.Hold {
+		a.config.Logger.Info("bootup holding after mode completion")
+		return hold(ctx)
+	}
+	return nil
+}
+
+func hold(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Hour):
+		}
+	}
+}
+
+func (a *App) runMode(ctx context.Context) error {
 	switch a.config.Mode {
 	case "", ModeListTargets:
 		return a.listTargets(ctx)

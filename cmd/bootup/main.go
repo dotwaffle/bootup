@@ -29,6 +29,7 @@ func run(ctx context.Context, args []string) error {
 
 	mode := flags.String("mode", string(app.ModeListTargets), "startup mode")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
+	hold := flags.Bool("hold", false, "wait after the selected mode completes")
 	prepareRuntime := flags.Bool("prepare-runtime", false, "configure network, CA roots, and time before provider operations")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
@@ -55,6 +56,7 @@ func run(ctx context.Context, args []string) error {
 		Logger:    logging.NewSerialLogger(os.Stderr, slog.LevelInfo),
 		Mode:      app.Mode(*mode),
 		TargetID:  *targetID,
+		Hold:      *hold,
 		Preparers: preparers,
 	})
 	return runner.Run(ctx)

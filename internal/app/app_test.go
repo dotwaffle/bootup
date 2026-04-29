@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -103,6 +104,41 @@ func TestRunPreparesRuntimeBeforeListingTargets(t *testing.T) {
 
 	if len(calls) != 2 || calls[0] != "prepare" || calls[1] != "targets" {
 		t.Fatalf("calls = %#v, want prepare before targets", calls)
+	}
+}
+
+func TestRunHoldsAfterModeCompletes(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{targets: []provider.Target{{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+	}}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeListTargets,
+		Hold:     true,
+		OnBeforeListTargets: func() {
+			cancel()
+		},
+	})
+
+	err := runner.Run(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("run app error = %v, want context canceled", err)
+	}
+	if !strings.Contains(stdout.String(), "Debian trixie amd64 netboot") {
+		t.Fatalf("stdout = %q, want target list before hold", stdout.String())
 	}
 }
 

@@ -27,6 +27,8 @@ scripts/run-qemu.sh
 Override the kernel, initramfs, or kernel command line with `BOOTUP_KERNEL`,
 `BOOTUP_INITRAMFS`, and `BOOTUP_CMDLINE`. The default command line includes
 `panic=30` so kernel panics remain visible briefly and then reboot.
+The initramfs build runs `bootup --hold` by default so smoke-test boots do not
+exit PID 1 after printing the target list; override it with `BOOTUP_UINITCMD`.
 
 ## iPXE
 

@@ -10,7 +10,7 @@ export GOOS="${GOOS:-linux}"
 export GOARCH="${GOARCH:-amd64}"
 export GOAMD64="${GOAMD64:-v1}"
 
-uinitcmd="${BOOTUP_UINITCMD:-bootup}"
+uinitcmd="${BOOTUP_UINITCMD:-bootup --hold}"
 
 go run github.com/u-root/u-root \
 	-build=gbb \

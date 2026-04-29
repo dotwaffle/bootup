@@ -176,7 +176,7 @@ executing kexec.
 
 ### Requirement: VM-based boot verification
 Bootup SHALL include integration coverage that exercises the stage-1 environment
-and Debian provider path under a virtual machine.
+and provider paths under a virtual machine.
 
 #### Scenario: VM test boots bootup
 - **WHEN** the integration test launches bootup with QEMU/vmtest
@@ -198,3 +198,14 @@ and Debian provider path under a virtual machine.
 #### Scenario: Real Debian smoke inputs are absent
 - **WHEN** required live-smoke inputs are missing
 - **THEN** the smoke test SHALL skip without failing the default test suite
+
+#### Scenario: Real Ubuntu smoke is explicitly enabled
+- **WHEN** the operator provides QEMU, local kernel/initramfs inputs, and
+  network access
+- **THEN** bootup SHALL provide a repeatable smoke path that attempts to stage
+  live Ubuntu 26.04 netboot artifacts and kexec into the installer
+
+#### Scenario: Real Ubuntu smoke inputs are absent
+- **WHEN** required live-smoke inputs are missing
+- **THEN** the Ubuntu smoke test SHALL skip without failing the default test
+  suite

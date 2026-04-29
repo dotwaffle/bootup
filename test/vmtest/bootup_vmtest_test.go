@@ -46,3 +46,28 @@ func TestBootupListsDebianProvider(t *testing.T) {
 		t.Fatalf("kill VM: %v", err)
 	}
 }
+
+func TestBootupStagesDebianFixture(t *testing.T) {
+	qemu.SkipWithoutQEMU(t)
+	initramfs := os.Getenv("VMTEST_STAGE_INITRAMFS")
+	if initramfs == "" {
+		t.Skip("VMTEST_STAGE_INITRAMFS is required")
+	}
+	t.Setenv("VMTEST_INITRAMFS", initramfs)
+
+	vm := qemu.StartT(t, "bootup", qemu.ArchUseEnvv,
+		qemu.WithAppendKernel("console=ttyS0"),
+		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
+	)
+	if _, err := vm.Console.ExpectString("kernel\t/tmp/bootup/linux"); err != nil {
+		vm.Kill()
+		t.Fatalf("expect staged kernel: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("initrd\t/tmp/bootup/initrd.gz"); err != nil {
+		vm.Kill()
+		t.Fatalf("expect staged initrd: %v", err)
+	}
+	if err := vm.Kill(); err != nil {
+		t.Fatalf("kill VM: %v", err)
+	}
+}

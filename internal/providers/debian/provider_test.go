@@ -62,6 +62,9 @@ func TestProviderPlanResolvesInstallerURLs(t *testing.T) {
 	if plan.Verification.MetadataURL != "https://mirror.example/debian/dists/trixie/InRelease" {
 		t.Fatalf("metadata URL = %q", plan.Verification.MetadataURL)
 	}
+	if plan.Verification.ChecksumURL != "https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/SHA256SUMS" {
+		t.Fatalf("checksum URL = %q", plan.Verification.ChecksumURL)
+	}
 	if plan.Cmdline == "" {
 		t.Fatal("cmdline is empty")
 	}
@@ -130,18 +133,18 @@ func TestFetchAndStageArtifactsVerifiesSignedMetadataAndArtifacts(t *testing.T) 
 	kernelSum := sha256.Sum256(kernel)
 	initrdSum := sha256.Sum256(initrd)
 	shaSums := fmt.Appendf(nil,
-		"%x  debian-installer/amd64/linux\n%x  debian-installer/amd64/initrd.gz\n",
+		"%x  ./netboot/debian-installer/amd64/linux\n%x  ./netboot/debian-installer/amd64/initrd.gz\n",
 		kernelSum,
 		initrdSum,
 	)
 	shaSumsSum := sha256.Sum256(shaSums)
 
-	release := fmt.Appendf(nil, "SHA256:\n %x %d main/installer-amd64/current/images/netboot/SHA256SUMS\n", shaSumsSum, len(shaSums))
+	release := fmt.Appendf(nil, "SHA256:\n %x %d main/installer-amd64/current/images/SHA256SUMS\n", shaSumsSum, len(shaSums))
 	keyring, signed := signedRelease(t, release)
 
 	client := &http.Client{Transport: responseMap{
 		"https://mirror.example/debian/dists/trixie/InRelease":                                                                    signed,
-		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/netboot/SHA256SUMS":                       shaSums,
+		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/SHA256SUMS":                               shaSums,
 		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux":     kernel,
 		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz": initrd,
 	}}
@@ -171,6 +174,59 @@ func TestFetchAndStageArtifactsVerifiesSignedMetadataAndArtifacts(t *testing.T) 
 	}
 	if string(gotKernel) != string(kernel) {
 		t.Fatalf("staged kernel = %q, want %q", gotKernel, kernel)
+	}
+	if filepath.Base(staged.Initrd.Path) != "initrd.gz" {
+		t.Fatalf("staged initrd path = %q, want initrd.gz", staged.Initrd.Path)
+	}
+}
+
+func TestProviderStageUsesConfiguredKeyring(t *testing.T) {
+	t.Parallel()
+
+	kernel := []byte("kernel")
+	initrd := []byte("initrd")
+	kernelSum := sha256.Sum256(kernel)
+	initrdSum := sha256.Sum256(initrd)
+	shaSums := fmt.Appendf(nil,
+		"%x  ./netboot/debian-installer/amd64/linux\n%x  ./netboot/debian-installer/amd64/initrd.gz\n",
+		kernelSum,
+		initrdSum,
+	)
+	shaSumsSum := sha256.Sum256(shaSums)
+
+	release := fmt.Appendf(nil, "SHA256:\n %x %d main/installer-amd64/current/images/SHA256SUMS\n", shaSumsSum, len(shaSums))
+	keyring, signed := signedRelease(t, release)
+
+	client := &http.Client{Transport: responseMap{
+		"https://mirror.example/debian/dists/trixie/InRelease":                                                                    signed,
+		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/SHA256SUMS":                               shaSums,
+		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux":     kernel,
+		"https://mirror.example/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz": initrd,
+	}}
+
+	p := debian.NewProvider(debian.Config{
+		MirrorURL: "https://mirror.example/debian",
+		Client:    client,
+		Keyring:   keyring,
+	})
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+	}
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	staged, err := p.Stage(context.Background(), provider.StageConfig{
+		Plan:       plan,
+		StagingDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if filepath.Base(staged.Kernel.Path) != "linux" {
+		t.Fatalf("staged kernel path = %q, want linux", staged.Kernel.Path)
 	}
 	if filepath.Base(staged.Initrd.Path) != "initrd.gz" {
 		t.Fatalf("staged initrd path = %q, want initrd.gz", staged.Initrd.Path)

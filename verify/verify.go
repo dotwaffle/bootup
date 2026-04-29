@@ -200,7 +200,9 @@ func ParseSHA256Sums(reader io.Reader) (map[string]string, error) {
 		if _, err := hex.DecodeString(sum); err != nil {
 			return nil, fmt.Errorf("parse SHA256SUMS line %d: %w", lineNumber+1, err)
 		}
-		checksums[strings.TrimPrefix(fields[1], "*")] = sum
+		name := strings.TrimPrefix(fields[1], "*")
+		name = strings.TrimPrefix(name, "./")
+		checksums[name] = sum
 	}
 	return checksums, nil
 }

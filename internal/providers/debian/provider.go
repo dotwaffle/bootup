@@ -27,11 +27,15 @@ const (
 // Config configures the Debian provider.
 type Config struct {
 	MirrorURL string
+	Client    *http.Client
+	Keyring   []byte
 }
 
 // Provider exposes Debian netboot targets.
 type Provider struct {
 	mirrorURL string
+	client    *http.Client
+	keyring   []byte
 }
 
 // FetchConfig configures Debian artifact fetching and staging.
@@ -50,6 +54,8 @@ func NewProvider(config Config) *Provider {
 	}
 	return &Provider{
 		mirrorURL: mirrorURL,
+		client:    config.Client,
+		keyring:   bytes.Clone(config.Keyring),
 	}
 }
 
@@ -74,7 +80,8 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 		return provider.BootPlan{}, fmt.Errorf("unsupported Debian target %q", target.ID)
 	}
 
-	installerBase := p.mirrorURL + "/dists/trixie/main/installer-amd64/current/images/netboot"
+	imagesBase := p.mirrorURL + "/dists/trixie/main/installer-amd64/current/images"
+	installerBase := imagesBase + "/netboot"
 	return provider.BootPlan{
 		Target: target,
 		Kernel: provider.Artifact{
@@ -88,9 +95,22 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 		Cmdline: "priority=low",
 		Verification: provider.Verification{
 			MetadataURL: p.mirrorURL + "/dists/trixie/InRelease",
-			ChecksumURL: installerBase + "/SHA256SUMS",
+			ChecksumURL: imagesBase + "/SHA256SUMS",
 		},
 	}, nil
+}
+
+// Stage downloads, verifies, and stages artifacts for plan.
+func (p *Provider) Stage(ctx context.Context, config provider.StageConfig) (provider.BootPlan, error) {
+	if len(p.keyring) == 0 {
+		return provider.BootPlan{}, errors.New("keyring is required")
+	}
+	return FetchAndStageArtifacts(ctx, FetchConfig{
+		Plan:       config.Plan,
+		Client:     p.client,
+		Keyring:    bytes.NewReader(p.keyring),
+		StagingDir: config.StagingDir,
+	})
 }
 
 // VerifyInRelease verifies a clearsigned Debian InRelease file and returns its
@@ -156,10 +176,10 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 		return provider.BootPlan{}, err
 	}
 	plan := config.Plan
-	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel.URL, "linux", "debian-installer/amd64/linux", shaSums); err != nil {
+	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel.URL, "linux", "netboot/debian-installer/amd64/linux", shaSums); err != nil {
 		return provider.BootPlan{}, err
 	}
-	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd.URL, "initrd.gz", "debian-installer/amd64/initrd.gz", shaSums); err != nil {
+	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd.URL, "initrd.gz", "netboot/debian-installer/amd64/initrd.gz", shaSums); err != nil {
 		return provider.BootPlan{}, err
 	}
 	return plan, nil

@@ -34,3 +34,8 @@ Keyrings are automatically detected when they are OpenPGP public key material:
 ASCII-armored exported public keys or binary OpenPGP keyrings such as Debian
 archive keyring files. GnuPG keybox databases, trust databases, and unrelated
 PEM files are not accepted as keyrings.
+
+Providers that need distribution trust material receive it through their
+application-level configuration. The default binary does not provide global
+trust-material configuration, commit keyrings, generate keyrings, or embed a
+distribution keyring.

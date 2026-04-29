@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +24,12 @@ const (
 
 	// ModePlanTarget selects TargetID and prints its boot plan without handoff.
 	ModePlanTarget Mode = "plan-target"
+
+	// ModeStageTarget selects TargetID, verifies artifacts, and stages them.
+	ModeStageTarget Mode = "stage-target"
+
+	// ModeBootTarget stages TargetID and executes the kexec handoff.
+	ModeBootTarget Mode = "boot-target"
 )
 
 // Preparer prepares runtime state before provider operations.
@@ -38,6 +45,11 @@ func (f PrepareFunc) Prepare(ctx context.Context) error {
 	return f(ctx)
 }
 
+// Executor executes a staged boot plan.
+type Executor interface {
+	Execute(context.Context, provider.BootPlan) error
+}
+
 // Config contains immutable app startup dependencies.
 type Config struct {
 	Registry            *provider.Registry
@@ -46,7 +58,9 @@ type Config struct {
 	Logger              *slog.Logger
 	Mode                Mode
 	TargetID            string
+	StagingDir          string
 	Hold                bool
+	Executor            Executor
 	Preparers           []Preparer
 	OnBeforeListTargets func()
 }
@@ -108,6 +122,11 @@ func (a *App) runMode(ctx context.Context) error {
 		return a.listTargets(ctx)
 	case ModePlanTarget:
 		return a.planTarget(ctx)
+	case ModeStageTarget:
+		_, err := a.stageTarget(ctx)
+		return err
+	case ModeBootTarget:
+		return a.bootTarget(ctx)
 	default:
 		return fmt.Errorf("unsupported mode %q", a.config.Mode)
 	}
@@ -129,11 +148,7 @@ func (a *App) listTargets(ctx context.Context) error {
 }
 
 func (a *App) planTarget(ctx context.Context) error {
-	targets, err := a.config.Registry.Targets(ctx)
-	if err != nil {
-		return fmt.Errorf("list targets: %w", err)
-	}
-	target, err := ui.SelectTargetByID(targets, a.config.TargetID)
+	target, err := a.selectTarget(ctx)
 	if err != nil {
 		return err
 	}
@@ -153,4 +168,65 @@ func (a *App) planTarget(ctx context.Context) error {
 		return fmt.Errorf("write boot plan: %w", err)
 	}
 	return nil
+}
+
+func (a *App) stageTarget(ctx context.Context) (provider.BootPlan, error) {
+	target, err := a.selectTarget(ctx)
+	if err != nil {
+		return provider.BootPlan{}, err
+	}
+	stagingDir := a.config.StagingDir
+	if stagingDir == "" {
+		stagingDir = "/tmp/bootup"
+	}
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return provider.BootPlan{}, fmt.Errorf("create staging dir: %w", err)
+	}
+
+	menu := ui.TextMenu{Width: 80}
+	if err := menu.RenderProgress(a.config.Stdout, "staging "+target.Name); err != nil {
+		return provider.BootPlan{}, fmt.Errorf("render progress: %w", err)
+	}
+	plan, err := a.config.Registry.Plan(ctx, target)
+	if err != nil {
+		return provider.BootPlan{}, err
+	}
+	staged, err := a.config.Registry.Stage(ctx, provider.StageConfig{
+		Plan:       plan,
+		StagingDir: stagingDir,
+	})
+	if err != nil {
+		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+			return provider.BootPlan{}, fmt.Errorf("render fatal error: %w", renderErr)
+		}
+		return provider.BootPlan{}, err
+	}
+	if _, err := fmt.Fprintf(a.config.Stdout, "kernel\t%s\ninitrd\t%s\ncmdline\t%s\n", staged.Kernel.Path, staged.Initrd.Path, staged.Cmdline); err != nil {
+		return provider.BootPlan{}, fmt.Errorf("write staged boot plan: %w", err)
+	}
+	return staged, nil
+}
+
+func (a *App) bootTarget(ctx context.Context) error {
+	staged, err := a.stageTarget(ctx)
+	if err != nil {
+		return err
+	}
+	executor := a.config.Executor
+	if executor == nil {
+		return errors.New("executor is required")
+	}
+	menu := ui.TextMenu{Width: 80}
+	if err := menu.RenderProgress(a.config.Stdout, "loading "+staged.Target.Name); err != nil {
+		return fmt.Errorf("render progress: %w", err)
+	}
+	return executor.Execute(ctx, staged)
+}
+
+func (a *App) selectTarget(ctx context.Context) (provider.Target, error) {
+	targets, err := a.config.Registry.Targets(ctx)
+	if err != nil {
+		return provider.Target{}, fmt.Errorf("list targets: %w", err)
+	}
+	return ui.SelectTargetByID(targets, a.config.TargetID)
 }

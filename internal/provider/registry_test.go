@@ -12,6 +12,7 @@ type testProvider struct {
 	id      string
 	targets []provider.Target
 	plan    provider.BootPlan
+	staged  provider.BootPlan
 }
 
 func (p testProvider) ID() string {
@@ -24,6 +25,10 @@ func (p testProvider) Targets(context.Context) ([]provider.Target, error) {
 
 func (p testProvider) Plan(context.Context, provider.Target) (provider.BootPlan, error) {
 	return p.plan, nil
+}
+
+func (p testProvider) Stage(context.Context, provider.StageConfig) (provider.BootPlan, error) {
+	return p.staged, nil
 }
 
 func TestRegistryListsTargetsFromRegisteredProvider(t *testing.T) {
@@ -90,5 +95,32 @@ func TestRegistryPlansThroughTargetProvider(t *testing.T) {
 	}
 	if got != plan {
 		t.Fatalf("plan = %#v, want %#v", got, plan)
+	}
+}
+
+func TestRegistryStagesThroughTargetProvider(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	target := provider.Target{ID: "debian-trixie-amd64-netboot", ProviderID: "debian"}
+	staged := provider.BootPlan{
+		Target: target,
+		Kernel: provider.Artifact{Name: "linux", Path: "/tmp/linux"},
+		Initrd: provider.Artifact{Name: "initrd.gz", Path: "/tmp/initrd.gz"},
+	}
+
+	if err := registry.Register(testProvider{id: "debian", staged: staged}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	got, err := registry.Stage(context.Background(), provider.StageConfig{
+		Plan:       provider.BootPlan{Target: target},
+		StagingDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("stage target: %v", err)
+	}
+	if got != staged {
+		t.Fatalf("staged plan = %#v, want %#v", got, staged)
 	}
 }

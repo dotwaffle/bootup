@@ -14,6 +14,9 @@ var ErrDuplicateProvider = errors.New("duplicate provider")
 // ErrProviderNotFound is returned when a target references an unknown provider.
 var ErrProviderNotFound = errors.New("provider not found")
 
+// ErrStagingNotSupported is returned when a provider cannot stage artifacts.
+var ErrStagingNotSupported = errors.New("staging not supported")
+
 // Target describes an operating system installer or live environment that
 // bootup can prepare and hand off to.
 type Target struct {
@@ -47,11 +50,22 @@ type BootPlan struct {
 	Verification Verification
 }
 
+// StageConfig configures provider-specific artifact staging.
+type StageConfig struct {
+	Plan       BootPlan
+	StagingDir string
+}
+
 // Provider exposes boot targets and plans for a distribution or tool family.
 type Provider interface {
 	ID() string
 	Targets(context.Context) ([]Target, error)
 	Plan(context.Context, Target) (BootPlan, error)
+}
+
+// Stager stages and verifies artifacts for a planned boot target.
+type Stager interface {
+	Stage(context.Context, StageConfig) (BootPlan, error)
 }
 
 // Registry stores build-time providers compiled into the bootup image.
@@ -104,4 +118,21 @@ func (r *Registry) Plan(ctx context.Context, target Target) (BootPlan, error) {
 		return BootPlan{}, fmt.Errorf("plan target %s: %w", target.ID, err)
 	}
 	return plan, nil
+}
+
+// Stage stages and verifies artifacts for plan through its provider.
+func (r *Registry) Stage(ctx context.Context, config StageConfig) (BootPlan, error) {
+	provider, ok := r.providers[config.Plan.Target.ProviderID]
+	if !ok {
+		return BootPlan{}, fmt.Errorf("%w: %s", ErrProviderNotFound, config.Plan.Target.ProviderID)
+	}
+	stager, ok := provider.(Stager)
+	if !ok {
+		return BootPlan{}, fmt.Errorf("%w: %s", ErrStagingNotSupported, provider.ID())
+	}
+	staged, err := stager.Stage(ctx, config)
+	if err != nil {
+		return BootPlan{}, fmt.Errorf("stage target %s: %w", config.Plan.Target.ID, err)
+	}
+	return staged, nil
 }

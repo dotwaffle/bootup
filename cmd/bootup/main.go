@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/dotwaffle/bootup/internal/app"
+	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providers/debian"
@@ -29,6 +30,7 @@ func run(ctx context.Context, args []string) error {
 
 	mode := flags.String("mode", string(app.ModeListTargets), "startup mode")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
+	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
 	hold := flags.Bool("hold", false, "wait after the selected mode completes")
 	prepareRuntime := flags.Bool("prepare-runtime", false, "configure network, CA roots, and time before provider operations")
 	if err := flags.Parse(args); err != nil {
@@ -52,12 +54,14 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	runner := app.New(app.Config{
-		Registry:  registry,
-		Logger:    logging.NewSerialLogger(os.Stderr, slog.LevelInfo),
-		Mode:      app.Mode(*mode),
-		TargetID:  *targetID,
-		Hold:      *hold,
-		Preparers: preparers,
+		Registry:   registry,
+		Logger:     logging.NewSerialLogger(os.Stderr, slog.LevelInfo),
+		Mode:       app.Mode(*mode),
+		TargetID:   *targetID,
+		StagingDir: *stagingDir,
+		Hold:       *hold,
+		Executor:   handoff.KexecExecutor{},
+		Preparers:  preparers,
 	})
 	return runner.Run(ctx)
 }

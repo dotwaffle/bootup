@@ -56,3 +56,10 @@ Run QEMU with a local kernel and the generated initramfs:
 ```sh
 scripts/run-qemu.sh
 ```
+
+Stage a target non-interactively. Providers that require distribution trust
+material must be configured by the application code that compiles them in:
+
+```sh
+bootup --mode=stage-target --target=debian-trixie-amd64-netboot
+```

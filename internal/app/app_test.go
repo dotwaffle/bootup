@@ -15,6 +15,7 @@ import (
 type providerStub struct {
 	targets []provider.Target
 	plan    provider.BootPlan
+	staged  provider.BootPlan
 	planned *provider.Target
 }
 
@@ -31,6 +32,19 @@ func (p providerStub) Plan(_ context.Context, target provider.Target) (provider.
 		*p.planned = target
 	}
 	return p.plan, nil
+}
+
+func (p providerStub) Stage(context.Context, provider.StageConfig) (provider.BootPlan, error) {
+	return p.staged, nil
+}
+
+type executorStub struct {
+	executed *provider.BootPlan
+}
+
+func (e executorStub) Execute(_ context.Context, plan provider.BootPlan) error {
+	*e.executed = plan
+	return nil
 }
 
 func TestRunListsTargetsInNonInteractiveMode(t *testing.T) {
@@ -185,5 +199,93 @@ func TestRunPlansSelectedTargetInNonInteractiveMode(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "https://example.test/linux") {
 		t.Fatalf("stdout = %q, want kernel URL", stdout.String())
+	}
+}
+
+func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+	}
+	plan := provider.BootPlan{Target: target}
+	staged := provider.BootPlan{
+		Target:  target,
+		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+		Initrd:  provider.Artifact{Name: "initrd.gz", Path: "/tmp/bootup/initrd.gz"},
+		Cmdline: "priority=low",
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		plan:    plan,
+		staged:  staged,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdout:     &stdout,
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:       app.ModeStageTarget,
+		TargetID:   "debian-trixie-amd64-netboot",
+		StagingDir: t.TempDir(),
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "/tmp/bootup/linux") {
+		t.Fatalf("stdout = %q, want staged kernel path", stdout.String())
+	}
+}
+
+func TestRunBootsSelectedTargetInNonInteractiveMode(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+	}
+	staged := provider.BootPlan{
+		Target:  target,
+		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+		Initrd:  provider.Artifact{Name: "initrd.gz", Path: "/tmp/bootup/initrd.gz"},
+		Cmdline: "priority=low",
+	}
+	var executed provider.BootPlan
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		plan:    provider.BootPlan{Target: target},
+		staged:  staged,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdout:     &bytes.Buffer{},
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:       app.ModeBootTarget,
+		TargetID:   "debian-trixie-amd64-netboot",
+		StagingDir: t.TempDir(),
+		Executor:   executorStub{executed: &executed},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if executed.Kernel.Path != staged.Kernel.Path {
+		t.Fatalf("executed plan = %#v, want %#v", executed, staged)
 	}
 }

@@ -121,6 +121,22 @@ func TestSHA256SumsAcceptsExpectedHash(t *testing.T) {
 	}
 }
 
+func TestSHA256SumsNormalizesDebianRelativePath(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("kernel")
+	sum := sha256.Sum256(data)
+	sums := []byte(hex.EncodeToString(sum[:]) + "  ./netboot/debian-installer/amd64/linux\n")
+
+	if err := verify.SHA256Sums(verify.SumFileInput{
+		Artifact: bytes.NewReader(data),
+		Sums:     bytes.NewReader(sums),
+		Name:     "netboot/debian-installer/amd64/linux",
+	}); err != nil {
+		t.Fatalf("verify sha256 sums: %v", err)
+	}
+}
+
 func TestSHA256FileAcceptsExpectedHash(t *testing.T) {
 	t.Parallel()
 

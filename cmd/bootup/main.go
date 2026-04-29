@@ -28,6 +28,7 @@ func run(ctx context.Context, args []string) error {
 	flags.SetOutput(os.Stderr)
 
 	mode := flags.String("mode", string(app.ModeListTargets), "startup mode")
+	uiMode := flags.String("ui", string(app.UIModeAuto), "menu UI mode: auto, rich, plain")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
 	hold := flags.Bool("hold", false, "wait after the selected mode completes")
@@ -56,6 +57,7 @@ func run(ctx context.Context, args []string) error {
 		Registry:   registry,
 		Logger:     logging.NewSerialLogger(os.Stderr, slog.LevelInfo),
 		Mode:       app.Mode(*mode),
+		UIMode:     app.UIMode(*uiMode),
 		TargetID:   *targetID,
 		StagingDir: *stagingDir,
 		Hold:       *hold,

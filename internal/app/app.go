@@ -13,6 +13,7 @@ import (
 
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/ui"
+	"golang.org/x/term"
 )
 
 // Mode selects the startup behavior.
@@ -35,6 +36,20 @@ const (
 
 	// ModeBootTarget stages TargetID and executes the kexec handoff.
 	ModeBootTarget Mode = "boot-target"
+)
+
+// UIMode selects the operator interface style for interactive menu mode.
+type UIMode string
+
+const (
+	// UIModeAuto uses the rich UI only when stdin and stdout are terminals.
+	UIModeAuto UIMode = "auto"
+
+	// UIModeRich requires the rich terminal UI.
+	UIModeRich UIMode = "rich"
+
+	// UIModePlain always uses the plain text prompt.
+	UIModePlain UIMode = "plain"
 )
 
 // Preparer prepares runtime state before provider operations.
@@ -63,6 +78,7 @@ type Config struct {
 	Stderr              io.Writer
 	Logger              *slog.Logger
 	Mode                Mode
+	UIMode              UIMode
 	TargetID            string
 	StagingDir          string
 	Hold                bool
@@ -92,6 +108,9 @@ func New(config Config) *App {
 	}
 	if config.Registry == nil {
 		config.Registry = provider.NewRegistry()
+	}
+	if config.UIMode == "" {
+		config.UIMode = UIModeAuto
 	}
 	return &App{config: config}
 }
@@ -134,7 +153,7 @@ func (a *App) runMode(ctx context.Context) error {
 	case ModePlanTarget:
 		return a.planTarget(ctx)
 	case ModeStageTarget:
-		_, err := a.stageTarget(ctx)
+		_, err := a.stageTarget(ctx, a.textMenu())
 		return err
 	case ModeBootTarget:
 		return a.bootTarget(ctx)
@@ -164,7 +183,7 @@ func (a *App) planTarget(ctx context.Context) error {
 		return err
 	}
 
-	menu := ui.TextMenu{Width: 80}
+	menu := a.textMenu()
 	if err := menu.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
 		return fmt.Errorf("render status: %w", err)
 	}
@@ -181,15 +200,20 @@ func (a *App) planTarget(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) stageTarget(ctx context.Context) (provider.BootPlan, error) {
+type statusRenderer interface {
+	RenderStatus(io.Writer, string, string) error
+	RenderFatal(io.Writer, string) error
+}
+
+func (a *App) stageTarget(ctx context.Context, renderer statusRenderer) (provider.BootPlan, error) {
 	target, err := a.selectTarget(ctx)
 	if err != nil {
 		return provider.BootPlan{}, err
 	}
-	return a.stageSelectedTarget(ctx, target)
+	return a.stageSelectedTarget(ctx, target, renderer)
 }
 
-func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target) (provider.BootPlan, error) {
+func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, renderer statusRenderer) (provider.BootPlan, error) {
 	stagingDir := a.config.StagingDir
 	if stagingDir == "" {
 		stagingDir = "/tmp/bootup"
@@ -198,21 +222,20 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target) (
 		return provider.BootPlan{}, fmt.Errorf("create staging dir: %w", err)
 	}
 
-	menu := ui.TextMenu{Width: 80}
-	if err := menu.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
+	if err := renderer.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
 	plan, err := a.config.Registry.Plan(ctx, target)
 	if err != nil {
-		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return provider.BootPlan{}, fmt.Errorf("render fatal error: %w", renderErr)
 		}
 		return provider.BootPlan{}, err
 	}
-	if err := menu.RenderStatus(a.config.Stdout, "verifying", target.Name); err != nil {
+	if err := renderer.RenderStatus(a.config.Stdout, "verifying", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
-	if err := menu.RenderStatus(a.config.Stdout, "staging", target.Name); err != nil {
+	if err := renderer.RenderStatus(a.config.Stdout, "staging", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
 	staged, err := a.config.Registry.Stage(ctx, provider.StageConfig{
@@ -220,7 +243,7 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target) (
 		StagingDir: stagingDir,
 	})
 	if err != nil {
-		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return provider.BootPlan{}, fmt.Errorf("render fatal error: %w", renderErr)
 		}
 		return provider.BootPlan{}, err
@@ -232,20 +255,24 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target) (
 }
 
 func (a *App) bootTarget(ctx context.Context) error {
-	staged, err := a.stageTarget(ctx)
+	menu := a.textMenu()
+	staged, err := a.stageTarget(ctx, menu)
 	if err != nil {
 		return err
 	}
+	return a.executeStaged(ctx, staged, menu)
+}
+
+func (a *App) executeStaged(ctx context.Context, staged provider.BootPlan, renderer statusRenderer) error {
 	executor := a.config.Executor
 	if executor == nil {
 		return errors.New("executor is required")
 	}
-	menu := ui.TextMenu{Width: 80}
-	if err := menu.RenderStatus(a.config.Stdout, "loading", staged.Target.Name); err != nil {
+	if err := renderer.RenderStatus(a.config.Stdout, "loading", staged.Target.Name); err != nil {
 		return fmt.Errorf("render status: %w", err)
 	}
 	if err := executor.Execute(ctx, staged); err != nil {
-		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return fmt.Errorf("render fatal error: %w", renderErr)
 		}
 		return err
@@ -258,7 +285,30 @@ func (a *App) menu(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list targets: %w", err)
 	}
-	menu := ui.TextMenu{Width: 80}
+	useRich, err := a.useRichMenu()
+	if err != nil {
+		return err
+	}
+	if useRich {
+		menu := a.richMenu()
+		target, err := menu.SelectTarget(ctx, targets)
+		if err != nil {
+			if errors.Is(err, ui.ErrSelectionCanceled) {
+				return nil
+			}
+			return err
+		}
+		staged, err := a.stageSelectedTarget(ctx, target, menu)
+		if err != nil {
+			return err
+		}
+		return a.executeStaged(ctx, staged, menu)
+	}
+	return a.plainMenu(ctx, targets)
+}
+
+func (a *App) plainMenu(ctx context.Context, targets []provider.Target) error {
+	menu := a.textMenu()
 	if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
 		return fmt.Errorf("render targets: %w", err)
 	}
@@ -277,24 +327,11 @@ func (a *App) menu(ctx context.Context) error {
 		}
 		return err
 	}
-	staged, err := a.stageSelectedTarget(ctx, target)
+	staged, err := a.stageSelectedTarget(ctx, target, menu)
 	if err != nil {
 		return err
 	}
-	executor := a.config.Executor
-	if executor == nil {
-		return errors.New("executor is required")
-	}
-	if err := menu.RenderStatus(a.config.Stdout, "loading", staged.Target.Name); err != nil {
-		return fmt.Errorf("render status: %w", err)
-	}
-	if err := executor.Execute(ctx, staged); err != nil {
-		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
-			return fmt.Errorf("render fatal error: %w", renderErr)
-		}
-		return err
-	}
-	return nil
+	return a.executeStaged(ctx, staged, menu)
 }
 
 func (a *App) selectTarget(ctx context.Context) (provider.Target, error) {
@@ -303,4 +340,45 @@ func (a *App) selectTarget(ctx context.Context) (provider.Target, error) {
 		return provider.Target{}, fmt.Errorf("list targets: %w", err)
 	}
 	return ui.SelectTargetByID(targets, a.config.TargetID)
+}
+
+func (a *App) textMenu() ui.TextMenu {
+	return ui.TextMenu{Width: 80}
+}
+
+func (a *App) richMenu() ui.RichMenu {
+	return ui.RichMenu{
+		Width:   80,
+		Stdin:   a.config.Stdin,
+		Stdout:  a.config.Stdout,
+		Animate: true,
+	}
+}
+
+func (a *App) useRichMenu() (bool, error) {
+	switch a.config.UIMode {
+	case UIModeAuto:
+		return a.hasInteractiveTerminal(), nil
+	case UIModeRich:
+		if !a.hasInteractiveTerminal() {
+			return false, errors.New("rich UI requires terminal stdin and stdout")
+		}
+		return true, nil
+	case UIModePlain:
+		return false, nil
+	default:
+		return false, fmt.Errorf("unsupported ui mode %q", a.config.UIMode)
+	}
+}
+
+func (a *App) hasInteractiveTerminal() bool {
+	stdin, ok := a.config.Stdin.(*os.File)
+	if !ok {
+		return false
+	}
+	stdout, ok := a.config.Stdout.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(stdin.Fd())) && term.IsTerminal(int(stdout.Fd()))
 }

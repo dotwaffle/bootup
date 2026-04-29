@@ -7,8 +7,12 @@ toolchain go1.26.2
 require (
 	github.com/ProtonMail/go-crypto v1.4.1
 	github.com/breml/rootcerts v0.3.5
+	github.com/charmbracelet/bubbles v0.15.1-0.20230123181021-a6a12c4a31eb
+	github.com/charmbracelet/bubbletea v0.24.1
+	github.com/charmbracelet/lipgloss v0.7.1
 	github.com/hugelgupf/vmtest v0.0.0-20240307030256-5d9f3d34a58d
 	golang.org/x/sys v0.41.0
+	golang.org/x/term v0.37.0
 )
 
 require (
@@ -16,9 +20,7 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
-	github.com/charmbracelet/bubbles v0.15.1-0.20230123181021-a6a12c4a31eb // indirect
-	github.com/charmbracelet/bubbletea v0.24.1 // indirect
-	github.com/charmbracelet/lipgloss v0.7.1 // indirect
+	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/containerd/console v1.0.4-0.20230706203907-8f6c4e4faef5 // indirect
 	github.com/creack/pty v1.1.24 // indirect
@@ -55,7 +57,6 @@ require (
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
-	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect

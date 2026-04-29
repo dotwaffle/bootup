@@ -39,6 +39,13 @@ exit PID 1 after printing the target list; override it with `BOOTUP_UINITCMD`.
 Purpose-built bootup kernels should also include `ip=::::::dhcp` so the kernel
 configures networking before bootup starts.
 
+Interactive menu boots use `bootup --mode=menu --ui=auto` by default. Auto mode
+uses the rich Bubble Tea terminal UI when stdin and stdout are interactive
+terminals, including normal serial consoles, and falls back to the plain
+`target> ` prompt when input or output is redirected. Force the fallback with
+`--ui=plain`; use `--ui=rich` only when a terminal is required and failure is
+preferable to fallback.
+
 For a Debian-capable single binary, generate ignored Go source from a local
 OpenPGP public keyring before building the initramfs:
 

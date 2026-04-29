@@ -12,7 +12,7 @@ selected kernel and initrd, and hands off with kexec.
 - Build-time Go providers.
 - Debian trixie amd64 netboot target.
 - Ubuntu 26.04 amd64 netboot target.
-- Serial-friendly text interface.
+- Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
 - Reusable verification hooks for hashes, SHA256SUMS files, and OpenPGP
@@ -80,6 +80,11 @@ Run the serial selection flow in a Debian-capable build:
 ```sh
 bootup --mode=menu --prepare-runtime
 ```
+
+Menu mode defaults to `--ui=auto`: it uses the rich keyboard-driven terminal
+interface when stdin/stdout are terminals and falls back to the plain
+`target> ` prompt for redirected input or automation. Use `--ui=plain` to force
+the fallback or `--ui=rich` to require the rich interface.
 
 Build a local single-binary Debian-capable image by generating ignored Go
 source from an OpenPGP public keyring, then building normally:

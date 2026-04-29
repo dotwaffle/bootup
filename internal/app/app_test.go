@@ -346,6 +346,38 @@ func TestRunMenuSelectsAndBootsTarget(t *testing.T) {
 	}
 }
 
+func TestRunMenuRejectsForcedRichUIWithoutTerminal(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+	}
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{targets: []provider.Target{target}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdin:    strings.NewReader("1\n"),
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeMenu,
+		UIMode:   app.UIModeRich,
+	})
+
+	err := runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("run app succeeded, want rich UI terminal error")
+	}
+	if !strings.Contains(err.Error(), "rich UI requires terminal") {
+		t.Fatalf("run app error = %v, want rich UI terminal error", err)
+	}
+}
+
 func TestRunBootRendersKexecFailure(t *testing.T) {
 	t.Parallel()
 

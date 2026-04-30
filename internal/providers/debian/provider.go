@@ -67,13 +67,15 @@ func (*Provider) ID() string {
 // Targets returns supported Debian targets.
 func (*Provider) Targets(context.Context) ([]provider.Target, error) {
 	return []provider.Target{{
-		ID:           targetID,
-		ProviderID:   providerID,
-		Name:         "Debian trixie amd64 netboot",
-		Architecture: "amd64",
-		Distribution: "debian",
-		Release:      "trixie",
-		Kind:         "installer",
+		ID:         targetID,
+		ProviderID: providerID,
+		Name:       "Debian trixie amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Architecture: "amd64",
+			Distribution: "debian",
+			Release:      "trixie",
+			Kind:         "installer",
+		},
 	}}, nil
 }
 

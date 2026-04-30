@@ -36,10 +36,15 @@ func TestRegistryListsTargetsFromRegisteredProvider(t *testing.T) {
 
 	registry := provider.NewRegistry()
 	target := provider.Target{
-		ID:           "debian-trixie-amd64-netboot",
-		ProviderID:   "debian",
-		Name:         "Debian trixie amd64 netboot",
-		Architecture: "amd64",
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Architecture: "amd64",
+			Distribution: "debian",
+			Release:      "trixie",
+			Kind:         "installer",
+		},
 	}
 
 	if err := registry.Register(testProvider{id: "debian", targets: []provider.Target{target}}); err != nil {
@@ -56,6 +61,76 @@ func TestRegistryListsTargetsFromRegisteredProvider(t *testing.T) {
 	}
 	if targets[0] != target {
 		t.Fatalf("target = %#v, want %#v", targets[0], target)
+	}
+}
+
+func TestRegistryRejectsInvalidProviderTargets(t *testing.T) {
+	t.Parallel()
+
+	validCatalog := provider.CatalogEntry{
+		Distribution: "debian",
+		Release:      "trixie",
+		Architecture: "amd64",
+		Kind:         "installer",
+	}
+	tests := []struct {
+		name   string
+		target provider.Target
+	}{
+		{
+			name: "missing id",
+			target: provider.Target{
+				ProviderID: "debian",
+				Name:       "Debian trixie amd64 netboot",
+				Catalog:    validCatalog,
+			},
+		},
+		{
+			name: "mismatched provider id",
+			target: provider.Target{
+				ID:         "debian-trixie-amd64-netboot",
+				ProviderID: "ubuntu",
+				Name:       "Debian trixie amd64 netboot",
+				Catalog:    validCatalog,
+			},
+		},
+		{
+			name: "missing display name",
+			target: provider.Target{
+				ID:         "debian-trixie-amd64-netboot",
+				ProviderID: "debian",
+				Catalog:    validCatalog,
+			},
+		},
+		{
+			name: "incomplete catalog",
+			target: provider.Target{
+				ID:         "debian-trixie-amd64-netboot",
+				ProviderID: "debian",
+				Name:       "Debian trixie amd64 netboot",
+				Catalog: provider.CatalogEntry{
+					Distribution: "debian",
+					Release:      "trixie",
+					Architecture: "amd64",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			registry := provider.NewRegistry()
+			if err := registry.Register(testProvider{id: "debian", targets: []provider.Target{tt.target}}); err != nil {
+				t.Fatalf("register provider: %v", err)
+			}
+
+			_, err := registry.Targets(context.Background())
+			if !errors.Is(err, provider.ErrInvalidTarget) {
+				t.Fatalf("targets error = %v, want %v", err, provider.ErrInvalidTarget)
+			}
+		})
 	}
 }
 

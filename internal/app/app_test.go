@@ -57,16 +57,39 @@ func (e executorStub) Execute(_ context.Context, plan provider.BootPlan) error {
 	return e.err
 }
 
+func debianTarget() provider.Target {
+	return provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      "trixie",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
+}
+
+func ubuntuTarget() provider.Target {
+	return provider.Target{
+		ID:         "ubuntu-2604-amd64-netboot",
+		ProviderID: "ubuntu",
+		Name:       "Ubuntu 26.04 amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "ubuntu",
+			Release:      "26.04",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
+}
+
 func TestRunListsTargetsInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
 	registry := provider.NewRegistry()
-	if err := registry.Register(providerStub{targets: []provider.Target{{
-		ID:           "debian-trixie-amd64-netboot",
-		ProviderID:   "debian",
-		Name:         "Debian trixie amd64 netboot",
-		Architecture: "amd64",
-	}}}); err != nil {
+	if err := registry.Register(providerStub{targets: []provider.Target{debianTarget()}}); err != nil {
 		t.Fatalf("register provider: %v", err)
 	}
 
@@ -84,7 +107,7 @@ func TestRunListsTargetsInNonInteractiveMode(t *testing.T) {
 		t.Fatalf("run app: %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Debian trixie amd64 netboot") {
+	if !strings.Contains(stdout.String(), "Debian trixie") {
 		t.Fatalf("stdout = %q, want Debian target", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "debian-trixie-amd64-netboot") {
@@ -97,11 +120,7 @@ func TestRunPreparesRuntimeBeforeListingTargets(t *testing.T) {
 
 	var calls []string
 	registry := provider.NewRegistry()
-	if err := registry.Register(providerStub{targets: []provider.Target{{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}}}); err != nil {
+	if err := registry.Register(providerStub{targets: []provider.Target{debianTarget()}}); err != nil {
 		t.Fatalf("register provider: %v", err)
 	}
 
@@ -135,11 +154,7 @@ func TestRunHoldsAfterModeCompletes(t *testing.T) {
 	t.Parallel()
 
 	registry := provider.NewRegistry()
-	if err := registry.Register(providerStub{targets: []provider.Target{{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}}}); err != nil {
+	if err := registry.Register(providerStub{targets: []provider.Target{debianTarget()}}); err != nil {
 		t.Fatalf("register provider: %v", err)
 	}
 
@@ -161,7 +176,7 @@ func TestRunHoldsAfterModeCompletes(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("run app error = %v, want context canceled", err)
 	}
-	if !strings.Contains(stdout.String(), "Debian trixie amd64 netboot") {
+	if !strings.Contains(stdout.String(), "Debian trixie") {
 		t.Fatalf("stdout = %q, want target list before hold", stdout.String())
 	}
 }
@@ -169,11 +184,7 @@ func TestRunHoldsAfterModeCompletes(t *testing.T) {
 func TestRunPlansSelectedTargetInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
-	target := provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}
+	target := debianTarget()
 	plan := provider.BootPlan{
 		Target:  target,
 		Kernel:  provider.Artifact{Name: "linux", URL: "https://example.test/linux"},
@@ -215,11 +226,7 @@ func TestRunPlansSelectedTargetInNonInteractiveMode(t *testing.T) {
 func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
-	target := provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}
+	target := debianTarget()
 	plan := provider.BootPlan{Target: target}
 	staged := provider.BootPlan{
 		Target:  target,
@@ -264,11 +271,7 @@ func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 func TestRunBootsSelectedTargetInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
-	target := provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}
+	target := debianTarget()
 	staged := provider.BootPlan{
 		Target:  target,
 		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
@@ -308,11 +311,7 @@ func TestRunBootsSelectedTargetInNonInteractiveMode(t *testing.T) {
 func TestRunMenuSelectsAndBootsTarget(t *testing.T) {
 	t.Parallel()
 
-	target := provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}
+	target := debianTarget()
 	staged := provider.BootPlan{
 		Target:  target,
 		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
@@ -356,11 +355,7 @@ func TestRunMenuSelectsAndBootsTarget(t *testing.T) {
 func TestRunMenuRejectsForcedRichUIWithoutTerminal(t *testing.T) {
 	t.Parallel()
 
-	target := provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}
+	target := debianTarget()
 	registry := provider.NewRegistry()
 	if err := registry.Register(providerStub{targets: []provider.Target{target}}); err != nil {
 		t.Fatalf("register provider: %v", err)
@@ -388,26 +383,7 @@ func TestRunMenuRejectsForcedRichUIWithoutTerminal(t *testing.T) {
 func TestRunRichMenuSelectsTargetThroughPTY(t *testing.T) {
 	t.Parallel()
 
-	targets := []provider.Target{
-		{
-			ID:           "debian-trixie-amd64-netboot",
-			ProviderID:   "debian",
-			Name:         "Debian trixie amd64 netboot",
-			Architecture: "amd64",
-			Distribution: "debian",
-			Release:      "trixie",
-			Kind:         "installer",
-		},
-		{
-			ID:           "ubuntu-2604-amd64-netboot",
-			ProviderID:   "ubuntu",
-			Name:         "Ubuntu 26.04 amd64 netboot",
-			Architecture: "amd64",
-			Distribution: "ubuntu",
-			Release:      "26.04",
-			Kind:         "installer",
-		},
-	}
+	targets := []provider.Target{debianTarget(), ubuntuTarget()}
 	staged := provider.BootPlan{
 		Target:  targets[1],
 		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
@@ -494,11 +470,7 @@ func TestRunRichMenuSelectsTargetThroughPTY(t *testing.T) {
 func TestRunBootRendersKexecFailure(t *testing.T) {
 	t.Parallel()
 
-	target := provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
-		Name:       "Debian trixie amd64 netboot",
-	}
+	target := debianTarget()
 	staged := provider.BootPlan{
 		Target: target,
 		Kernel: provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},

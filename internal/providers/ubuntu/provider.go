@@ -68,13 +68,15 @@ func (*Provider) ID() string {
 // Targets returns supported Ubuntu targets.
 func (*Provider) Targets(context.Context) ([]provider.Target, error) {
 	return []provider.Target{{
-		ID:           targetID,
-		ProviderID:   providerID,
-		Name:         "Ubuntu 26.04 amd64 netboot",
-		Architecture: "amd64",
-		Distribution: "ubuntu",
-		Release:      "26.04",
-		Kind:         "installer",
+		ID:         targetID,
+		ProviderID: providerID,
+		Name:       "Ubuntu 26.04 amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Architecture: "amd64",
+			Distribution: "ubuntu",
+			Release:      "26.04",
+			Kind:         "installer",
+		},
 	}}, nil
 }
 

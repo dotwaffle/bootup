@@ -95,20 +95,20 @@ func (m TextMenu) width() int {
 
 func catalogLabel(target provider.Target) string {
 	parts := make([]string, 0, 4)
-	if target.Distribution != "" {
-		parts = append(parts, target.Distribution)
+	if target.Catalog.Distribution != "" {
+		parts = append(parts, target.Catalog.Distribution)
 	}
-	if target.Release != "" {
-		parts = append(parts, target.Release)
+	if target.Catalog.Release != "" {
+		parts = append(parts, target.Catalog.Release)
 	}
-	if target.Architecture != "" {
-		parts = append(parts, target.Architecture)
+	if target.Catalog.Architecture != "" {
+		parts = append(parts, target.Catalog.Architecture)
 	}
-	if target.Kind != "" {
-		parts = append(parts, target.Kind)
+	if target.Catalog.Kind != "" {
+		parts = append(parts, target.Catalog.Kind)
 	}
 	if len(parts) == 0 {
-		return target.Architecture
+		return target.Catalog.Architecture
 	}
 	return strings.Join(parts, "/")
 }

@@ -12,6 +12,7 @@ selected kernel and initrd, and hands off with kexec.
 - Build-time Go providers.
 - Debian trixie amd64 netboot target.
 - Ubuntu 26.04 amd64 netboot target.
+- Static provider catalog metadata for concrete boot targets.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
@@ -21,6 +22,9 @@ selected kernel and initrd, and hands off with kexec.
 Bootup does not commit or package distribution archive keyrings. Callers must
 supply trust material to verification hooks when verifying signed distribution
 metadata.
+
+See `docs/providers.md` for the current static provider catalog model and the
+deferred dynamic discovery and policy modes.
 
 ```go
 err := verify.Artifact(verify.ArtifactInput{

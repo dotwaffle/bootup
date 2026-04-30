@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // ErrDuplicateProvider is returned when two providers use the same ID.
@@ -17,16 +18,25 @@ var ErrProviderNotFound = errors.New("provider not found")
 // ErrStagingNotSupported is returned when a provider cannot stage artifacts.
 var ErrStagingNotSupported = errors.New("staging not supported")
 
+// ErrInvalidTarget is returned when a provider exposes malformed target
+// metadata.
+var ErrInvalidTarget = errors.New("invalid target")
+
+// CatalogEntry describes static catalog metadata for a concrete boot target.
+type CatalogEntry struct {
+	Distribution string
+	Release      string
+	Architecture string
+	Kind         string
+}
+
 // Target describes an operating system installer or live environment that
 // bootup can prepare and hand off to.
 type Target struct {
-	ID           string
-	ProviderID   string
-	Name         string
-	Architecture string
-	Distribution string
-	Release      string
-	Kind         string
+	ID         string
+	ProviderID string
+	Name       string
+	Catalog    CatalogEntry
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.
@@ -105,6 +115,11 @@ func (r *Registry) Targets(ctx context.Context) ([]Target, error) {
 		if err != nil {
 			return nil, fmt.Errorf("list targets for %s: %w", id, err)
 		}
+		for _, target := range providerTargets {
+			if err := validateProviderTarget(id, target); err != nil {
+				return nil, fmt.Errorf("list targets for %s: %w", id, err)
+			}
+		}
 		targets = append(targets, providerTargets...)
 	}
 	return targets, nil
@@ -138,4 +153,39 @@ func (r *Registry) Stage(ctx context.Context, config StageConfig) (BootPlan, err
 		return BootPlan{}, fmt.Errorf("stage target %s: %w", config.Plan.Target.ID, err)
 	}
 	return staged, nil
+}
+
+func validateProviderTarget(providerID string, target Target) error {
+	if strings.TrimSpace(target.ID) == "" {
+		return fmt.Errorf("%w: provider %s returned target with empty ID", ErrInvalidTarget, providerID)
+	}
+	if strings.TrimSpace(target.ProviderID) == "" {
+		return fmt.Errorf("%w: target %s has empty provider ID", ErrInvalidTarget, target.ID)
+	}
+	if target.ProviderID != providerID {
+		return fmt.Errorf("%w: target %s provider ID %q does not match %q", ErrInvalidTarget, target.ID, target.ProviderID, providerID)
+	}
+	if strings.TrimSpace(target.Name) == "" {
+		return fmt.Errorf("%w: target %s has empty name", ErrInvalidTarget, target.ID)
+	}
+	if err := validateCatalogEntry(target.ID, target.Catalog); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCatalogEntry(targetID string, catalog CatalogEntry) error {
+	if strings.TrimSpace(catalog.Distribution) == "" {
+		return fmt.Errorf("%w: target %s catalog distribution is empty", ErrInvalidTarget, targetID)
+	}
+	if strings.TrimSpace(catalog.Release) == "" {
+		return fmt.Errorf("%w: target %s catalog release is empty", ErrInvalidTarget, targetID)
+	}
+	if strings.TrimSpace(catalog.Architecture) == "" {
+		return fmt.Errorf("%w: target %s catalog architecture is empty", ErrInvalidTarget, targetID)
+	}
+	if strings.TrimSpace(catalog.Kind) == "" {
+		return fmt.Errorf("%w: target %s catalog kind is empty", ErrInvalidTarget, targetID)
+	}
+	return nil
 }

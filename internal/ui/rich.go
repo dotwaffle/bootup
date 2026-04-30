@@ -343,11 +343,11 @@ func (m TargetPicker) targetLine(index int, target provider.Target, width int) s
 
 func targetGroup(target provider.Target) string {
 	parts := make([]string, 0, 2)
-	if target.Distribution != "" {
-		parts = append(parts, target.Distribution)
+	if target.Catalog.Distribution != "" {
+		parts = append(parts, target.Catalog.Distribution)
 	}
-	if target.Release != "" {
-		parts = append(parts, target.Release)
+	if target.Catalog.Release != "" {
+		parts = append(parts, target.Catalog.Release)
 	}
 	if len(parts) == 0 {
 		return "targets"
@@ -357,7 +357,7 @@ func targetGroup(target provider.Target) string {
 
 func (m TargetPicker) detail(width int) string {
 	target := m.targets[m.cursor]
-	detail := fmt.Sprintf("ready: %s | provider: %s | arch: %s", target.ID, target.ProviderID, target.Architecture)
+	detail := fmt.Sprintf("ready: %s | provider: %s | arch: %s", target.ID, target.ProviderID, target.Catalog.Architecture)
 	return lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("220")).

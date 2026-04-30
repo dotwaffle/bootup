@@ -108,22 +108,26 @@ func updatePicker(t *testing.T, picker TargetPicker, msg tea.Msg) TargetPicker {
 func testTargets() []provider.Target {
 	return []provider.Target{
 		{
-			ID:           "debian-trixie-amd64-netboot",
-			ProviderID:   "debian",
-			Name:         "Debian trixie amd64 netboot",
-			Architecture: "amd64",
-			Distribution: "debian",
-			Release:      "trixie",
-			Kind:         "installer",
+			ID:         "debian-trixie-amd64-netboot",
+			ProviderID: "debian",
+			Name:       "Debian trixie amd64 netboot",
+			Catalog: provider.CatalogEntry{
+				Architecture: "amd64",
+				Distribution: "debian",
+				Release:      "trixie",
+				Kind:         "installer",
+			},
 		},
 		{
-			ID:           "ubuntu-2604-amd64-netboot",
-			ProviderID:   "ubuntu",
-			Name:         "Ubuntu 26.04 amd64 netboot",
-			Architecture: "amd64",
-			Distribution: "ubuntu",
-			Release:      "26.04",
-			Kind:         "installer",
+			ID:         "ubuntu-2604-amd64-netboot",
+			ProviderID: "ubuntu",
+			Name:       "Ubuntu 26.04 amd64 netboot",
+			Catalog: provider.CatalogEntry{
+				Architecture: "amd64",
+				Distribution: "ubuntu",
+				Release:      "26.04",
+				Kind:         "installer",
+			},
 		},
 	}
 }

@@ -15,13 +15,15 @@ func TestTextMenuRendersTargetsWithinSerialWidth(t *testing.T) {
 	var out bytes.Buffer
 	menu := ui.TextMenu{Width: 80}
 	targets := []provider.Target{{
-		ID:           "debian-trixie-amd64-netboot",
-		ProviderID:   "debian",
-		Name:         "Debian trixie amd64 netboot installer with an intentionally long description",
-		Architecture: "amd64",
-		Distribution: "debian",
-		Release:      "trixie",
-		Kind:         "installer",
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot installer with an intentionally long description",
+		Catalog: provider.CatalogEntry{
+			Architecture: "amd64",
+			Distribution: "debian",
+			Release:      "trixie",
+			Kind:         "installer",
+		},
 	}}
 
 	if err := menu.RenderTargets(&out, targets); err != nil {

@@ -36,17 +36,17 @@ func TestProviderTargetsUbuntu2604AMD64(t *testing.T) {
 	if target.ProviderID != "ubuntu" {
 		t.Fatalf("provider ID = %q, want ubuntu", target.ProviderID)
 	}
-	if target.Architecture != "amd64" {
-		t.Fatalf("architecture = %q, want amd64", target.Architecture)
+	if target.Catalog.Architecture != "amd64" {
+		t.Fatalf("architecture = %q, want amd64", target.Catalog.Architecture)
 	}
-	if target.Distribution != "ubuntu" {
-		t.Fatalf("distribution = %q, want ubuntu", target.Distribution)
+	if target.Catalog.Distribution != "ubuntu" {
+		t.Fatalf("distribution = %q, want ubuntu", target.Catalog.Distribution)
 	}
-	if target.Release != "26.04" {
-		t.Fatalf("release = %q, want 26.04", target.Release)
+	if target.Catalog.Release != "26.04" {
+		t.Fatalf("release = %q, want 26.04", target.Catalog.Release)
 	}
-	if target.Kind != "installer" {
-		t.Fatalf("kind = %q, want installer", target.Kind)
+	if target.Catalog.Kind != "installer" {
+		t.Fatalf("kind = %q, want installer", target.Catalog.Kind)
 	}
 }
 

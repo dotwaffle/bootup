@@ -74,6 +74,68 @@ func TestTargetPickerViewRendersMenuContent(t *testing.T) {
 	}
 }
 
+func TestBootOptionPickerSelectsDiscoveryFamily(t *testing.T) {
+	t.Parallel()
+
+	options := BootOptions(testTargets()[:1], []provider.DiscoveryFamily{{
+		ID:         "debian",
+		ProviderID: "debian",
+		Name:       "Debian",
+	}})
+	picker := NewBootOptionPicker(options)
+	picker = updatePicker(t, picker, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	picker = updatePicker(t, picker, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+
+	option, err := picker.SelectedBootOption()
+	if err != nil {
+		t.Fatalf("selected option: %v", err)
+	}
+	if option.Kind != BootOptionDiscoveryFamily {
+		t.Fatalf("option kind = %q, want discovery family", option.Kind)
+	}
+	if option.Family.ID != "debian" {
+		t.Fatalf("family ID = %q, want debian", option.Family.ID)
+	}
+}
+
+func TestBootOptionPickerViewRendersDiscoveryFamily(t *testing.T) {
+	t.Parallel()
+
+	options := BootOptions(nil, []provider.DiscoveryFamily{{
+		ID:         "debian",
+		ProviderID: "debian",
+		Name:       "Debian",
+	}})
+	picker := NewBootOptionPicker(options)
+	got := picker.Render()
+
+	for _, want := range []string{"== DISCOVERY ==", "Debian", "[DISCOVER]", "debian"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("view = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestTargetPickerViewRendersLifecycleDecoration(t *testing.T) {
+	t.Parallel()
+
+	targets := testTargets()
+	targets[0].Lifecycle = provider.LifecycleEntry{
+		Status: provider.LifecycleObsolete,
+		Source: "debian",
+		Date:   "2026-06-30",
+	}
+	picker := NewTargetPicker(targets[:1])
+	picker.width = 120
+	got := picker.Render()
+
+	for _, want := range []string{"lifecycle: obsolete", "2026-06-30"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("view = %q, want lifecycle decoration %q", got, want)
+		}
+	}
+}
+
 func TestRichMenuRendersStatusAndFatal(t *testing.T) {
 	t.Parallel()
 

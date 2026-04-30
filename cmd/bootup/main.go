@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
@@ -26,12 +27,17 @@ func main() {
 }
 
 func run(ctx context.Context, args []string) error {
+	return runWithIO(ctx, args, os.Stdin, os.Stdout, os.Stderr)
+}
+
+func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	flags := flag.NewFlagSet("bootup", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
+	flags.SetOutput(stderr)
 
 	mode := flags.String("mode", string(app.ModeListTargets), "startup mode")
 	uiMode := flags.String("ui", string(app.UIModeAuto), "menu UI mode: auto, rich, plain")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
+	discoveryFamilyID := flags.String("discovery-family", "", "discovery family ID for discover-targets mode")
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
 	catalogPath := flags.String("catalog", "", "static provider catalog JSON path")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
@@ -72,15 +78,19 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	runner := app.New(app.Config{
-		Registry:   registry,
-		Logger:     logging.NewSerialLogger(os.Stderr, slog.LevelInfo),
-		Mode:       app.Mode(*mode),
-		UIMode:     app.UIMode(*uiMode),
-		TargetID:   *targetID,
-		StagingDir: *stagingDir,
-		Hold:       *hold,
-		Executor:   handoff.KexecExecutor{},
-		Preparers:  preparers,
+		Registry:          registry,
+		Stdin:             stdin,
+		Stdout:            stdout,
+		Stderr:            stderr,
+		Logger:            logging.NewSerialLogger(stderr, slog.LevelInfo),
+		Mode:              app.Mode(*mode),
+		UIMode:            app.UIMode(*uiMode),
+		TargetID:          *targetID,
+		DiscoveryFamilyID: *discoveryFamilyID,
+		StagingDir:        *stagingDir,
+		Hold:              *hold,
+		Executor:          handoff.KexecExecutor{},
+		Preparers:         preparers,
 	})
 	return runner.Run(ctx)
 }

@@ -130,8 +130,18 @@ uses the rich Bubble Tea terminal UI when stdin and stdout are interactive
 terminals, including normal serial consoles. In the u-root busybox initramfs,
 auto mode can also reopen `/dev/console` when the init command starts with
 non-terminal stdio. It falls back to the plain `target> ` prompt when input or
-output is redirected. Force the fallback with `--ui=plain`; use `--ui=rich`
-only when a terminal is required and failure is preferable to fallback.
+output is redirected. Static targets and discovery-capable provider families
+share the first menu; selecting a family runs discovery and opens a second menu
+of concrete discovered targets. Force the fallback with `--ui=plain`; use
+`--ui=rich` only when a terminal is required and failure is preferable to
+fallback.
+
+For a non-interactive discovery diagnostic, list concrete targets for one
+compiled-in discovery family:
+
+```sh
+bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
+```
 
 To smoke-test menu selection without live network assumptions:
 

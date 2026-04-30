@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ErrDuplicateProvider is returned when two providers use the same ID.
@@ -20,9 +21,17 @@ var ErrProviderNotFound = errors.New("provider not found")
 // ErrStagingNotSupported is returned when a provider cannot stage artifacts.
 var ErrStagingNotSupported = errors.New("staging not supported")
 
+// ErrDiscoveryFamilyNotFound is returned when discovery is requested for an
+// unknown provider family.
+var ErrDiscoveryFamilyNotFound = errors.New("discovery family not found")
+
 // ErrInvalidTarget is returned when a provider exposes malformed target
 // metadata.
 var ErrInvalidTarget = errors.New("invalid target")
+
+// ErrInvalidDiscoveryFamily is returned when a provider exposes malformed
+// discovery family metadata.
+var ErrInvalidDiscoveryFamily = errors.New("invalid discovery family")
 
 // CatalogEntry describes static catalog metadata for a concrete boot target.
 type CatalogEntry struct {
@@ -38,14 +47,41 @@ type SourceEntry struct {
 	ISOName string `json:"iso_name,omitempty"`
 }
 
+// LifecycleStatus describes informational lifecycle decoration for a target.
+type LifecycleStatus string
+
+const (
+	// LifecycleSupported means the provider believes the target is currently
+	// supported.
+	LifecycleSupported LifecycleStatus = "supported"
+
+	// LifecycleObsolete means the provider believes the target is superseded
+	// but not necessarily unavailable.
+	LifecycleObsolete LifecycleStatus = "obsolete"
+
+	// LifecycleEOL means the provider believes the target is end-of-life.
+	LifecycleEOL LifecycleStatus = "eol"
+
+	// LifecycleUnknown means the provider could not determine lifecycle state.
+	LifecycleUnknown LifecycleStatus = "unknown"
+)
+
+// LifecycleEntry describes optional informational lifecycle decoration.
+type LifecycleEntry struct {
+	Status LifecycleStatus `json:"status,omitempty"`
+	Source string          `json:"source,omitempty"`
+	Date   string          `json:"date,omitempty"`
+}
+
 // Target describes an operating system installer or live environment that
 // bootup can prepare and hand off to.
 type Target struct {
-	ID         string       `json:"id"`
-	ProviderID string       `json:"provider_id"`
-	Name       string       `json:"name"`
-	Catalog    CatalogEntry `json:"catalog"`
-	Source     SourceEntry  `json:"source,omitzero"`
+	ID         string         `json:"id"`
+	ProviderID string         `json:"provider_id"`
+	Name       string         `json:"name"`
+	Catalog    CatalogEntry   `json:"catalog"`
+	Source     SourceEntry    `json:"source,omitzero"`
+	Lifecycle  LifecycleEntry `json:"lifecycle,omitzero"`
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.
@@ -83,6 +119,21 @@ type Provider interface {
 	ID() string
 	Targets(context.Context) ([]Target, error)
 	Plan(context.Context, Target) (BootPlan, error)
+}
+
+// DiscoveryFamily describes a compiled-in provider family that can discover
+// concrete targets at runtime.
+type DiscoveryFamily struct {
+	ID          string `json:"id"`
+	ProviderID  string `json:"provider_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// Discoverer is implemented by providers that can discover targets at runtime.
+type Discoverer interface {
+	DiscoveryFamily() DiscoveryFamily
+	DiscoverTargets(context.Context) ([]Target, error)
 }
 
 // Stager stages and verifies artifacts for a planned boot target.
@@ -134,6 +185,64 @@ func (r *Registry) Targets(ctx context.Context) ([]Target, error) {
 	return targets, nil
 }
 
+// DiscoveryFamilies returns discovery-capable provider families without
+// running discovery.
+func (r *Registry) DiscoveryFamilies() ([]DiscoveryFamily, error) {
+	ids := make([]string, 0, len(r.providers))
+	for id := range r.providers {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var families []DiscoveryFamily
+	for _, id := range ids {
+		discoverer, ok := r.providers[id].(Discoverer)
+		if !ok {
+			continue
+		}
+		family := discoverer.DiscoveryFamily()
+		if err := ValidateDiscoveryFamily(id, family); err != nil {
+			return nil, fmt.Errorf("list discovery family for %s: %w", id, err)
+		}
+		families = append(families, family)
+	}
+	return families, nil
+}
+
+// DiscoverTargets returns discovered concrete targets for familyID.
+func (r *Registry) DiscoverTargets(ctx context.Context, familyID string) ([]Target, error) {
+	ids := make([]string, 0, len(r.providers))
+	for id := range r.providers {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	for _, id := range ids {
+		discoverer, ok := r.providers[id].(Discoverer)
+		if !ok {
+			continue
+		}
+		family := discoverer.DiscoveryFamily()
+		if err := ValidateDiscoveryFamily(id, family); err != nil {
+			return nil, fmt.Errorf("discover targets for %s: %w", id, err)
+		}
+		if family.ID != familyID {
+			continue
+		}
+		targets, err := discoverer.DiscoverTargets(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("discover targets for %s: %w", familyID, err)
+		}
+		for _, target := range targets {
+			if err := ValidateTarget(id, target); err != nil {
+				return nil, fmt.Errorf("discover targets for %s: %w", familyID, err)
+			}
+		}
+		return targets, nil
+	}
+	return nil, fmt.Errorf("%w: %s", ErrDiscoveryFamilyNotFound, familyID)
+}
+
 // Plan returns the boot plan for target from its provider.
 func (r *Registry) Plan(ctx context.Context, target Target) (BootPlan, error) {
 	provider, ok := r.providers[target.ProviderID]
@@ -164,6 +273,24 @@ func (r *Registry) Stage(ctx context.Context, config StageConfig) (BootPlan, err
 	return staged, nil
 }
 
+// ValidateDiscoveryFamily validates discovery family metadata exposed by a
+// provider.
+func ValidateDiscoveryFamily(providerID string, family DiscoveryFamily) error {
+	if strings.TrimSpace(family.ID) == "" {
+		return fmt.Errorf("%w: provider %s returned family with empty ID", ErrInvalidDiscoveryFamily, providerID)
+	}
+	if strings.TrimSpace(family.ProviderID) == "" {
+		return fmt.Errorf("%w: family %s has empty provider ID", ErrInvalidDiscoveryFamily, family.ID)
+	}
+	if family.ProviderID != providerID {
+		return fmt.Errorf("%w: family %s provider ID %q does not match %q", ErrInvalidDiscoveryFamily, family.ID, family.ProviderID, providerID)
+	}
+	if strings.TrimSpace(family.Name) == "" {
+		return fmt.Errorf("%w: family %s has empty name", ErrInvalidDiscoveryFamily, family.ID)
+	}
+	return nil
+}
+
 // ValidateTarget validates the metadata for a target exposed by providerID.
 func ValidateTarget(providerID string, target Target) error {
 	if strings.TrimSpace(target.ID) == "" {
@@ -182,6 +309,9 @@ func ValidateTarget(providerID string, target Target) error {
 		return err
 	}
 	if err := validateSourceEntry(target.ID, target.Source); err != nil {
+		return err
+	}
+	if err := validateLifecycleEntry(target.ID, target.Lifecycle); err != nil {
 		return err
 	}
 	return nil
@@ -225,6 +355,31 @@ func validateSourceEntry(targetID string, source SourceEntry) error {
 	if source.ISOName != "" {
 		if strings.ContainsAny(source.ISOName, `/\`) || filepath.Base(source.ISOName) != source.ISOName {
 			return fmt.Errorf("%w: target %s source ISO name must be a filename", ErrInvalidTarget, targetID)
+		}
+	}
+	return nil
+}
+
+func validateLifecycleEntry(targetID string, lifecycle LifecycleEntry) error {
+	if lifecycle == (LifecycleEntry{}) {
+		return nil
+	}
+	switch lifecycle.Status {
+	case LifecycleSupported, LifecycleObsolete, LifecycleEOL, LifecycleUnknown:
+	case "":
+		return fmt.Errorf("%w: target %s lifecycle status is empty", ErrInvalidTarget, targetID)
+	default:
+		return fmt.Errorf("%w: target %s lifecycle status %q is invalid", ErrInvalidTarget, targetID, lifecycle.Status)
+	}
+	if strings.TrimSpace(lifecycle.Source) != lifecycle.Source {
+		return fmt.Errorf("%w: target %s lifecycle source has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	if strings.TrimSpace(lifecycle.Date) != lifecycle.Date {
+		return fmt.Errorf("%w: target %s lifecycle date has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	if lifecycle.Date != "" {
+		if _, err := time.Parse(time.DateOnly, lifecycle.Date); err != nil {
+			return fmt.Errorf("%w: target %s lifecycle date must use YYYY-MM-DD", ErrInvalidTarget, targetID)
 		}
 	}
 	return nil

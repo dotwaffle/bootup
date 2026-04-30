@@ -1,9 +1,10 @@
 # Provider catalog model
 
-Bootup providers are compiled into the stage-1 image. The current catalog model
+Bootup providers are compiled into the stage-1 image. The catalog model
 implements static, concrete boot targets: the target list is known by the
 bootup binary or its bundled static catalog content, and target IDs stay stable
-until the tool or catalog content is updated.
+until the tool or catalog content is updated. Providers can also opt into
+runtime discovery of concrete targets through compiled-in Go code.
 
 Each static target carries typed catalog metadata:
 
@@ -81,6 +82,35 @@ policy. `source.base_url` is an absolute HTTP(S) provider source root for that
 target, and `source.iso_name` is a pathless installer ISO filename used by
 providers that need one.
 
+## Implemented mode: provider discovery
+
+Dynamic distro discovery is additive to the static catalog. Discovery-capable
+providers expose a family entry such as `debian`; selecting that family runs
+compiled-in provider logic and returns normal concrete `provider.Target` values.
+Planning, verification, staging, and kexec handoff still use the same provider
+path as static targets.
+
+Menu mode renders discovery families alongside static concrete targets. In the
+plain and rich UIs, selecting a family runs discovery and opens a second target
+selection menu. Non-interactive diagnostics can list discovered targets without
+staging artifacts:
+
+```sh
+bootup --mode=discover-targets --discovery-family=debian
+```
+
+The Debian provider currently discovers amd64 netboot installers from the
+configured mirror. It fetches the mirror `dists/` index, filters release aliases
+such as `stable` and `testing`, probes each release for amd64 netboot checksum
+metadata, and returns one target per available release. Discovery is
+timeout-bound and uses the provider's configured mirror URL. If discovery
+fails, the already-loaded static catalog targets remain available.
+
+Discovery results can carry lifecycle decoration such as `supported`,
+`obsolete`, `eol`, or `unknown`. That metadata is displayed to operators as
+information only. Providers must not treat lifecycle metadata as signature,
+checksum, keyring, transport, or other trust material.
+
 ## Future mode: hosted static catalogs
 
 A hosted catalog can use the same static target model, but bootup does not fetch
@@ -91,16 +121,12 @@ operator trust configuration.
 Until then, operators that want hosted content should fetch or generate the
 catalog outside bootup and pass the resulting local file with `--catalog`.
 
-## Future mode: dynamic distro discovery
+## Future mode: broader distro discovery
 
-A later provider mode can expose a distro family first, then discover available
-releases, architectures, variants, and install options when the operator selects
-that provider. That mode can also decorate results with external lifecycle data
-such as end-of-life status.
-
-That discovery logic is deliberately outside the current static catalog
-contract. It should have a separate provider discovery contract so static
-catalog documents remain stable concrete target lists.
+Future provider discovery can expand beyond Debian amd64 netboot targets to
+additional distributions, architectures, variants, install options, and optional
+lifecycle data sources. That logic remains outside the static catalog contract
+so static catalog documents stay stable concrete target lists.
 
 ## Future mode: dynamic policy
 

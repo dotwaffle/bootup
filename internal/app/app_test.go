@@ -45,6 +45,20 @@ func (p providerStub) Stage(context.Context, provider.StageConfig) (provider.Boo
 	return p.staged, nil
 }
 
+type discoveryProviderStub struct {
+	providerStub
+	family     provider.DiscoveryFamily
+	discovered []provider.Target
+}
+
+func (p discoveryProviderStub) DiscoveryFamily() provider.DiscoveryFamily {
+	return p.family
+}
+
+func (p discoveryProviderStub) DiscoverTargets(context.Context) ([]provider.Target, error) {
+	return p.discovered, nil
+}
+
 type executorStub struct {
 	executed *provider.BootPlan
 	err      error
@@ -349,6 +363,117 @@ func TestRunMenuSelectsAndBootsTarget(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "target> ") {
 		t.Fatalf("stdout = %q, want prompt", stdout.String())
+	}
+}
+
+func TestRunMenuDiscoversFamilyAndBootsTarget(t *testing.T) {
+	t.Parallel()
+
+	staticTarget := debianTarget()
+	discoveredTarget := provider.Target{
+		ID:         "debian-forky-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian forky amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      "forky",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
+	staged := provider.BootPlan{
+		Target:  discoveredTarget,
+		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+		Initrd:  provider.Artifact{Name: "initrd.gz", Path: "/tmp/bootup/initrd.gz"},
+		Cmdline: "priority=low",
+	}
+	var executed provider.BootPlan
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		providerStub: providerStub{
+			targets: []provider.Target{staticTarget},
+			plan:    provider.BootPlan{Target: discoveredTarget},
+			staged:  staged,
+		},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+		discovered: []provider.Target{discoveredTarget},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdin:      strings.NewReader("2\n1\n"),
+		Stdout:     &stdout,
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:       app.ModeMenu,
+		StagingDir: t.TempDir(),
+		Executor:   executorStub{executed: &executed},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if executed.Target.ID != discoveredTarget.ID {
+		t.Fatalf("executed target = %q, want discovered target", executed.Target.ID)
+	}
+	got := stdout.String()
+	for _, want := range []string{"[discovering] Debian", "debian-forky-amd64-netboot"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestRunDiscoversTargetsInNonInteractiveMode(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-forky-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian forky amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      "forky",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		providerStub: providerStub{targets: []provider.Target{debianTarget()}},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+		discovered: []provider.Target{target},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:          registry,
+		Stdout:            &stdout,
+		Stderr:            &bytes.Buffer{},
+		Logger:            slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:              app.ModeDiscoverTargets,
+		DiscoveryFamilyID: "debian",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "debian-forky-amd64-netboot") {
+		t.Fatalf("stdout = %q, want discovered target", stdout.String())
 	}
 }
 

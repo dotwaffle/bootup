@@ -40,6 +40,12 @@ runtime or application-level configuration. The default binary accepts a
 provider runtime configuration file with `--provider-config`, but it does not
 commit, generate, package, or embed a distribution keyring by default.
 
+Dynamic provider discovery returns candidate targets and optional lifecycle
+decoration as provider data. Lifecycle fields such as `supported`, `obsolete`,
+`eol`, or `unknown` are not trust material and are not used as signatures,
+checksums, keyrings, transport policy, or authenticity signals for downloaded
+boot artifacts.
+
 The Debian provider fails closed unless Debian archive trust material is
 provided through configuration. The Ubuntu provider can stage the official
 26.04 netboot kernel and initrd over HTTPS by default; callers that need a

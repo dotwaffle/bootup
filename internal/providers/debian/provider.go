@@ -11,33 +11,41 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/verify"
 )
 
 const (
-	defaultMirrorURL = "https://deb.debian.org/debian"
+	defaultMirrorURL        = "https://deb.debian.org/debian"
+	defaultDiscoveryTimeout = 5 * time.Second
 
 	targetID   = "debian-trixie-amd64-netboot"
 	providerID = "debian"
 )
 
+var hrefPattern = regexp.MustCompile(`(?i)href\s*=\s*["']?([^"'\s>]+)`)
+
 // Config configures the Debian provider.
 type Config struct {
-	MirrorURL string
-	Client    *http.Client
-	Keyring   []byte
-	Targets   []provider.Target
+	MirrorURL        string
+	Client           *http.Client
+	Keyring          []byte
+	Targets          []provider.Target
+	DiscoveryTimeout time.Duration
 }
 
 // Provider exposes Debian netboot targets.
 type Provider struct {
-	mirrorURL string
-	client    *http.Client
-	keyring   []byte
-	targets   []provider.Target
+	mirrorURL        string
+	client           *http.Client
+	keyring          []byte
+	targets          []provider.Target
+	discoveryTimeout time.Duration
 }
 
 // FetchConfig configures Debian artifact fetching and staging.
@@ -58,11 +66,16 @@ func NewProvider(config Config) *Provider {
 	if config.Targets == nil {
 		targets = defaultTargets()
 	}
+	discoveryTimeout := config.DiscoveryTimeout
+	if discoveryTimeout <= 0 {
+		discoveryTimeout = defaultDiscoveryTimeout
+	}
 	return &Provider{
-		mirrorURL: mirrorURL,
-		client:    config.Client,
-		keyring:   bytes.Clone(config.Keyring),
-		targets:   targets,
+		mirrorURL:        mirrorURL,
+		client:           config.Client,
+		keyring:          bytes.Clone(config.Keyring),
+		targets:          targets,
+		discoveryTimeout: discoveryTimeout,
 	}
 }
 
@@ -74,6 +87,48 @@ func (*Provider) ID() string {
 // Targets returns supported Debian targets.
 func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
 	return cloneTargets(p.targets), nil
+}
+
+// DiscoveryFamily returns the Debian dynamic discovery family.
+func (*Provider) DiscoveryFamily() provider.DiscoveryFamily {
+	return provider.DiscoveryFamily{
+		ID:          providerID,
+		ProviderID:  providerID,
+		Name:        "Debian",
+		Description: "Discover Debian amd64 netboot installers from the configured mirror.",
+	}
+}
+
+// DiscoverTargets discovers Debian amd64 netboot targets from the configured
+// mirror.
+func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, error) {
+	if p.discoveryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.discoveryTimeout)
+		defer cancel()
+	}
+
+	client := p.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	releases, err := discoverReleases(ctx, client, p.mirrorURL)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]provider.Target, 0, len(releases))
+	for _, release := range releases {
+		ok, err := hasAMD64Netboot(ctx, client, p.mirrorURL, release)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		targets = append(targets, discoveredTarget(p.mirrorURL, release))
+	}
+	return targets, nil
 }
 
 func defaultTargets() []provider.Target {
@@ -96,9 +151,9 @@ func cloneTargets(targets []provider.Target) []provider.Target {
 
 // Plan returns a boot plan for target.
 func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
-	selected, ok := p.target(target.ID)
-	if !ok {
-		return provider.BootPlan{}, fmt.Errorf("unsupported Debian target %q", target.ID)
+	selected, err := p.selectedTarget(target)
+	if err != nil {
+		return provider.BootPlan{}, err
 	}
 	release := selected.Catalog.Release
 	architecture := selected.Catalog.Architecture
@@ -127,6 +182,22 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 	}, nil
 }
 
+func (p *Provider) selectedTarget(target provider.Target) (provider.Target, error) {
+	if selected, ok := p.target(target.ID); ok {
+		return selected, nil
+	}
+	if err := provider.ValidateTarget(providerID, target); err != nil {
+		return provider.Target{}, err
+	}
+	if target.Catalog.Distribution != providerID {
+		return provider.Target{}, fmt.Errorf("unsupported Debian distribution %q for target %s", target.Catalog.Distribution, target.ID)
+	}
+	if target.Catalog.Kind != "installer" {
+		return provider.Target{}, fmt.Errorf("unsupported Debian target kind %q for target %s", target.Catalog.Kind, target.ID)
+	}
+	return target, nil
+}
+
 func targetBaseURL(target provider.Target, fallback string) string {
 	if target.Source.BaseURL != "" {
 		return strings.TrimRight(target.Source.BaseURL, "/")
@@ -141,6 +212,123 @@ func (p *Provider) target(id string) (provider.Target, bool) {
 		}
 	}
 	return provider.Target{}, false
+}
+
+func discoverReleases(ctx context.Context, client *http.Client, mirrorURL string) ([]string, error) {
+	body, status, err := fetchDiscovery(ctx, client, mirrorURL+"/dists/")
+	if err != nil {
+		return nil, fmt.Errorf("fetch Debian dists index: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("fetch Debian dists index: GET %s/dists/: %s", mirrorURL, http.StatusText(status))
+	}
+	return parseDistsIndex(body), nil
+}
+
+func parseDistsIndex(data []byte) []string {
+	seen := make(map[string]struct{})
+	for _, match := range hrefPattern.FindAllSubmatch(data, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		release := strings.TrimSuffix(string(match[1]), "/")
+		release = pathBase(release)
+		if !isDiscoveryRelease(release) {
+			continue
+		}
+		seen[release] = struct{}{}
+	}
+	releases := make([]string, 0, len(seen))
+	for release := range seen {
+		releases = append(releases, release)
+	}
+	sort.Strings(releases)
+	return releases
+}
+
+func pathBase(value string) string {
+	value = strings.TrimRight(value, "/")
+	if index := strings.LastIndex(value, "/"); index >= 0 {
+		return value[index+1:]
+	}
+	return value
+}
+
+func isDiscoveryRelease(release string) bool {
+	if release == "" || strings.HasPrefix(release, ".") {
+		return false
+	}
+	switch release {
+	case "stable", "oldstable", "oldoldstable", "testing", "unstable", "sid", "experimental", "rc-buggy":
+		return false
+	}
+	for _, r := range release {
+		if r >= 'a' && r <= 'z' {
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			continue
+		}
+		if r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func hasAMD64Netboot(ctx context.Context, client *http.Client, mirrorURL string, release string) (bool, error) {
+	checksumURL := fmt.Sprintf("%s/dists/%s/main/installer-amd64/current/images/SHA256SUMS", mirrorURL, release)
+	body, status, err := fetchDiscovery(ctx, client, checksumURL)
+	if err != nil {
+		return false, fmt.Errorf("fetch Debian %s amd64 netboot metadata: %w", release, err)
+	}
+	if status == http.StatusNotFound {
+		return false, nil
+	}
+	if status != http.StatusOK {
+		return false, fmt.Errorf("fetch Debian %s amd64 netboot metadata: GET %s: %s", release, checksumURL, http.StatusText(status))
+	}
+	return bytes.Contains(body, []byte("netboot/debian-installer/amd64/linux")) &&
+		bytes.Contains(body, []byte("netboot/debian-installer/amd64/initrd.gz")), nil
+}
+
+func discoveredTarget(mirrorURL string, release string) provider.Target {
+	return provider.Target{
+		ID:         "debian-" + release + "-amd64-netboot",
+		ProviderID: providerID,
+		Name:       "Debian " + release + " amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: providerID,
+			Release:      release,
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Source: provider.SourceEntry{
+			BaseURL: mirrorURL,
+		},
+		Lifecycle: provider.LifecycleEntry{
+			Status: provider.LifecycleUnknown,
+			Source: "debian",
+		},
+	}
+}
+
+func fetchDiscovery(ctx context.Context, client *http.Client, rawURL string) ([]byte, int, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("new request: %w", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read response: %w", err)
+	}
+	return data, response.StatusCode, nil
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.

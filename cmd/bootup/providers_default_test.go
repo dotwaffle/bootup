@@ -46,6 +46,30 @@ func TestRegisterProvidersIncludesDefaultCatalogTargets(t *testing.T) {
 	}
 }
 
+func TestRegisterProvidersIncludesDiscoveryFamilies(t *testing.T) {
+	t.Parallel()
+
+	catalogDoc, err := catalog.LoadDefault(compiledProviderIDs())
+	if err != nil {
+		t.Fatalf("load default catalog: %v", err)
+	}
+	registry := provider.NewRegistry()
+	if err := registerProviders(registry, providerconfig.Config{}, catalogDoc); err != nil {
+		t.Fatalf("register providers: %v", err)
+	}
+
+	families, err := registry.DiscoveryFamilies()
+	if err != nil {
+		t.Fatalf("list discovery families: %v", err)
+	}
+	for _, family := range families {
+		if family.ID == "debian" {
+			return
+		}
+	}
+	t.Fatalf("discovery families = %#v, want Debian", families)
+}
+
 func TestRegisterProvidersUsesCatalogDocumentAsReplacement(t *testing.T) {
 	t.Parallel()
 

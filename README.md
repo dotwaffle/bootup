@@ -102,6 +102,13 @@ requirements can be configured through a provider runtime config file:
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
 ```
 
+List dynamically discovered Debian amd64 netboot targets from the configured
+mirror without staging artifacts:
+
+```sh
+bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
+```
+
 Ubuntu netboot targets can be staged from their official HTTPS release URLs by
 default. Operators can additionally provide Ubuntu release key material and
 pinned netboot artifact hashes through `--provider-config`.
@@ -116,8 +123,9 @@ Menu mode defaults to `--ui=auto`: it uses the rich keyboard-driven terminal
 interface when stdin/stdout are terminals. In the u-root initramfs, auto mode
 can reopen `/dev/console` for the rich UI if the init command starts with
 non-terminal stdio. It falls back to the plain `target> ` prompt for redirected
-input or automation. Use `--ui=plain` to force the fallback or `--ui=rich` to
-require the rich interface.
+input or automation. Discovery-capable providers appear as family entries; when
+selected, bootup discovers concrete targets and prompts again. Use `--ui=plain`
+to force the fallback or `--ui=rich` to require the rich interface.
 
 Build a Debian-capable initramfs by including an operator-supplied OpenPGP
 public keyring and generated provider config in the initramfs:

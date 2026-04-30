@@ -32,6 +32,25 @@ func (p testProvider) Stage(context.Context, provider.StageConfig) (provider.Boo
 	return p.staged, nil
 }
 
+type discoveryProviderStub struct {
+	testProvider
+	family        provider.DiscoveryFamily
+	discovered    []provider.Target
+	discoverErr   error
+	discoverCalls *int
+}
+
+func (p discoveryProviderStub) DiscoveryFamily() provider.DiscoveryFamily {
+	return p.family
+}
+
+func (p discoveryProviderStub) DiscoverTargets(context.Context) ([]provider.Target, error) {
+	if p.discoverCalls != nil {
+		*p.discoverCalls = *p.discoverCalls + 1
+	}
+	return p.discovered, p.discoverErr
+}
+
 func TestRegistryListsTargetsFromRegisteredProvider(t *testing.T) {
 	t.Parallel()
 
@@ -62,6 +81,139 @@ func TestRegistryListsTargetsFromRegisteredProvider(t *testing.T) {
 	}
 	if targets[0] != target {
 		t.Fatalf("target = %#v, want %#v", targets[0], target)
+	}
+}
+
+func TestRegistryListsDiscoveryFamiliesWithoutDiscovery(t *testing.T) {
+	t.Parallel()
+
+	var discoverCalls int
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		testProvider: testProvider{id: "debian"},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+		discoverCalls: &discoverCalls,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	families, err := registry.DiscoveryFamilies()
+	if err != nil {
+		t.Fatalf("list discovery families: %v", err)
+	}
+
+	if discoverCalls != 0 {
+		t.Fatalf("discovery calls = %d, want 0", discoverCalls)
+	}
+	if len(families) != 1 {
+		t.Fatalf("families length = %d, want 1", len(families))
+	}
+	if families[0].ID != "debian" || families[0].ProviderID != "debian" {
+		t.Fatalf("family = %#v, want Debian family", families[0])
+	}
+}
+
+func TestRegistryDiscoversTargetsForSelectedFamily(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-forky-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian forky amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      "forky",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Lifecycle: provider.LifecycleEntry{
+			Status: provider.LifecycleSupported,
+			Source: "debian",
+		},
+	}
+	var discoverCalls int
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		testProvider: testProvider{id: "debian"},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+		discovered:    []provider.Target{target},
+		discoverCalls: &discoverCalls,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	targets, err := registry.DiscoverTargets(context.Background(), "debian")
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+
+	if discoverCalls != 1 {
+		t.Fatalf("discovery calls = %d, want 1", discoverCalls)
+	}
+	if len(targets) != 1 || targets[0] != target {
+		t.Fatalf("targets = %#v, want %#v", targets, []provider.Target{target})
+	}
+}
+
+func TestRegistryRejectsUnknownDiscoveryFamily(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+
+	_, err := registry.DiscoverTargets(context.Background(), "missing")
+	if !errors.Is(err, provider.ErrDiscoveryFamilyNotFound) {
+		t.Fatalf("discover targets error = %v, want %v", err, provider.ErrDiscoveryFamilyNotFound)
+	}
+}
+
+func TestRegistryKeepsStaticTargetsWhenDiscoveryFails(t *testing.T) {
+	t.Parallel()
+
+	staticTarget := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      "trixie",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		testProvider: testProvider{
+			id:      "debian",
+			targets: []provider.Target{staticTarget},
+		},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+		discoverErr: errors.New("metadata unavailable"),
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	_, err := registry.DiscoverTargets(context.Background(), "debian")
+	if err == nil {
+		t.Fatal("discover targets succeeded, want error")
+	}
+	targets, err := registry.Targets(context.Background())
+	if err != nil {
+		t.Fatalf("list targets after discovery failure: %v", err)
+	}
+	if len(targets) != 1 || targets[0] != staticTarget {
+		t.Fatalf("targets after discovery failure = %#v, want static target", targets)
 	}
 }
 

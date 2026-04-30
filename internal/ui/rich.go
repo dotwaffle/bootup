@@ -30,34 +30,46 @@ type RichMenu struct {
 
 // SelectTarget prompts the operator to choose a target.
 func (m RichMenu) SelectTarget(ctx context.Context, targets []provider.Target) (provider.Target, error) {
-	if len(targets) == 0 {
-		return provider.Target{}, errors.New("no boot targets available")
+	option, err := m.SelectBootOption(ctx, BootOptions(targets, nil))
+	if err != nil {
+		return provider.Target{}, err
+	}
+	if option.Kind != BootOptionTarget {
+		return provider.Target{}, errors.New("selected option is not a target")
+	}
+	return option.Target, nil
+}
+
+// SelectBootOption prompts the operator to choose a target or discovery family.
+func (m RichMenu) SelectBootOption(ctx context.Context, options []BootOption) (BootOption, error) {
+	if len(options) == 0 {
+		return BootOption{}, errors.New("no boot options available")
 	}
 
-	picker := NewTargetPicker(targets)
+	picker := NewBootOptionPicker(options)
 	picker.width = m.width()
 
-	options := []tea.ProgramOption{
+	programOptions := []tea.ProgramOption{
 		tea.WithContext(ctx),
 		tea.WithoutSignalHandler(),
 		tea.WithWindowSize(m.width(), 25),
 	}
 	if m.Stdin != nil {
-		options = append(options, tea.WithInput(m.Stdin))
+		programOptions = append(programOptions, tea.WithInput(m.Stdin))
 	}
 	if m.Stdout != nil {
-		options = append(options, tea.WithOutput(m.Stdout))
+		programOptions = append(programOptions, tea.WithOutput(m.Stdout))
 	}
 
-	finalModel, err := tea.NewProgram(picker, options...).Run()
+	finalModel, err := tea.NewProgram(picker, programOptions...).Run()
 	if err != nil {
-		return provider.Target{}, fmt.Errorf("run rich menu: %w", err)
+		return BootOption{}, fmt.Errorf("run rich menu: %w", err)
 	}
 	finalPicker, ok := finalModel.(TargetPicker)
 	if !ok {
-		return provider.Target{}, errors.New("rich menu returned unexpected model")
+		return BootOption{}, errors.New("rich menu returned unexpected model")
 	}
-	return finalPicker.Selected()
+	return finalPicker.SelectedBootOption()
 }
 
 // RenderStatus writes a bright progress line for a boot phase.
@@ -173,7 +185,7 @@ func phaseColor(phase string) color.Color {
 
 // TargetPicker is the rich interactive boot target picker model.
 type TargetPicker struct {
-	targets  []provider.Target
+	options  []BootOption
 	cursor   int
 	selected int
 	canceled bool
@@ -183,12 +195,17 @@ type TargetPicker struct {
 
 // NewTargetPicker creates a target picker model.
 func NewTargetPicker(targets []provider.Target) TargetPicker {
+	return NewBootOptionPicker(BootOptions(targets, nil))
+}
+
+// NewBootOptionPicker creates a boot option picker model.
+func NewBootOptionPicker(options []BootOption) TargetPicker {
 	s := spinner.New(
 		spinner.WithSpinner(spinner.Line),
 		spinner.WithStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("201")).Bold(true)),
 	)
 	return TargetPicker{
-		targets:  append([]provider.Target(nil), targets...),
+		options:  append([]BootOption(nil), options...),
 		selected: -1,
 		width:    defaultWidth,
 		spinner:  s,
@@ -231,17 +248,17 @@ func (m TargetPicker) Render() string {
 	b.WriteString(m.banner(contentWidth))
 	b.WriteString("\n\n")
 	previousGroup := ""
-	for index, target := range m.targets {
-		group := targetGroup(target)
+	for index, option := range m.options {
+		group := optionGroup(option)
 		if group != previousGroup {
 			b.WriteString(m.groupLine(group, contentWidth))
 			b.WriteString("\n")
 			previousGroup = group
 		}
-		b.WriteString(m.targetLine(index, target, contentWidth))
+		b.WriteString(m.optionLine(index, option, contentWidth))
 		b.WriteString("\n")
 	}
-	if len(m.targets) > 0 {
+	if len(m.options) > 0 {
 		b.WriteString("\n")
 		b.WriteString(m.detail(contentWidth))
 		b.WriteString("\n")
@@ -255,13 +272,25 @@ func (m TargetPicker) Render() string {
 
 // Selected returns the chosen target.
 func (m TargetPicker) Selected() (provider.Target, error) {
+	option, err := m.SelectedBootOption()
+	if err != nil {
+		return provider.Target{}, err
+	}
+	if option.Kind != BootOptionTarget {
+		return provider.Target{}, errors.New("selected option is not a target")
+	}
+	return option.Target, nil
+}
+
+// SelectedBootOption returns the chosen boot option.
+func (m TargetPicker) SelectedBootOption() (BootOption, error) {
 	if m.canceled {
-		return provider.Target{}, ErrSelectionCanceled
+		return BootOption{}, ErrSelectionCanceled
 	}
-	if m.selected < 0 || m.selected >= len(m.targets) {
-		return provider.Target{}, errors.New("no target selected")
+	if m.selected < 0 || m.selected >= len(m.options) {
+		return BootOption{}, errors.New("no boot option selected")
 	}
-	return m.targets[m.selected], nil
+	return m.options[m.selected], nil
 }
 
 func (m TargetPicker) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -274,7 +303,7 @@ func (m TargetPicker) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		if m.cursor < len(m.targets)-1 {
+		if m.cursor < len(m.options)-1 {
 			m.cursor++
 		}
 	case "enter":
@@ -282,7 +311,7 @@ func (m TargetPicker) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	default:
 		index, err := strconv.Atoi(msg.String())
-		if err == nil && index >= 1 && index <= len(m.targets) {
+		if err == nil && index >= 1 && index <= len(m.options) {
 			m.cursor = index - 1
 			m.selected = m.cursor
 			return m, tea.Quit
@@ -318,11 +347,11 @@ func (m TargetPicker) groupLine(group string, width int) string {
 		Render(truncate(label, width))
 }
 
-func (m TargetPicker) targetLine(index int, target provider.Target, width int) string {
+func (m TargetPicker) optionLine(index int, option BootOption, width int) string {
 	prefix := fmt.Sprintf("  %2d", index+1)
 	nameWidth := max(width-17, 16)
-	label := fmt.Sprintf("%s  [READY]  %s", prefix, truncate(target.Name, nameWidth))
-	meta := truncate(fmt.Sprintf("%s  %s", catalogLabel(target), target.ID), width-4)
+	label := fmt.Sprintf("%s  [%s]  %s", prefix, optionState(option), truncate(optionName(option), nameWidth))
+	meta := truncate(fmt.Sprintf("%s  %s", optionLabel(option), optionID(option)), width-4)
 	if index == m.cursor {
 		return lipgloss.NewStyle().
 			Bold(true).
@@ -341,6 +370,22 @@ func (m TargetPicker) targetLine(index int, target provider.Target, width int) s
 		Render("  " + truncate(strings.TrimSpace(label), width-4) + "\n    " + meta)
 }
 
+func optionState(option BootOption) string {
+	switch option.Kind {
+	case BootOptionDiscoveryFamily:
+		return "DISCOVER"
+	default:
+		return "READY"
+	}
+}
+
+func optionGroup(option BootOption) string {
+	if option.Kind == BootOptionDiscoveryFamily {
+		return "discovery"
+	}
+	return targetGroup(option.Target)
+}
+
 func targetGroup(target provider.Target) string {
 	parts := make([]string, 0, 2)
 	if target.Catalog.Distribution != "" {
@@ -356,8 +401,18 @@ func targetGroup(target provider.Target) string {
 }
 
 func (m TargetPicker) detail(width int) string {
-	target := m.targets[m.cursor]
-	detail := fmt.Sprintf("ready: %s | provider: %s | arch: %s", target.ID, target.ProviderID, target.Catalog.Architecture)
+	option := m.options[m.cursor]
+	var detail string
+	switch option.Kind {
+	case BootOptionDiscoveryFamily:
+		detail = fmt.Sprintf("discover: %s | provider: %s", option.Family.ID, option.Family.ProviderID)
+	default:
+		target := option.Target
+		detail = fmt.Sprintf("ready: %s | provider: %s | arch: %s", target.ID, target.ProviderID, target.Catalog.Architecture)
+		if lifecycle := lifecycleDetail(target.Lifecycle); lifecycle != "" {
+			detail += " | " + lifecycle
+		}
+	}
 	return lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("220")).
@@ -369,4 +424,15 @@ func (m TargetPicker) viewWidth() int {
 		return defaultWidth
 	}
 	return m.width
+}
+
+func lifecycleDetail(lifecycle provider.LifecycleEntry) string {
+	if lifecycle == (provider.LifecycleEntry{}) {
+		return ""
+	}
+	detail := "lifecycle: " + string(lifecycle.Status)
+	if lifecycle.Date != "" {
+		detail += " " + lifecycle.Date
+	}
+	return detail
 }

@@ -27,7 +27,8 @@ func NewProvider(targets []provider.Target) (*debian.Provider, error) {
 		return nil, err
 	}
 	client := &http.Client{Transport: responseMap{
-		mirrorURL + "/dists/trixie/InRelease":                                                                    signed,
+		mirrorURL + "/dists/":                 []byte(`<a href="trixie/">trixie/</a>`),
+		mirrorURL + "/dists/trixie/InRelease": signed,
 		mirrorURL + "/dists/trixie/main/installer-amd64/current/images/SHA256SUMS":                               shaSums,
 		mirrorURL + "/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux":     kernel,
 		mirrorURL + "/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz": initrd,

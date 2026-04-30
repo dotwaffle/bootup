@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
@@ -27,6 +28,10 @@ const (
 	// ModeListTargets prints targets and exits. It is useful for tests and
 	// non-interactive diagnostics.
 	ModeListTargets Mode = "list-targets"
+
+	// ModeDiscoverTargets discovers concrete targets for one provider family
+	// and exits. It is useful for non-interactive diagnostics.
+	ModeDiscoverTargets Mode = "discover-targets"
 
 	// ModePlanTarget selects TargetID and prints its boot plan without handoff.
 	ModePlanTarget Mode = "plan-target"
@@ -83,6 +88,7 @@ type Config struct {
 	Mode                Mode
 	UIMode              UIMode
 	TargetID            string
+	DiscoveryFamilyID   string
 	StagingDir          string
 	Hold                bool
 	Executor            Executor
@@ -153,6 +159,8 @@ func (a *App) runMode(ctx context.Context) error {
 		return a.menu(ctx)
 	case "", ModeListTargets:
 		return a.listTargets(ctx)
+	case ModeDiscoverTargets:
+		return a.discoverTargets(ctx)
 	case ModePlanTarget:
 		return a.planTarget(ctx)
 	case ModeStageTarget:
@@ -176,6 +184,25 @@ func (a *App) listTargets(ctx context.Context) error {
 	menu := ui.TextMenu{Width: 80}
 	if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
 		return fmt.Errorf("render targets: %w", err)
+	}
+	return nil
+}
+
+func (a *App) discoverTargets(ctx context.Context) error {
+	familyID := a.config.DiscoveryFamilyID
+	if strings.TrimSpace(familyID) == "" {
+		return errors.New("discovery family is required")
+	}
+	targets, err := a.config.Registry.DiscoverTargets(ctx, familyID)
+	if err != nil {
+		return fmt.Errorf("discover targets: %w", err)
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("no targets discovered for %s", familyID)
+	}
+	menu := ui.TextMenu{Width: 80}
+	if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
+		return fmt.Errorf("render discovered targets: %w", err)
 	}
 	return nil
 }
@@ -288,17 +315,25 @@ func (a *App) menu(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list targets: %w", err)
 	}
+	families, err := a.config.Registry.DiscoveryFamilies()
+	if err != nil {
+		return fmt.Errorf("list discovery families: %w", err)
+	}
 	useRich, err := a.useRichMenu()
 	if err != nil {
 		return err
 	}
 	if useRich {
 		menu := a.richMenu()
-		target, err := menu.SelectTarget(ctx, targets)
+		option, err := menu.SelectBootOption(ctx, ui.BootOptions(targets, families))
 		if err != nil {
 			if errors.Is(err, ui.ErrSelectionCanceled) {
 				return nil
 			}
+			return err
+		}
+		target, err := a.richTargetFromOption(ctx, option, menu)
+		if err != nil {
 			return err
 		}
 		staged, err := a.stageSelectedTarget(ctx, target, menu)
@@ -307,27 +342,68 @@ func (a *App) menu(ctx context.Context) error {
 		}
 		return a.executeStaged(ctx, staged, menu)
 	}
-	return a.plainMenu(ctx, targets)
+	return a.plainMenu(ctx, targets, families)
 }
 
-func (a *App) plainMenu(ctx context.Context, targets []provider.Target) error {
+func (a *App) richTargetFromOption(ctx context.Context, option ui.BootOption, menu ui.RichMenu) (provider.Target, error) {
+	switch option.Kind {
+	case ui.BootOptionTarget:
+		return option.Target, nil
+	case ui.BootOptionDiscoveryFamily:
+		if err := menu.RenderStatus(a.config.Stdout, "discovering", option.Family.Name); err != nil {
+			return provider.Target{}, fmt.Errorf("render status: %w", err)
+		}
+		targets, err := a.config.Registry.DiscoverTargets(ctx, option.Family.ID)
+		if err != nil {
+			if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+				return provider.Target{}, fmt.Errorf("render fatal error: %w", renderErr)
+			}
+			return provider.Target{}, err
+		}
+		if len(targets) == 0 {
+			err := fmt.Errorf("no targets discovered for %s", option.Family.ID)
+			if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+				return provider.Target{}, fmt.Errorf("render fatal error: %w", renderErr)
+			}
+			return provider.Target{}, err
+		}
+		target, err := menu.SelectTarget(ctx, targets)
+		if err != nil {
+			if errors.Is(err, ui.ErrSelectionCanceled) {
+				return provider.Target{}, err
+			}
+			return provider.Target{}, err
+		}
+		return target, nil
+	default:
+		return provider.Target{}, fmt.Errorf("unsupported boot option kind %q", option.Kind)
+	}
+}
+
+func (a *App) plainMenu(ctx context.Context, targets []provider.Target, families []provider.DiscoveryFamily) error {
 	menu := a.textMenu()
-	if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
-		return fmt.Errorf("render targets: %w", err)
+	options := ui.BootOptions(targets, families)
+	if err := menu.RenderBootOptions(a.config.Stdout, options); err != nil {
+		return fmt.Errorf("render boot options: %w", err)
 	}
 	if err := menu.RenderPrompt(a.config.Stdout, "target> "); err != nil {
 		return err
 	}
 
-	input, err := bufio.NewReader(a.config.Stdin).ReadString('\n')
+	reader := bufio.NewReader(a.config.Stdin)
+	input, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("read target selection: %w", err)
 	}
-	target, err := ui.SelectTargetByInput(targets, input)
+	option, err := ui.SelectBootOptionByInput(options, input)
 	if err != nil {
 		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return fmt.Errorf("render fatal error: %w", renderErr)
 		}
+		return err
+	}
+	target, err := a.targetFromOption(ctx, option, menu, reader)
+	if err != nil {
 		return err
 	}
 	staged, err := a.stageSelectedTarget(ctx, target, menu)
@@ -335,6 +411,51 @@ func (a *App) plainMenu(ctx context.Context, targets []provider.Target) error {
 		return err
 	}
 	return a.executeStaged(ctx, staged, menu)
+}
+
+func (a *App) targetFromOption(ctx context.Context, option ui.BootOption, menu ui.TextMenu, reader *bufio.Reader) (provider.Target, error) {
+	switch option.Kind {
+	case ui.BootOptionTarget:
+		return option.Target, nil
+	case ui.BootOptionDiscoveryFamily:
+		if err := menu.RenderStatus(a.config.Stdout, "discovering", option.Family.Name); err != nil {
+			return provider.Target{}, fmt.Errorf("render status: %w", err)
+		}
+		targets, err := a.config.Registry.DiscoverTargets(ctx, option.Family.ID)
+		if err != nil {
+			if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+				return provider.Target{}, fmt.Errorf("render fatal error: %w", renderErr)
+			}
+			return provider.Target{}, err
+		}
+		if len(targets) == 0 {
+			err := fmt.Errorf("no targets discovered for %s", option.Family.ID)
+			if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+				return provider.Target{}, fmt.Errorf("render fatal error: %w", renderErr)
+			}
+			return provider.Target{}, err
+		}
+		if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
+			return provider.Target{}, fmt.Errorf("render discovered targets: %w", err)
+		}
+		if err := menu.RenderPrompt(a.config.Stdout, "target> "); err != nil {
+			return provider.Target{}, err
+		}
+		input, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return provider.Target{}, fmt.Errorf("read target selection: %w", err)
+		}
+		target, err := ui.SelectTargetByInput(targets, input)
+		if err != nil {
+			if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
+				return provider.Target{}, fmt.Errorf("render fatal error: %w", renderErr)
+			}
+			return provider.Target{}, err
+		}
+		return target, nil
+	default:
+		return provider.Target{}, fmt.Errorf("unsupported boot option kind %q", option.Kind)
+	}
 }
 
 func (a *App) selectTarget(ctx context.Context) (provider.Target, error) {

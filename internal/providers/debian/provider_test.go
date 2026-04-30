@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
@@ -50,6 +51,68 @@ func TestProviderTargetsDebianTrixieAMD64(t *testing.T) {
 	}
 }
 
+func TestProviderDiscoveryFamily(t *testing.T) {
+	t.Parallel()
+
+	family := debian.NewProvider(debian.Config{}).DiscoveryFamily()
+
+	if family.ID != "debian" {
+		t.Fatalf("family ID = %q, want debian", family.ID)
+	}
+	if family.ProviderID != "debian" {
+		t.Fatalf("family provider ID = %q, want debian", family.ProviderID)
+	}
+	if family.Name != "Debian" {
+		t.Fatalf("family name = %q, want Debian", family.Name)
+	}
+}
+
+func TestProviderDiscoversAMD64NetbootTargets(t *testing.T) {
+	t.Parallel()
+
+	p := debian.NewProvider(debian.Config{
+		MirrorURL: "https://mirror.example/debian",
+		Client: &http.Client{Transport: responseMap{
+			"https://mirror.example/debian/dists/": []byte(`<a href="stable/">stable/</a><a href="forky/">forky/</a><a href="sid/">sid/</a><a href="woody/">woody/</a>`),
+			"https://mirror.example/debian/dists/forky/main/installer-amd64/current/images/SHA256SUMS": []byte(strings.Repeat("a", 64) +
+				"  ./netboot/debian-installer/amd64/linux\n" + strings.Repeat("b", 64) + "  ./netboot/debian-installer/amd64/initrd.gz\n"),
+		}},
+	})
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+
+	if len(targets) != 1 {
+		t.Fatalf("targets length = %d, want 1: %#v", len(targets), targets)
+	}
+	target := targets[0]
+	if target.ID != "debian-forky-amd64-netboot" {
+		t.Fatalf("target ID = %q, want forky target", target.ID)
+	}
+	if target.Source.BaseURL != "https://mirror.example/debian" {
+		t.Fatalf("source base URL = %q, want mirror URL", target.Source.BaseURL)
+	}
+	if target.Lifecycle.Status != provider.LifecycleUnknown {
+		t.Fatalf("lifecycle status = %q, want unknown", target.Lifecycle.Status)
+	}
+}
+
+func TestProviderDiscoveryUsesTimeout(t *testing.T) {
+	t.Parallel()
+
+	p := debian.NewProvider(debian.Config{
+		MirrorURL:        "https://mirror.example/debian",
+		Client:           &http.Client{Transport: blockingTransport{}},
+		DiscoveryTimeout: time.Nanosecond,
+	})
+
+	_, err := p.DiscoverTargets(context.Background())
+	if err == nil {
+		t.Fatal("discover targets succeeded, want timeout error")
+	}
+}
+
 func TestProviderPlanResolvesInstallerURLs(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +139,26 @@ func TestProviderPlanResolvesInstallerURLs(t *testing.T) {
 	}
 	if plan.Cmdline == "" {
 		t.Fatal("cmdline is empty")
+	}
+}
+
+func TestProviderPlanAcceptsDiscoveredTarget(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget("forky")
+	target.Source.BaseURL = "https://mirror.example/debian"
+	p := debian.NewProvider(debian.Config{MirrorURL: "https://fallback.example/debian"})
+
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if plan.Target.ID != "debian-forky-amd64-netboot" {
+		t.Fatalf("planned target = %q, want discovered target", plan.Target.ID)
+	}
+	if plan.Kernel.URL != "https://mirror.example/debian/dists/forky/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux" {
+		t.Fatalf("kernel URL = %q", plan.Kernel.URL)
 	}
 }
 
@@ -401,6 +484,13 @@ func (m responseMap) RoundTrip(request *http.Request) (*http.Response, error) {
 		Header:     make(http.Header),
 		Request:    request,
 	}, nil
+}
+
+type blockingTransport struct{}
+
+func (blockingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	<-request.Context().Done()
+	return nil, request.Context().Err()
 }
 
 func debianTarget(release string) provider.Target {

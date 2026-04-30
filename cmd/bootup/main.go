@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/dotwaffle/bootup/internal/app"
+	"github.com/dotwaffle/bootup/internal/catalog"
 	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
 	"github.com/dotwaffle/bootup/internal/provider"
@@ -32,6 +33,7 @@ func run(ctx context.Context, args []string) error {
 	uiMode := flags.String("ui", string(app.UIModeAuto), "menu UI mode: auto, rich, plain")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
+	catalogPath := flags.String("catalog", "", "static provider catalog JSON path")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	hold := flags.Bool("hold", false, "wait after the selected mode completes")
 	prepareRuntime := flags.Bool("prepare-runtime", false, "validate network, CA roots, and time before provider operations")
@@ -48,6 +50,11 @@ func run(ctx context.Context, args []string) error {
 		providerConfig = config
 	}
 
+	catalogDoc, err := loadCatalog(*catalogPath)
+	if err != nil {
+		return fmt.Errorf("load catalog: %w", err)
+	}
+
 	var preparers []app.Preparer
 	if *prepareRuntime {
 		preparers = append(preparers,
@@ -60,7 +67,7 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	registry := provider.NewRegistry()
-	if err := registerProviders(registry, providerConfig); err != nil {
+	if err := registerProviders(registry, providerConfig, catalogDoc); err != nil {
 		return err
 	}
 
@@ -76,4 +83,11 @@ func run(ctx context.Context, args []string) error {
 		Preparers:  preparers,
 	})
 	return runner.Run(ctx)
+}
+
+func loadCatalog(path string) (catalog.Document, error) {
+	if path == "" {
+		return catalog.LoadDefault(compiledProviderIDs())
+	}
+	return catalog.LoadFile(path, compiledProviderIDs())
 }

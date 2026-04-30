@@ -79,6 +79,39 @@ func TestProviderPlanResolvesInstallerURLs(t *testing.T) {
 	}
 }
 
+func TestProviderPlanResolvesConfiguredBookwormInstallerURLs(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget("bookworm")
+	p := debian.NewProvider(debian.Config{
+		MirrorURL: "https://mirror.example/debian",
+		Targets:   []provider.Target{target},
+	})
+	plan, err := p.Plan(context.Background(), provider.Target{
+		ID:         target.ID,
+		ProviderID: "debian",
+	})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if plan.Target.Catalog.Release != "bookworm" {
+		t.Fatalf("planned release = %q, want bookworm", plan.Target.Catalog.Release)
+	}
+	if plan.Kernel.URL != "https://mirror.example/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux" {
+		t.Fatalf("kernel URL = %q", plan.Kernel.URL)
+	}
+	if plan.Initrd.URL != "https://mirror.example/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz" {
+		t.Fatalf("initrd URL = %q", plan.Initrd.URL)
+	}
+	if plan.Verification.MetadataURL != "https://mirror.example/debian/dists/bookworm/InRelease" {
+		t.Fatalf("metadata URL = %q", plan.Verification.MetadataURL)
+	}
+	if plan.Verification.ChecksumURL != "https://mirror.example/debian/dists/bookworm/main/installer-amd64/current/images/SHA256SUMS" {
+		t.Fatalf("checksum URL = %q", plan.Verification.ChecksumURL)
+	}
+}
+
 func TestVerifyInReleaseReturnsTrustedPlaintext(t *testing.T) {
 	t.Parallel()
 
@@ -186,6 +219,54 @@ func TestFetchAndStageArtifactsVerifiesSignedMetadataAndArtifacts(t *testing.T) 
 	}
 	if filepath.Base(staged.Initrd.Path) != "initrd.gz" {
 		t.Fatalf("staged initrd path = %q, want initrd.gz", staged.Initrd.Path)
+	}
+}
+
+func TestFetchAndStageArtifactsUsesSelectedRelease(t *testing.T) {
+	t.Parallel()
+
+	kernel := []byte("kernel")
+	initrd := []byte("initrd")
+	kernelSum := sha256.Sum256(kernel)
+	initrdSum := sha256.Sum256(initrd)
+	shaSums := fmt.Appendf(nil,
+		"%x  ./netboot/debian-installer/amd64/linux\n%x  ./netboot/debian-installer/amd64/initrd.gz\n",
+		kernelSum,
+		initrdSum,
+	)
+	shaSumsSum := sha256.Sum256(shaSums)
+
+	release := fmt.Appendf(nil, "SHA256:\n %x %d main/installer-amd64/current/images/SHA256SUMS\n", shaSumsSum, len(shaSums))
+	keyring, signed := signedRelease(t, release)
+
+	client := &http.Client{Transport: responseMap{
+		"https://mirror.example/debian/dists/bookworm/InRelease":                                                                    signed,
+		"https://mirror.example/debian/dists/bookworm/main/installer-amd64/current/images/SHA256SUMS":                               shaSums,
+		"https://mirror.example/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux":     kernel,
+		"https://mirror.example/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz": initrd,
+	}}
+
+	target := debianTarget("bookworm")
+	p := debian.NewProvider(debian.Config{
+		MirrorURL: "https://mirror.example/debian",
+		Targets:   []provider.Target{target},
+	})
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	staged, err := debian.FetchAndStageArtifacts(context.Background(), debian.FetchConfig{
+		Plan:       plan,
+		Client:     client,
+		Keyring:    bytes.NewReader(keyring),
+		StagingDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("fetch and stage: %v", err)
+	}
+	if filepath.Base(staged.Kernel.Path) != "linux" {
+		t.Fatalf("staged kernel path = %q, want linux", staged.Kernel.Path)
 	}
 }
 
@@ -297,4 +378,18 @@ func (m responseMap) RoundTrip(request *http.Request) (*http.Response, error) {
 		Header:     make(http.Header),
 		Request:    request,
 	}, nil
+}
+
+func debianTarget(release string) provider.Target {
+	return provider.Target{
+		ID:         "debian-" + release + "-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian " + release + " amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      release,
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
 }

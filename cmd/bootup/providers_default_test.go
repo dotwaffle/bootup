@@ -4,35 +4,89 @@ package main
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/dotwaffle/bootup/internal/catalog"
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providerconfig"
 )
 
-func TestRegisterProvidersIncludesUbuntu(t *testing.T) {
+func TestRegisterProvidersIncludesDefaultCatalogTargets(t *testing.T) {
 	t.Parallel()
 
+	catalogDoc, err := catalog.LoadDefault(compiledProviderIDs())
+	if err != nil {
+		t.Fatalf("load default catalog: %v", err)
+	}
 	registry := provider.NewRegistry()
-	if err := registerProviders(registry, providerconfig.Config{}); err != nil {
+	if err := registerProviders(registry, providerconfig.Config{}, catalogDoc); err != nil {
 		t.Fatalf("register providers: %v", err)
 	}
 	targets, err := registry.Targets(context.Background())
 	if err != nil {
 		t.Fatalf("targets: %v", err)
 	}
+	var ids []string
 	for _, target := range targets {
-		if target.ID == "ubuntu-2604-amd64-netboot" {
-			return
+		ids = append(ids, target.ID)
+	}
+	for _, want := range []string{
+		"debian-bookworm-amd64-netboot",
+		"debian-trixie-amd64-netboot",
+		"ubuntu-2604-amd64-netboot",
+	} {
+		if !slices.Contains(ids, want) {
+			t.Fatalf("registered targets = %v, want %s", ids, want)
 		}
 	}
-	t.Fatalf("registered targets = %#v, want Ubuntu target", targets)
+}
+
+func TestRegisterProvidersUsesCatalogDocumentAsReplacement(t *testing.T) {
+	t.Parallel()
+
+	catalogDoc, err := catalog.Parse([]byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Debian trixie amd64 netboot",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`), compiledProviderIDs())
+	if err != nil {
+		t.Fatalf("parse catalog: %v", err)
+	}
+
+	registry := provider.NewRegistry()
+	if err := registerProviders(registry, providerconfig.Config{}, catalogDoc); err != nil {
+		t.Fatalf("register providers: %v", err)
+	}
+	targets, err := registry.Targets(context.Background())
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets length = %d, want 1: %#v", len(targets), targets)
+	}
+	if targets[0].ID != "debian-trixie-amd64-netboot" {
+		t.Fatalf("target ID = %q, want Debian trixie", targets[0].ID)
+	}
 }
 
 func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 	t.Parallel()
 
+	catalogDoc, err := catalog.LoadDefault(compiledProviderIDs())
+	if err != nil {
+		t.Fatalf("load default catalog: %v", err)
+	}
 	registry := provider.NewRegistry()
 	if err := registerProviders(registry, providerconfig.Config{
 		Debian: providerconfig.DebianConfig{
@@ -45,7 +99,7 @@ func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 			KernelSHA256: strings.Repeat("a", 64),
 			InitrdSHA256: strings.Repeat("b", 64),
 		},
-	}); err != nil {
+	}, catalogDoc); err != nil {
 		t.Fatalf("register providers: %v", err)
 	}
 

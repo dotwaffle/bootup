@@ -24,19 +24,19 @@ var ErrInvalidTarget = errors.New("invalid target")
 
 // CatalogEntry describes static catalog metadata for a concrete boot target.
 type CatalogEntry struct {
-	Distribution string
-	Release      string
-	Architecture string
-	Kind         string
+	Distribution string `json:"distribution"`
+	Release      string `json:"release"`
+	Architecture string `json:"architecture"`
+	Kind         string `json:"kind"`
 }
 
 // Target describes an operating system installer or live environment that
 // bootup can prepare and hand off to.
 type Target struct {
-	ID         string
-	ProviderID string
-	Name       string
-	Catalog    CatalogEntry
+	ID         string       `json:"id"`
+	ProviderID string       `json:"provider_id"`
+	Name       string       `json:"name"`
+	Catalog    CatalogEntry `json:"catalog"`
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.
@@ -116,7 +116,7 @@ func (r *Registry) Targets(ctx context.Context) ([]Target, error) {
 			return nil, fmt.Errorf("list targets for %s: %w", id, err)
 		}
 		for _, target := range providerTargets {
-			if err := validateProviderTarget(id, target); err != nil {
+			if err := ValidateTarget(id, target); err != nil {
 				return nil, fmt.Errorf("list targets for %s: %w", id, err)
 			}
 		}
@@ -155,7 +155,8 @@ func (r *Registry) Stage(ctx context.Context, config StageConfig) (BootPlan, err
 	return staged, nil
 }
 
-func validateProviderTarget(providerID string, target Target) error {
+// ValidateTarget validates the metadata for a target exposed by providerID.
+func ValidateTarget(providerID string, target Target) error {
 	if strings.TrimSpace(target.ID) == "" {
 		return fmt.Errorf("%w: provider %s returned target with empty ID", ErrInvalidTarget, providerID)
 	}

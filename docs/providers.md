@@ -22,8 +22,53 @@ This mode is intentionally simple. Choosing a target such as Debian trixie amd64
 netboot always selects that concrete target. New releases or architectures do
 not appear until bootup itself or future static catalog content is updated.
 
-This is the right foundation for an embedded default catalog and for future
-static catalog files hosted by the project or by an operator.
+Bootup embeds a default static catalog. The current default catalog includes:
+
+- `debian-bookworm-amd64-netboot`
+- `debian-trixie-amd64-netboot`
+- `ubuntu-2604-amd64-netboot`
+
+Operators can replace the embedded catalog with a local JSON file using
+`--catalog`. Replacement is all-or-nothing: a supplied catalog becomes the
+complete static target list for compiled-in providers. Bootup validates the
+catalog before provider registration and rejects malformed JSON, unsupported
+schema versions, duplicate target IDs, incomplete target metadata, and provider
+IDs that are not compiled into the binary.
+
+Catalog documents use schema version 1:
+
+```json
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "id": "debian-trixie-amd64-netboot",
+      "provider_id": "debian",
+      "name": "Debian trixie amd64 netboot",
+      "catalog": {
+        "distribution": "debian",
+        "release": "trixie",
+        "architecture": "amd64",
+        "kind": "installer"
+      }
+    }
+  ]
+}
+```
+
+The document is data only. It selects concrete targets for provider code that is
+already compiled into bootup; it cannot load provider plugins or executable
+policy.
+
+## Future mode: hosted static catalogs
+
+A hosted catalog can use the same static target model, but bootup does not fetch
+catalogs from URLs yet. URL loading needs a separate authenticity and freshness
+design covering signatures or pins, cache behavior, offline fallback, and
+operator trust configuration.
+
+Until then, operators that want hosted content should fetch or generate the
+catalog outside bootup and pass the resulting local file with `--catalog`.
 
 ## Future mode: dynamic distro discovery
 
@@ -33,7 +78,8 @@ that provider. That mode can also decorate results with external lifecycle data
 such as end-of-life status.
 
 That discovery logic is deliberately outside the current static catalog
-contract.
+contract. It should have a separate provider discovery contract so static
+catalog documents remain stable concrete target lists.
 
 ## Future mode: dynamic policy
 

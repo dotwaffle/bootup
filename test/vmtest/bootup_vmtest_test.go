@@ -44,13 +44,21 @@ func TestBootupListsDefaultCatalogTargets(t *testing.T) {
 		qemu.WithAppendKernel("console=ttyS0"),
 		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
 	)
+	if _, err := vm.Console.ExpectString("debian-bookworm-amd64-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian bookworm target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("debian/bookworm/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian bookworm catalog label: %v", err)
+	}
 	if _, err := vm.Console.ExpectString("debian-trixie-amd64-netboot"); err != nil {
 		killAndWait(t, vm)
-		t.Fatalf("expect Debian target: %v", err)
+		t.Fatalf("expect Debian trixie target: %v", err)
 	}
 	if _, err := vm.Console.ExpectString("debian/trixie/amd64/installer"); err != nil {
 		killAndWait(t, vm)
-		t.Fatalf("expect Debian catalog label: %v", err)
+		t.Fatalf("expect Debian trixie catalog label: %v", err)
 	}
 	if _, err := vm.Console.ExpectString("ubuntu-2604-amd64-netboot"); err != nil {
 		killAndWait(t, vm)

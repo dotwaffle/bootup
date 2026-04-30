@@ -13,6 +13,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/clearsign"
+	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providers/debian"
 )
 
@@ -20,7 +21,7 @@ const mirrorURL = "https://fixture.invalid/debian"
 
 // NewProvider returns a Debian provider backed by signed in-memory fixture
 // metadata and artifacts.
-func NewProvider() (*debian.Provider, error) {
+func NewProvider(targets []provider.Target) (*debian.Provider, error) {
 	keyring, signed, shaSums, kernel, initrd, err := fixtureData()
 	if err != nil {
 		return nil, err
@@ -35,6 +36,7 @@ func NewProvider() (*debian.Provider, error) {
 		MirrorURL: mirrorURL,
 		Client:    client,
 		Keyring:   keyring,
+		Targets:   targets,
 	}), nil
 }
 

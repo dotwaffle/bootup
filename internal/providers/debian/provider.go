@@ -29,6 +29,7 @@ type Config struct {
 	MirrorURL string
 	Client    *http.Client
 	Keyring   []byte
+	Targets   []provider.Target
 }
 
 // Provider exposes Debian netboot targets.
@@ -36,6 +37,7 @@ type Provider struct {
 	mirrorURL string
 	client    *http.Client
 	keyring   []byte
+	targets   []provider.Target
 }
 
 // FetchConfig configures Debian artifact fetching and staging.
@@ -52,10 +54,15 @@ func NewProvider(config Config) *Provider {
 	if mirrorURL == "" {
 		mirrorURL = defaultMirrorURL
 	}
+	targets := cloneTargets(config.Targets)
+	if config.Targets == nil {
+		targets = defaultTargets()
+	}
 	return &Provider{
 		mirrorURL: mirrorURL,
 		client:    config.Client,
 		keyring:   bytes.Clone(config.Keyring),
+		targets:   targets,
 	}
 }
 
@@ -65,7 +72,11 @@ func (*Provider) ID() string {
 }
 
 // Targets returns supported Debian targets.
-func (*Provider) Targets(context.Context) ([]provider.Target, error) {
+func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
+	return cloneTargets(p.targets), nil
+}
+
+func defaultTargets() []provider.Target {
 	return []provider.Target{{
 		ID:         targetID,
 		ProviderID: providerID,
@@ -76,33 +87,52 @@ func (*Provider) Targets(context.Context) ([]provider.Target, error) {
 			Release:      "trixie",
 			Kind:         "installer",
 		},
-	}}, nil
+	}}
+}
+
+func cloneTargets(targets []provider.Target) []provider.Target {
+	return append([]provider.Target(nil), targets...)
 }
 
 // Plan returns a boot plan for target.
 func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
-	if target.ID != targetID {
+	selected, ok := p.target(target.ID)
+	if !ok {
 		return provider.BootPlan{}, fmt.Errorf("unsupported Debian target %q", target.ID)
 	}
+	release := selected.Catalog.Release
+	architecture := selected.Catalog.Architecture
+	if architecture != "amd64" {
+		return provider.BootPlan{}, fmt.Errorf("unsupported Debian architecture %q for target %s", architecture, selected.ID)
+	}
 
-	imagesBase := p.mirrorURL + "/dists/trixie/main/installer-amd64/current/images"
+	imagesBase := fmt.Sprintf("%s/dists/%s/main/installer-%s/current/images", p.mirrorURL, release, architecture)
 	installerBase := imagesBase + "/netboot"
 	return provider.BootPlan{
-		Target: target,
+		Target: selected,
 		Kernel: provider.Artifact{
 			Name: "linux",
-			URL:  installerBase + "/debian-installer/amd64/linux",
+			URL:  fmt.Sprintf("%s/debian-installer/%s/linux", installerBase, architecture),
 		},
 		Initrd: provider.Artifact{
 			Name: "initrd.gz",
-			URL:  installerBase + "/debian-installer/amd64/initrd.gz",
+			URL:  fmt.Sprintf("%s/debian-installer/%s/initrd.gz", installerBase, architecture),
 		},
 		Cmdline: "priority=low console=ttyS0",
 		Verification: provider.Verification{
-			MetadataURL: p.mirrorURL + "/dists/trixie/InRelease",
+			MetadataURL: fmt.Sprintf("%s/dists/%s/InRelease", p.mirrorURL, release),
 			ChecksumURL: imagesBase + "/SHA256SUMS",
 		},
 	}, nil
+}
+
+func (p *Provider) target(id string) (provider.Target, bool) {
+	for _, target := range p.targets {
+		if target.ID == id {
+			return target, true
+		}
+	}
+	return provider.Target{}, false
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.
@@ -173,7 +203,8 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	if err != nil {
 		return provider.BootPlan{}, fmt.Errorf("fetch SHA256SUMS: %w", err)
 	}
-	checksumPath, err := releasePath(config.Plan.Verification.ChecksumURL)
+	releaseName := config.Plan.Target.Catalog.Release
+	checksumPath, err := releasePath(config.Plan.Verification.ChecksumURL, releaseName)
 	if err != nil {
 		return provider.BootPlan{}, err
 	}
@@ -181,10 +212,13 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 		return provider.BootPlan{}, err
 	}
 	plan := config.Plan
-	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel.URL, "linux", "netboot/debian-installer/amd64/linux", shaSums); err != nil {
+	architecture := plan.Target.Catalog.Architecture
+	kernelChecksumName := fmt.Sprintf("netboot/debian-installer/%s/linux", architecture)
+	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel.URL, "linux", kernelChecksumName, shaSums); err != nil {
 		return provider.BootPlan{}, err
 	}
-	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd.URL, "initrd.gz", "netboot/debian-installer/amd64/initrd.gz", shaSums); err != nil {
+	initrdChecksumName := fmt.Sprintf("netboot/debian-installer/%s/initrd.gz", architecture)
+	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd.URL, "initrd.gz", initrdChecksumName, shaSums); err != nil {
 		return provider.BootPlan{}, err
 	}
 	return plan, nil
@@ -257,12 +291,12 @@ func parseReleaseSHA256(release []byte) (map[string]string, error) {
 	return checksums, nil
 }
 
-func releasePath(rawURL string) (string, error) {
+func releasePath(rawURL string, release string) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("parse checksum URL: %w", err)
 	}
-	const marker = "/dists/trixie/"
+	marker := fmt.Sprintf("/dists/%s/", release)
 	index := strings.Index(parsed.Path, marker)
 	if index < 0 {
 		return "", fmt.Errorf("checksum URL %q does not contain %s", rawURL, marker)

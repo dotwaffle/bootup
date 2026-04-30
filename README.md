@@ -10,9 +10,9 @@ selected kernel and initrd, and hands off with kexec.
 ## Current MVP
 
 - Build-time Go providers.
-- Debian trixie amd64 netboot target.
+- Debian bookworm and trixie amd64 netboot targets.
 - Ubuntu 26.04 amd64 netboot target.
-- Static provider catalog metadata for concrete boot targets.
+- Embedded static provider catalog with local JSON replacement.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.

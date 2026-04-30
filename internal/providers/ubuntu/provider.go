@@ -34,6 +34,7 @@ type Config struct {
 	Keyring      []byte
 	KernelSHA256 string
 	InitrdSHA256 string
+	Targets      []provider.Target
 }
 
 // Provider exposes Ubuntu netboot targets.
@@ -43,6 +44,7 @@ type Provider struct {
 	keyring      []byte
 	kernelSHA256 string
 	initrdSHA256 string
+	targets      []provider.Target
 }
 
 // NewProvider creates an Ubuntu provider.
@@ -51,12 +53,17 @@ func NewProvider(config Config) *Provider {
 	if releaseURL == "" {
 		releaseURL = defaultReleaseURL
 	}
+	targets := cloneTargets(config.Targets)
+	if config.Targets == nil {
+		targets = defaultTargets()
+	}
 	return &Provider{
 		releaseURL:   releaseURL,
 		client:       config.Client,
 		keyring:      bytes.Clone(config.Keyring),
 		kernelSHA256: config.KernelSHA256,
 		initrdSHA256: config.InitrdSHA256,
+		targets:      targets,
 	}
 }
 
@@ -66,7 +73,11 @@ func (*Provider) ID() string {
 }
 
 // Targets returns supported Ubuntu targets.
-func (*Provider) Targets(context.Context) ([]provider.Target, error) {
+func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
+	return cloneTargets(p.targets), nil
+}
+
+func defaultTargets() []provider.Target {
 	return []provider.Target{{
 		ID:         targetID,
 		ProviderID: providerID,
@@ -77,7 +88,11 @@ func (*Provider) Targets(context.Context) ([]provider.Target, error) {
 			Release:      "26.04",
 			Kind:         "installer",
 		},
-	}}, nil
+	}}
+}
+
+func cloneTargets(targets []provider.Target) []provider.Target {
+	return append([]provider.Target(nil), targets...)
 }
 
 // Plan returns a boot plan for target.

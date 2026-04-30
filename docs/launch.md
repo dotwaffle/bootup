@@ -12,6 +12,44 @@ or reusable verification hooks.
 For downloaded release artifact names, checksums, manifests, and stage-0 usage
 examples, see `docs/release.md`.
 
+## Static provider catalog
+
+Bootup embeds a default static catalog of concrete provider targets. The current
+default catalog lists Debian bookworm amd64 netboot, Debian trixie amd64
+netboot, and Ubuntu 26.04 amd64 netboot.
+
+Use `--catalog` to replace that embedded catalog with a local JSON file:
+
+```sh
+bootup --catalog=/etc/bootup/catalog.json --mode=menu
+```
+
+The file must be a schema version 1 static catalog:
+
+```json
+{
+  "schema_version": 1,
+  "targets": [
+    {
+      "id": "debian-trixie-amd64-netboot",
+      "provider_id": "debian",
+      "name": "Debian trixie amd64 netboot",
+      "catalog": {
+        "distribution": "debian",
+        "release": "trixie",
+        "architecture": "amd64",
+        "kind": "installer"
+      }
+    }
+  ]
+}
+```
+
+The catalog is a replacement, not a merge. If the file contains only the target
+above, bootup exposes only that Debian target even though other providers may be
+compiled into the binary. Invalid catalogs fail startup before provider target
+discovery.
+
 ## Provider runtime config
 
 Use `--provider-config` to point bootup at a JSON file that configures

@@ -32,9 +32,9 @@ fully dynamic policy execution.
 
 ## Impact
 
-- This is a proposal/design change only; implementation should be a separate
-  follow-up.
-- Future implementation will affect provider interfaces, operator UI flows,
-  provider runtime configuration, and tests.
+- Adds provider discovery interfaces, lifecycle decoration metadata, menu and
+  diagnostic discovery flows, and Debian amd64 netboot discovery.
+- Affects provider interfaces, operator UI flows, provider runtime
+  configuration, docs, and tests.
 - No hosted catalog URL loading, script execution, self-hosted policy server, or
   release tagging is introduced by this proposal.

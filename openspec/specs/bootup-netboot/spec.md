@@ -19,6 +19,11 @@ stage-0 boot path such as PXE, iPXE, GRUB, or ISO media.
 - **THEN** bootup SHALL expose the same provider and target selection behavior
   after startup
 
+#### Scenario: ISO artifact boots bootup
+- **WHEN** the repository builds a bootup ISO artifact
+- **THEN** the ISO SHALL contain the same bootup kernel and initramfs payload
+  used by other stage-0 launch paths and SHALL boot through BIOS or UEFI GRUB
+
 ### Requirement: Build-time provider modules
 Bootup SHALL support operating system providers compiled into the distributed
 image at build time.

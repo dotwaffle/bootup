@@ -162,7 +162,39 @@ initrd /bootup/bootup-initramfs.cpio
 
 ## ISO
 
-An ISO delivery path should place the same kernel and initramfs on the image
-and configure ISOLINUX, GRUB, or another ISO bootloader to load them. No
-provider behavior should depend on whether bootup arrived from PXE, iPXE,
+Build a directly bootable hybrid BIOS/UEFI ISO:
+
+```sh
+scripts/build-iso.sh
+```
+
+The script discovers the current `dist/kernel/linux-*-bootup-amd64-bzImage`
+and builds a menu-mode `dist/bootup-iso-initramfs.cpio.zst` when
+`BOOTUP_ISO_INITRAMFS` is not set. It writes `dist/bootup.iso` by default.
+It requires `grub-mkrescue`, `xorriso`, and GRUB's x86_64 EFI modules from
+`grub-efi-amd64-bin` for a hybrid BIOS/UEFI artifact. Set
+`BOOTUP_ISO_ALLOW_BIOS_ONLY=1` only when intentionally building a BIOS-only
+local smoke artifact.
+
+For a Debian-capable ISO, first build an initramfs with caller-supplied Debian
+archive trust material, then pass it to the ISO builder:
+
+```sh
+scripts/build-debian-initramfs.sh /path/to/debian-archive-keyring.gpg dist/bootup-custom-initramfs.cpio
+BOOTUP_ISO_INITRAMFS=dist/bootup-custom-initramfs.cpio.zst scripts/build-iso.sh dist/bootup-debian.iso
+```
+
+Run the ISO under QEMU BIOS:
+
+```sh
+scripts/run-qemu-iso.sh
+```
+
+Run the same image under OVMF/UEFI:
+
+```sh
+BOOTUP_QEMU_FIRMWARE=/usr/share/OVMF/OVMF_CODE_4M.fd scripts/run-qemu-iso.sh
+```
+
+No provider behavior should depend on whether bootup arrived from PXE, iPXE,
 GRUB, or ISO media.

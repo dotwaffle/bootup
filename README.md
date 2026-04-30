@@ -61,6 +61,18 @@ scripts/build-kernel.sh
 The kernel builder follows kernel.org's latest stable release by default. Set
 `BOOTUP_KERNEL_VERSION` to pin a specific upstream release.
 
+Build a bootable hybrid ISO from the kernel and a menu-mode initramfs:
+
+```sh
+scripts/build-iso.sh
+```
+
+Run the ISO under QEMU BIOS:
+
+```sh
+scripts/run-qemu-iso.sh
+```
+
 Build an initramfs:
 
 ```sh

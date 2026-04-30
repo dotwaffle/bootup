@@ -13,6 +13,38 @@ The ISO itself should also be directly bootable. The target shape is a hybrid
 BIOS/UEFI ISO that can be burned to optical media or written directly to a USB
 stick without a separate `.img` variant.
 
+Build the ISO from the current bootup kernel and a menu-mode initramfs:
+
+```sh
+scripts/build-iso.sh
+```
+
+The builder uses `grub-mkrescue` and `xorriso`. Install
+`grub-efi-amd64-bin` as well as the BIOS GRUB modules so `grub-mkrescue` can
+produce a hybrid BIOS/UEFI image. The script discovers the latest
+`dist/kernel/linux-*-bootup-amd64-bzImage`, builds
+`dist/bootup-iso-initramfs.cpio.zst` when no initramfs is supplied, and writes
+`dist/bootup.iso`. Set `BOOTUP_ISO_ALLOW_BIOS_ONLY=1` only for local BIOS-only
+smoke artifacts when EFI GRUB modules are absent. Override inputs with:
+
+```sh
+BOOTUP_ISO_KERNEL=dist/kernel/linux-7.0.2-bootup-amd64-bzImage \
+BOOTUP_ISO_INITRAMFS=dist/bootup-custom-initramfs.cpio.zst \
+scripts/build-iso.sh dist/bootup-debian.iso
+```
+
+Run the ISO under QEMU BIOS:
+
+```sh
+scripts/run-qemu-iso.sh
+```
+
+Run with OVMF/UEFI firmware:
+
+```sh
+BOOTUP_QEMU_FIRMWARE=/usr/share/OVMF/OVMF_CODE_4M.fd scripts/run-qemu-iso.sh
+```
+
 iPXE's current `genfsimg` flow is a useful reference:
 
 - BIOS boot files are present even for EFI-capable ISOs.
@@ -24,10 +56,7 @@ iPXE's current `genfsimg` flow is a useful reference:
   `-isohybrid-gpt-basdat`; other mkisofs-compatible tools can be followed by
   `isohybrid --uefi`.
 
-For bootup, the likely first implementation is:
-
-- Build or reuse `dist/kernel/linux-*-bootup-amd64-bzImage`.
-- Build `dist/bootup-initramfs.cpio.zst`.
-- Place them under `/boot/bootup/` in the ISO filesystem.
-- Add a GRUB or ISOLINUX BIOS path and a fallback x86_64 UEFI path.
-- Validate with QEMU BIOS, QEMU OVMF, and Ubuntu `grub-imageboot`.
+The ISO layout places the kernel and initramfs under `/boot/bootup/` and uses
+GRUB as the BIOS/UEFI bootloader. The generated GRUB entry keeps both local
+console and serial console output active and passes `panic=30` plus
+`ip=::::::dhcp` to the kernel.

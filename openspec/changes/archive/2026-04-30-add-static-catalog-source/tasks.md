@@ -19,4 +19,4 @@
 ## 4. Validation
 
 - [x] 4.1 Run Go tests, fixture tests, vmtest coverage, build, lint, and OpenSpec validation.
-- [ ] 4.2 Archive the OpenSpec change, commit logical patches, push, and update the persistent handoff.
+- [x] 4.2 Archive the OpenSpec change, commit logical patches, push, and update the persistent handoff.

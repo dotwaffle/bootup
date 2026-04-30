@@ -52,7 +52,10 @@ checksums, keyrings, transport policy, or authenticity signals for downloaded
 boot artifacts.
 
 The Debian provider fails closed unless Debian archive trust material is
-provided through configuration. The Ubuntu provider can stage the official
+provided through configuration. The Fedora provider can stage Fedora Server
+netboot kernel and initrd artifacts over HTTPS by default; callers that need
+pinned verification can configure a Fedora release URL plus explicit SHA-256
+hashes for those netboot artifacts. The Ubuntu provider can stage the official
 26.04 netboot kernel and initrd over HTTPS by default; callers that need a
 stronger chain can configure Ubuntu release key material plus pinned SHA-256
 hashes for those netboot artifacts. Ubuntu's signed release `SHA256SUMS`

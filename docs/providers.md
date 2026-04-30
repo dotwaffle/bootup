@@ -8,7 +8,7 @@ runtime discovery of concrete targets through compiled-in Go code.
 
 Each static target carries typed catalog metadata:
 
-- distribution, for example `debian` or `ubuntu`
+- distribution, for example `debian`, `fedora`, or `ubuntu`
 - release, for example `trixie` or `26.04`
 - architecture, currently `amd64`
 - kind, for example `installer`
@@ -30,9 +30,20 @@ Bootup embeds a default static catalog. The current default catalog includes:
 - `debian-bookworm-amd64-netboot`
 - `debian-trixie-amd64-netboot`
 - `debian-forky-amd64-netboot`
+- `fedora-43-amd64-server-netboot`
+- `fedora-44-amd64-server-netboot`
 - `ubuntu-24044-amd64-netboot`
 - `ubuntu-2510-amd64-netboot`
 - `ubuntu-2604-amd64-netboot`
+
+The embedded `internal/catalog/default.json` file is generated from
+`internal/catalog/source.json`. Update the source file and run:
+
+```sh
+go generate ./internal/catalog
+```
+
+Repository tests fail when the generated file is stale.
 
 Operators can replace the embedded catalog with a local JSON file using
 `--catalog`. Replacement is all-or-nothing: a supplied catalog becomes the
@@ -47,21 +58,39 @@ Catalog documents use schema version 1:
 {
   "schema_version": 1,
   "targets": [
-    {
-      "id": "debian-trixie-amd64-netboot",
-      "provider_id": "debian",
-      "name": "Debian trixie amd64 netboot",
+	    {
+	      "id": "debian-trixie-amd64-netboot",
+	      "provider_id": "debian",
+	      "name": "Debian trixie amd64 netboot",
       "catalog": {
         "distribution": "debian",
         "release": "trixie",
         "architecture": "amd64",
-        "kind": "installer"
-      }
-    },
-    {
-      "id": "ubuntu-24044-amd64-netboot",
-      "provider_id": "ubuntu",
-      "name": "Ubuntu 24.04.4 amd64 netboot",
+	        "kind": "installer"
+	      }
+	    },
+	    {
+	      "id": "fedora-44-amd64-server-netboot",
+	      "provider_id": "fedora",
+	      "name": "Fedora Server 44 amd64 netboot",
+	      "catalog": {
+	        "distribution": "fedora",
+	        "release": "44",
+	        "architecture": "amd64",
+	        "kind": "installer"
+	      },
+	      "source": {
+	        "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+	      },
+	      "lifecycle": {
+	        "status": "supported",
+	        "source": "catalog"
+	      }
+	    },
+	    {
+	      "id": "ubuntu-24044-amd64-netboot",
+	      "provider_id": "ubuntu",
+	      "name": "Ubuntu 24.04.4 amd64 netboot",
       "catalog": {
         "distribution": "ubuntu",
         "release": "24.04.4",
@@ -81,7 +110,9 @@ The document is data only. It selects concrete targets for provider code that is
 already compiled into bootup; it cannot load provider plugins or executable
 policy. `source.base_url` is an absolute HTTP(S) provider source root for that
 target, and `source.iso_name` is a pathless installer ISO filename used by
-providers that need one.
+providers that need one. `lifecycle` is informational decoration for operator
+display; it is not signature, checksum, transport, keyring, or other trust
+material.
 
 ## Implemented mode: provider discovery
 
@@ -112,6 +143,11 @@ for a live-server amd64 ISO, probes the `netboot/amd64/linux` and
 `netboot/amd64/initrd` paths, and returns concrete targets that the normal
 Ubuntu planner can stage.
 
+The Fedora provider currently uses static catalog targets. For each Fedora
+Server target, planning resolves `images/pxeboot/vmlinuz`,
+`images/pxeboot/initrd.img`, and an `inst.repo=` command line from the target
+source URL or an operator-supplied `release_url` override.
+
 Discovery is timeout-bound and explicit. Providers accept optional
 `discovery_url`, `discovery_timeout`, and lifecycle decoration in
 `--provider-config`. If discovery fails, the already-loaded static catalog
@@ -138,8 +174,9 @@ catalog outside bootup and pass the resulting local file with `--catalog`.
 
 Provider discovery can expand beyond the current Debian and Ubuntu amd64 netboot
 targets to additional distributions, architectures, variants, install options,
-and optional lifecycle data sources. That logic remains outside the static
-catalog contract so static catalog documents stay stable concrete target lists.
+and optional lifecycle data sources. Fedora is static-only for now. That logic
+remains outside the static catalog contract so static catalog documents stay
+stable concrete target lists.
 
 ## Future mode: dynamic policy
 

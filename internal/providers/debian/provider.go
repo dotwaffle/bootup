@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
+	"github.com/dotwaffle/bootup/internal/providerhttp"
 	"github.com/dotwaffle/bootup/verify"
 )
 
@@ -233,7 +234,7 @@ func (p *Provider) target(id string) (provider.Target, bool) {
 }
 
 func discoverReleases(ctx context.Context, client *http.Client, mirrorURL string) ([]string, error) {
-	body, status, err := fetchDiscovery(ctx, client, mirrorURL+"/dists/")
+	body, status, err := providerhttp.FetchStatus(ctx, client, mirrorURL+"/dists/")
 	if err != nil {
 		return nil, fmt.Errorf("fetch Debian dists index: %w", err)
 	}
@@ -250,7 +251,7 @@ func parseDistsIndex(data []byte) []string {
 			continue
 		}
 		release := strings.TrimSuffix(string(match[1]), "/")
-		release = pathBase(release)
+		release = providerhttp.PathBase(release)
 		if !isDiscoveryRelease(release) {
 			continue
 		}
@@ -262,14 +263,6 @@ func parseDistsIndex(data []byte) []string {
 	}
 	sort.Strings(releases)
 	return releases
-}
-
-func pathBase(value string) string {
-	value = strings.TrimRight(value, "/")
-	if index := strings.LastIndex(value, "/"); index >= 0 {
-		return value[index+1:]
-	}
-	return value
 }
 
 func isDiscoveryRelease(release string) bool {
@@ -297,7 +290,7 @@ func isDiscoveryRelease(release string) bool {
 
 func hasAMD64Netboot(ctx context.Context, client *http.Client, mirrorURL string, release string) (bool, error) {
 	checksumURL := fmt.Sprintf("%s/dists/%s/main/installer-amd64/current/images/SHA256SUMS", mirrorURL, release)
-	body, status, err := fetchDiscovery(ctx, client, checksumURL)
+	body, status, err := providerhttp.FetchStatus(ctx, client, checksumURL)
 	if err != nil {
 		return false, fmt.Errorf("fetch Debian %s amd64 netboot metadata: %w", release, err)
 	}
@@ -337,23 +330,6 @@ func (p *Provider) lifecycleEntry(release string) provider.LifecycleEntry {
 		Status: provider.LifecycleUnknown,
 		Source: "debian",
 	}
-}
-
-func fetchDiscovery(ctx context.Context, client *http.Client, rawURL string) ([]byte, int, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("new request: %w", err)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("read response: %w", err)
-	}
-	return data, response.StatusCode, nil
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.

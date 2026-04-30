@@ -48,6 +48,11 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 						"source": "operator"
 					}
 				}
+			},
+			"fedora": {
+				"release_url": "https://download.example/fedora/releases/44/Server/x86_64/os",
+				"kernel_sha256": "`+strings.Repeat("c", 64)+`",
+				"initrd_sha256": "`+strings.Repeat("d", 64)+`"
 			}
 		}
 	}`))
@@ -93,6 +98,15 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	if config.Ubuntu.InitrdSHA256 != strings.Repeat("b", 64) {
 		t.Fatalf("Ubuntu initrd sha256 = %q", config.Ubuntu.InitrdSHA256)
 	}
+	if config.Fedora.ReleaseURL != "https://download.example/fedora/releases/44/Server/x86_64/os" {
+		t.Fatalf("Fedora release URL = %q", config.Fedora.ReleaseURL)
+	}
+	if config.Fedora.KernelSHA256 != strings.Repeat("c", 64) {
+		t.Fatalf("Fedora kernel sha256 = %q", config.Fedora.KernelSHA256)
+	}
+	if config.Fedora.InitrdSHA256 != strings.Repeat("d", 64) {
+		t.Fatalf("Fedora initrd sha256 = %q", config.Fedora.InitrdSHA256)
+	}
 }
 
 func TestLoadFileRejectsInvalidConfig(t *testing.T) {
@@ -112,7 +126,7 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		},
 		{
 			name: "unknown provider",
-			json: `{"providers":{"fedora":{}}}`,
+			json: `{"providers":{"arch":{}}}`,
 		},
 		{
 			name: "invalid hash",
@@ -121,6 +135,14 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		{
 			name: "partial hash pins",
 			json: `{"providers":{"ubuntu":{"kernel_sha256":"` + strings.Repeat("a", 64) + `"}}}`,
+		},
+		{
+			name: "invalid Fedora release url",
+			json: `{"providers":{"fedora":{"release_url":"file:///srv/fedora"}}}`,
+		},
+		{
+			name: "invalid Fedora hash",
+			json: `{"providers":{"fedora":{"kernel_sha256":"abc","initrd_sha256":"` + strings.Repeat("d", 64) + `"}}}`,
 		},
 		{
 			name: "unreadable keyring",

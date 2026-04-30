@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "providers": [
+    {
+      "id": "debian",
+      "targets": [
+        {
+          "id": "debian-bullseye-amd64-netboot",
+          "name": "Debian bullseye amd64 netboot",
+          "release": "bullseye",
+          "architecture": "amd64",
+          "kind": "installer"
+        },
+        {
+          "id": "debian-bookworm-amd64-netboot",
+          "name": "Debian bookworm amd64 netboot",
+          "release": "bookworm",
+          "architecture": "amd64",
+          "kind": "installer"
+        },
+        {
+          "id": "debian-trixie-amd64-netboot",
+          "name": "Debian trixie amd64 netboot",
+          "release": "trixie",
+          "architecture": "amd64",
+          "kind": "installer"
+        },
+        {
+          "id": "debian-forky-amd64-netboot",
+          "name": "Debian forky amd64 netboot",
+          "release": "forky",
+          "architecture": "amd64",
+          "kind": "installer"
+        }
+      ]
+    },
+    {
+      "id": "fedora",
+      "targets": [
+        {
+          "id": "fedora-43-amd64-server-netboot",
+          "name": "Fedora Server 43 amd64 netboot",
+          "release": "43",
+          "architecture": "amd64",
+          "kind": "installer",
+          "source": {
+            "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/x86_64/os"
+          },
+          "lifecycle": {
+            "status": "supported",
+            "source": "catalog"
+          }
+        },
+        {
+          "id": "fedora-44-amd64-server-netboot",
+          "name": "Fedora Server 44 amd64 netboot",
+          "release": "44",
+          "architecture": "amd64",
+          "kind": "installer",
+          "source": {
+            "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+          },
+          "lifecycle": {
+            "status": "supported",
+            "source": "catalog"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ubuntu",
+      "targets": [
+        {
+          "id": "ubuntu-24044-amd64-netboot",
+          "name": "Ubuntu 24.04.4 amd64 netboot",
+          "release": "24.04.4",
+          "architecture": "amd64",
+          "kind": "installer",
+          "source": {
+            "base_url": "https://releases.ubuntu.com/24.04",
+            "iso_name": "ubuntu-24.04.4-live-server-amd64.iso"
+          }
+        },
+        {
+          "id": "ubuntu-2510-amd64-netboot",
+          "name": "Ubuntu 25.10 amd64 netboot",
+          "release": "25.10",
+          "architecture": "amd64",
+          "kind": "installer",
+          "source": {
+            "base_url": "https://releases.ubuntu.com/25.10",
+            "iso_name": "ubuntu-25.10-live-server-amd64.iso"
+          }
+        },
+        {
+          "id": "ubuntu-2604-amd64-netboot",
+          "name": "Ubuntu 26.04 amd64 netboot",
+          "release": "26.04",
+          "architecture": "amd64",
+          "kind": "installer",
+          "source": {
+            "iso_name": "ubuntu-26.04-live-server-amd64.iso"
+          }
+        }
+      ]
+    }
+  ]
+}

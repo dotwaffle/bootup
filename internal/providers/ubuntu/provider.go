@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
+	"github.com/dotwaffle/bootup/internal/providerhttp"
 	"github.com/dotwaffle/bootup/verify"
 )
 
@@ -251,8 +252,8 @@ func targetISOName(target provider.Target) (string, error) {
 }
 
 func discoverReleaseURLs(ctx context.Context, client *http.Client, discoveryURL string) ([]string, error) {
-	indexURL := ensureTrailingSlash(discoveryURL)
-	body, status, err := fetchDiscovery(ctx, client, indexURL)
+	indexURL := providerhttp.EnsureTrailingSlash(discoveryURL)
+	body, status, err := providerhttp.FetchStatus(ctx, client, indexURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch Ubuntu releases index: %w", err)
 	}
@@ -275,7 +276,7 @@ func discoverReleaseURLs(ctx context.Context, client *http.Client, discoveryURL 
 			continue
 		}
 		resolved := base.ResolveReference(parsed)
-		if !releaseDirPattern.MatchString(pathBase(resolved.Path)) {
+		if !releaseDirPattern.MatchString(providerhttp.PathBase(resolved.Path)) {
 			continue
 		}
 		seen[strings.TrimRight(resolved.String(), "/")] = struct{}{}
@@ -289,7 +290,7 @@ func discoverReleaseURLs(ctx context.Context, client *http.Client, discoveryURL 
 }
 
 func (p *Provider) discoverReleaseTarget(ctx context.Context, client *http.Client, releaseURL string) (provider.Target, bool, error) {
-	shaSums, status, err := fetchDiscovery(ctx, client, releaseURL+"/SHA256SUMS")
+	shaSums, status, err := providerhttp.FetchStatus(ctx, client, releaseURL+"/SHA256SUMS")
 	if err != nil {
 		return provider.Target{}, false, fmt.Errorf("fetch Ubuntu release metadata for %s: %w", releaseURL, err)
 	}
@@ -306,10 +307,10 @@ func (p *Provider) discoverReleaseTarget(ctx context.Context, client *http.Clien
 	if !ok {
 		return provider.Target{}, false, nil
 	}
-	if ok, err := probeURL(ctx, client, releaseURL+"/netboot/amd64/linux"); err != nil || !ok {
+	if ok, err := providerhttp.Probe(ctx, client, releaseURL+"/netboot/amd64/linux"); err != nil || !ok {
 		return provider.Target{}, false, err
 	}
-	if ok, err := probeURL(ctx, client, releaseURL+"/netboot/amd64/initrd"); err != nil || !ok {
+	if ok, err := providerhttp.Probe(ctx, client, releaseURL+"/netboot/amd64/initrd"); err != nil || !ok {
 		return provider.Target{}, false, err
 	}
 	return p.discoveredTarget(releaseURL, release, isoName), true, nil
@@ -357,71 +358,6 @@ func (p *Provider) lifecycleEntry(release string) provider.LifecycleEntry {
 		Status: provider.LifecycleUnknown,
 		Source: "ubuntu",
 	}
-}
-
-func probeURL(ctx context.Context, client *http.Client, rawURL string) (bool, error) {
-	status, err := requestStatus(ctx, client, http.MethodHead, rawURL)
-	if err != nil {
-		return false, err
-	}
-	if status == http.StatusMethodNotAllowed {
-		status, err = requestStatus(ctx, client, http.MethodGet, rawURL)
-		if err != nil {
-			return false, err
-		}
-	}
-	if status == http.StatusNotFound {
-		return false, nil
-	}
-	if status != http.StatusOK {
-		return false, fmt.Errorf("probe %s: %s", rawURL, http.StatusText(status))
-	}
-	return true, nil
-}
-
-func requestStatus(ctx context.Context, client *http.Client, method string, rawURL string) (int, error) {
-	request, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
-	if err != nil {
-		return 0, fmt.Errorf("new request: %w", err)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	return response.StatusCode, nil
-}
-
-func fetchDiscovery(ctx context.Context, client *http.Client, rawURL string) ([]byte, int, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, 0, fmt.Errorf("new request: %w", err)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = response.Body.Close() }()
-	data, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, 0, fmt.Errorf("read response: %w", err)
-	}
-	return data, response.StatusCode, nil
-}
-
-func ensureTrailingSlash(value string) string {
-	if strings.HasSuffix(value, "/") {
-		return value
-	}
-	return value + "/"
-}
-
-func pathBase(value string) string {
-	value = strings.TrimRight(value, "/")
-	if index := strings.LastIndex(value, "/"); index >= 0 {
-		return value[index+1:]
-	}
-	return value
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.

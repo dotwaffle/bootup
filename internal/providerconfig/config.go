@@ -21,6 +21,7 @@ import (
 type Config struct {
 	Debian DebianConfig
 	Ubuntu UbuntuConfig
+	Fedora FedoraConfig
 }
 
 // DebianConfig contains runtime configuration for the Debian provider.
@@ -43,6 +44,13 @@ type UbuntuConfig struct {
 	Lifecycle        map[string]provider.LifecycleEntry
 }
 
+// FedoraConfig contains runtime configuration for the Fedora provider.
+type FedoraConfig struct {
+	ReleaseURL   string
+	KernelSHA256 string
+	InitrdSHA256 string
+}
+
 type fileConfig struct {
 	Providers map[string]json.RawMessage `json:"providers"`
 }
@@ -63,6 +71,12 @@ type ubuntuFileConfig struct {
 	KernelSHA256     string                             `json:"kernel_sha256"`
 	InitrdSHA256     string                             `json:"initrd_sha256"`
 	Lifecycle        map[string]provider.LifecycleEntry `json:"lifecycle"`
+}
+
+type fedoraFileConfig struct {
+	ReleaseURL   string `json:"release_url"`
+	KernelSHA256 string `json:"kernel_sha256"`
+	InitrdSHA256 string `json:"initrd_sha256"`
 }
 
 // LoadFile reads and validates provider runtime configuration from path.
@@ -95,11 +109,35 @@ func LoadFile(path string) (Config, error) {
 				return Config{}, fmt.Errorf("load Ubuntu provider config: %w", err)
 			}
 			config.Ubuntu = ubuntuConfig
+		case "fedora":
+			fedoraConfig, err := loadFedora(raw)
+			if err != nil {
+				return Config{}, fmt.Errorf("load Fedora provider config: %w", err)
+			}
+			config.Fedora = fedoraConfig
 		default:
 			return Config{}, fmt.Errorf("unknown provider %q", id)
 		}
 	}
 	return config, nil
+}
+
+func loadFedora(raw json.RawMessage) (FedoraConfig, error) {
+	var file fedoraFileConfig
+	if err := decodeStrict(raw, &file); err != nil {
+		return FedoraConfig{}, err
+	}
+	if err := validateHTTPURL("release_url", file.ReleaseURL); err != nil {
+		return FedoraConfig{}, err
+	}
+	if err := validateSHA256Pins(file.KernelSHA256, file.InitrdSHA256); err != nil {
+		return FedoraConfig{}, err
+	}
+	return FedoraConfig{
+		ReleaseURL:   strings.TrimRight(file.ReleaseURL, "/"),
+		KernelSHA256: strings.ToLower(file.KernelSHA256),
+		InitrdSHA256: strings.ToLower(file.InitrdSHA256),
+	}, nil
 }
 
 func loadDebian(raw json.RawMessage) (DebianConfig, error) {

@@ -9,11 +9,12 @@ import (
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providerconfig"
 	"github.com/dotwaffle/bootup/internal/providers/debianfixture"
+	"github.com/dotwaffle/bootup/internal/providers/fedora"
 	"github.com/dotwaffle/bootup/internal/providers/ubuntu"
 )
 
 func compiledProviderIDs() []string {
-	return []string{"debian", "ubuntu"}
+	return []string{"debian", "fedora", "ubuntu"}
 }
 
 func registerProviders(registry *provider.Registry, _ providerconfig.Config, catalogDoc catalog.Document) error {
@@ -28,6 +29,11 @@ func registerProviders(registry *provider.Registry, _ providerconfig.Config, cat
 		Targets: catalogDoc.Targets("ubuntu"),
 	})); err != nil {
 		return fmt.Errorf("register Ubuntu provider: %w", err)
+	}
+	if err := registry.Register(fedora.NewProvider(fedora.Config{
+		Targets: catalogDoc.Targets("fedora"),
+	})); err != nil {
+		return fmt.Errorf("register Fedora provider: %w", err)
 	}
 	return nil
 }

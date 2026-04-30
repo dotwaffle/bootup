@@ -76,6 +76,22 @@ func TestBootupListsDefaultCatalogTargets(t *testing.T) {
 		killAndWait(t, vm)
 		t.Fatalf("expect Debian forky catalog label: %v", err)
 	}
+	if _, err := vm.Console.ExpectString("fedora-43-amd64-server-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Fedora 43 target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("fedora/43/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Fedora 43 catalog label: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("fedora-44-amd64-server-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Fedora 44 target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("fedora/44/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Fedora 44 catalog label: %v", err)
+	}
 	if _, err := vm.Console.ExpectString("ubuntu-24044-amd64-netboot"); err != nil {
 		killAndWait(t, vm)
 		t.Fatalf("expect Ubuntu 24.04.4 target: %v", err)

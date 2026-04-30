@@ -37,6 +37,12 @@ configuration file.
 - **THEN** bootup SHALL read that keyring from the local filesystem and pass its
   bytes to the compiled-in provider
 
+#### Scenario: Fedora provider config is supplied
+- **WHEN** provider runtime configuration includes Fedora release URL or
+  kernel/initrd hash pins
+- **THEN** bootup SHALL validate those fields and pass them to the Fedora
+  provider before target planning or artifact staging
+
 #### Scenario: Provider config is invalid
 - **WHEN** the provider runtime configuration file is malformed, references an
   unknown provider, includes an invalid hash pin, or references unreadable trust
@@ -47,6 +53,10 @@ configuration file.
 #### Scenario: Provider discovery config is invalid
 - **WHEN** discovery URL, discovery timeout, lifecycle status, or lifecycle date
   configuration is malformed
+- **THEN** bootup SHALL fail startup before registering provider targets
+
+#### Scenario: Fedora provider config is invalid
+- **WHEN** Fedora release URL or hash pin configuration is malformed
 - **THEN** bootup SHALL fail startup before registering provider targets
 
 #### Scenario: Release artifacts remain provider-neutral

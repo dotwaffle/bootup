@@ -15,8 +15,9 @@ examples, see `docs/release.md`.
 ## Static provider catalog
 
 Bootup embeds a default static catalog of concrete provider targets. The current
-default catalog lists Debian bullseye, bookworm, trixie, and forky amd64 netboot
-plus Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot.
+default catalog lists Debian bullseye, bookworm, trixie, and forky amd64
+netboot, Fedora Server 43 and 44 amd64 netboot, plus Ubuntu 24.04.4, 25.10,
+and 26.04 amd64 netboot.
 
 Use `--catalog` to replace that embedded catalog with a local JSON file:
 
@@ -42,6 +43,24 @@ The file must be a schema version 1 static catalog:
       }
     },
     {
+      "id": "fedora-44-amd64-server-netboot",
+      "provider_id": "fedora",
+      "name": "Fedora Server 44 amd64 netboot",
+      "catalog": {
+        "distribution": "fedora",
+        "release": "44",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+      },
+      "lifecycle": {
+        "status": "supported",
+        "source": "catalog"
+      }
+    },
+    {
       "id": "ubuntu-24044-amd64-netboot",
       "provider_id": "ubuntu",
       "name": "Ubuntu 24.04.4 amd64 netboot",
@@ -60,12 +79,15 @@ The file must be a schema version 1 static catalog:
 }
 ```
 
-The catalog is a replacement, not a merge. If the file contains only the target
-above, bootup exposes only that Debian target even though other providers may be
-compiled into the binary. Invalid catalogs fail startup before provider target
-discovery. `source.base_url` is an optional HTTP(S) source root for that target;
-`source.iso_name` is an optional pathless installer ISO filename used by
+The catalog is a replacement, not a merge. If the file contains only the
+entries above, bootup exposes only those targets even though other providers may
+be compiled into the binary. Invalid catalogs fail startup before provider
+target discovery. `source.base_url` is an optional HTTP(S) source root for that
+target; `source.iso_name` is an optional pathless installer ISO filename used by
 providers such as Ubuntu.
+
+The embedded catalog is generated from `internal/catalog/source.json`. Run
+`go generate ./internal/catalog` after editing the source.
 
 ## Provider runtime config
 
@@ -104,13 +126,18 @@ trust material without embedding distro keyrings in the default bootup binary:
           "date": "2031-05-31"
         }
       }
+    },
+    "fedora": {
+      "release_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os",
+      "kernel_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      "initrd_sha256": "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
     }
   }
 }
 ```
 
-Unknown provider IDs, unreadable keyring paths, malformed JSON, invalid
-discovery URLs, invalid discovery durations, invalid lifecycle entries, and
+Unknown provider IDs, unreadable keyring paths, malformed JSON, invalid release
+or discovery URLs, invalid discovery durations, invalid lifecycle entries, and
 invalid hash pins fail startup before provider target discovery. Use absolute
 paths for keyrings in initramfs and ISO environments. Lifecycle entries are
 operator-facing decoration only; they are not artifact trust material.
@@ -229,6 +256,19 @@ To attempt a real QEMU boot into Debian Installer:
 ```sh
 scripts/smoke-real-debian.sh /usr/share/keyrings/debian-archive-keyring.gpg
 ```
+
+The default provider set also lists Fedora Server 43 and 44 amd64 netboot.
+Fedora targets resolve the kernel, initrd, and installer source from the Fedora
+Server install tree:
+
+```text
+https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os/images/pxeboot/vmlinuz
+https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os/images/pxeboot/initrd.img
+```
+
+Fedora staging uses HTTPS transport trust by default. Custom builds can supply a
+Fedora `release_url` override and explicit SHA-256 hashes for the netboot
+kernel/initrd if they need pinned artifact verification.
 
 The default provider set also lists Ubuntu 24.04.4, 25.10, and 26.04 amd64
 netboot. The 26.04 boot plan uses these official release netboot artifacts by

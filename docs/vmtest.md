@@ -17,8 +17,8 @@ go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
   go test -tags vmtest ./test/vmtest
 ```
 
-The tests expect the VM to reach the serial text interface and list the Debian
-trixie amd64 provider target.
+The tests expect the VM to reach the serial text interface and list the default
+static catalog, including Debian, Fedora, and Ubuntu provider targets.
 
 The repository wrapper builds a default initramfs when needed, queries
 kernel.org for the latest stable Linux release, builds and caches the matching
@@ -66,7 +66,9 @@ go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
 ```
 
 Compile-only VM tests remain part of normal CI. Actual VM execution is opt-in
-because it requires `VMTEST_QEMU`.
+because it requires `VMTEST_QEMU`. The Debian fixture initramfs also registers
+the Fedora provider against the embedded static catalog, so the fixture build
+compiles Fedora provider paths without requiring live Fedora network access.
 
 For live Debian staging outside a VM, enable the opt-in live smoke test:
 

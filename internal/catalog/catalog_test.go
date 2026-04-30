@@ -1,6 +1,7 @@
 package catalog_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"slices"
@@ -86,13 +87,13 @@ func TestParseValidatesAndFiltersStaticCatalog(t *testing.T) {
 func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}
 
 	var ids []string
-	for _, target := range append(doc.Targets("debian"), doc.Targets("ubuntu")...) {
+	for _, target := range append(append(doc.Targets("debian"), doc.Targets("ubuntu")...), doc.Targets("fedora")...) {
 		ids = append(ids, target.ID)
 	}
 	for _, want := range []string{
@@ -103,6 +104,8 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		"ubuntu-24044-amd64-netboot",
 		"ubuntu-2510-amd64-netboot",
 		"ubuntu-2604-amd64-netboot",
+		"fedora-43-amd64-server-netboot",
+		"fedora-44-amd64-server-netboot",
 	} {
 		if !slices.Contains(ids, want) {
 			t.Fatalf("default catalog IDs = %v, want %s", ids, want)
@@ -121,6 +124,44 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		}
 	}
 	t.Fatalf("default Ubuntu targets = %#v, want 24.04.4 sourceful target", ubuntuTargets)
+}
+
+func TestGeneratedDefaultCatalogIsCurrent(t *testing.T) {
+	t.Parallel()
+
+	generated, err := catalog.GenerateDefault()
+	if err != nil {
+		t.Fatalf("generate default catalog: %v", err)
+	}
+	current, err := os.ReadFile("default.json")
+	if err != nil {
+		t.Fatalf("read default catalog: %v", err)
+	}
+	if !bytes.Equal(generated, current) {
+		t.Fatal("internal/catalog/default.json is stale; run go generate ./internal/catalog")
+	}
+}
+
+func TestGeneratedDefaultPreservesFedoraLifecycle(t *testing.T) {
+	t.Parallel()
+
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora"})
+	if err != nil {
+		t.Fatalf("load default catalog: %v", err)
+	}
+	for _, target := range doc.Targets("fedora") {
+		if target.ID != "fedora-44-amd64-server-netboot" {
+			continue
+		}
+		if target.Source.BaseURL != "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os" {
+			t.Fatalf("Fedora 44 source base URL = %q", target.Source.BaseURL)
+		}
+		if target.Lifecycle.Status != "supported" || target.Lifecycle.Source != "catalog" {
+			t.Fatalf("Fedora 44 lifecycle = %#v, want catalog supported", target.Lifecycle)
+		}
+		return
+	}
+	t.Fatalf("default Fedora targets = %#v, want Fedora 44 target", doc.Targets("fedora"))
 }
 
 func TestLoadFileLoadsLocalCatalog(t *testing.T) {

@@ -3,13 +3,12 @@ package catalog
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-
-	_ "embed"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 )
@@ -18,6 +17,9 @@ const schemaVersion = 1
 
 //go:embed default.json
 var defaultCatalog []byte
+
+//go:embed source.json
+var defaultSource []byte
 
 // ErrInvalidCatalog is returned when a static catalog cannot be used.
 var ErrInvalidCatalog = errors.New("invalid catalog")
@@ -31,6 +33,53 @@ type Document struct {
 // LoadDefault loads bootup's embedded static catalog.
 func LoadDefault(providerIDs []string) (Document, error) {
 	return Parse(defaultCatalog, providerIDs)
+}
+
+// GenerateDefault generates the embedded default static catalog from source.
+func GenerateDefault() ([]byte, error) {
+	return Generate(defaultSource)
+}
+
+// Generate renders a static catalog from structured source data.
+func Generate(data []byte) ([]byte, error) {
+	var source sourceDocument
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&source); err != nil {
+		return nil, fmt.Errorf("%w: decode catalog source: %w", ErrInvalidCatalog, err)
+	}
+	if err := decoder.Decode(new(struct{})); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%w: decode catalog source: multiple JSON values", ErrInvalidCatalog)
+	}
+	if source.SchemaVersion != schemaVersion {
+		return nil, fmt.Errorf("%w: unsupported source schema version %d", ErrInvalidCatalog, source.SchemaVersion)
+	}
+
+	var doc Document
+	doc.SchemaVersion = schemaVersion
+	for _, providerSource := range source.Providers {
+		for _, targetSource := range providerSource.Targets {
+			doc.Entries = append(doc.Entries, provider.Target{
+				ID:         targetSource.ID,
+				ProviderID: providerSource.ID,
+				Name:       targetSource.Name,
+				Catalog: provider.CatalogEntry{
+					Distribution: providerSource.ID,
+					Release:      targetSource.Release,
+					Architecture: targetSource.Architecture,
+					Kind:         targetSource.Kind,
+				},
+				Source:    targetSource.Source,
+				Lifecycle: targetSource.Lifecycle,
+			})
+		}
+	}
+	generated, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode generated catalog: %w", err)
+	}
+	generated = append(generated, '\n')
+	return generated, nil
 }
 
 // LoadFile loads a static catalog document from path.
@@ -90,4 +139,24 @@ func (d Document) Targets(providerID string) []provider.Target {
 		}
 	}
 	return targets
+}
+
+type sourceDocument struct {
+	SchemaVersion int              `json:"schema_version"`
+	Providers     []sourceProvider `json:"providers"`
+}
+
+type sourceProvider struct {
+	ID      string         `json:"id"`
+	Targets []sourceTarget `json:"targets"`
+}
+
+type sourceTarget struct {
+	ID           string                  `json:"id"`
+	Name         string                  `json:"name"`
+	Release      string                  `json:"release"`
+	Architecture string                  `json:"architecture"`
+	Kind         string                  `json:"kind"`
+	Source       provider.SourceEntry    `json:"source,omitzero"`
+	Lifecycle    provider.LifecycleEntry `json:"lifecycle,omitzero"`
 }

@@ -43,8 +43,8 @@ type CatalogEntry struct {
 
 // SourceEntry describes provider source metadata for a concrete boot target.
 type SourceEntry struct {
-	BaseURL string `json:"base_url,omitempty"`
-	ISOName string `json:"iso_name,omitempty"`
+	BaseURL string `json:"base_url,omitzero"`
+	ISOName string `json:"iso_name,omitzero"`
 }
 
 // LifecycleStatus describes informational lifecycle decoration for a target.
@@ -68,9 +68,9 @@ const (
 
 // LifecycleEntry describes optional informational lifecycle decoration.
 type LifecycleEntry struct {
-	Status LifecycleStatus `json:"status,omitempty"`
-	Source string          `json:"source,omitempty"`
-	Date   string          `json:"date,omitempty"`
+	Status LifecycleStatus `json:"status,omitzero"`
+	Source string          `json:"source,omitzero"`
+	Date   string          `json:"date,omitzero"`
 }
 
 // Target describes an operating system installer or live environment that
@@ -127,7 +127,7 @@ type DiscoveryFamily struct {
 	ID          string `json:"id"`
 	ProviderID  string `json:"provider_id"`
 	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
+	Description string `json:"description,omitzero"`
 }
 
 // Discoverer is implemented by providers that can discover targets at runtime.

@@ -37,6 +37,8 @@ func TestRegisterProvidersIncludesDefaultCatalogTargets(t *testing.T) {
 		"debian-bookworm-amd64-netboot",
 		"debian-forky-amd64-netboot",
 		"debian-trixie-amd64-netboot",
+		"fedora-43-amd64-server-netboot",
+		"fedora-44-amd64-server-netboot",
 		"ubuntu-24044-amd64-netboot",
 		"ubuntu-2510-amd64-netboot",
 		"ubuntu-2604-amd64-netboot",
@@ -135,6 +137,11 @@ func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 			KernelSHA256: strings.Repeat("a", 64),
 			InitrdSHA256: strings.Repeat("b", 64),
 		},
+		Fedora: providerconfig.FedoraConfig{
+			ReleaseURL:   "https://download.example/fedora/releases/44/Server/x86_64/os",
+			KernelSHA256: strings.Repeat("c", 64),
+			InitrdSHA256: strings.Repeat("d", 64),
+		},
 	}, catalogDoc); err != nil {
 		t.Fatalf("register providers: %v", err)
 	}
@@ -165,5 +172,22 @@ func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 	}
 	if ubuntuPlan.Initrd.SHA256 != strings.Repeat("b", 64) {
 		t.Fatalf("Ubuntu initrd sha256 = %q", ubuntuPlan.Initrd.SHA256)
+	}
+
+	fedoraPlan, err := registry.Plan(context.Background(), provider.Target{
+		ID:         "fedora-44-amd64-server-netboot",
+		ProviderID: "fedora",
+	})
+	if err != nil {
+		t.Fatalf("plan Fedora target: %v", err)
+	}
+	if !strings.HasPrefix(fedoraPlan.Kernel.URL, "https://download.example/fedora/releases/44/Server/x86_64/os/") {
+		t.Fatalf("Fedora kernel URL = %q", fedoraPlan.Kernel.URL)
+	}
+	if fedoraPlan.Kernel.SHA256 != strings.Repeat("c", 64) {
+		t.Fatalf("Fedora kernel sha256 = %q", fedoraPlan.Kernel.SHA256)
+	}
+	if fedoraPlan.Initrd.SHA256 != strings.Repeat("d", 64) {
+		t.Fatalf("Fedora initrd sha256 = %q", fedoraPlan.Initrd.SHA256)
 	}
 }

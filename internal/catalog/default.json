@@ -46,6 +46,42 @@
       }
     },
     {
+      "id": "fedora-43-amd64-server-netboot",
+      "provider_id": "fedora",
+      "name": "Fedora Server 43 amd64 netboot",
+      "catalog": {
+        "distribution": "fedora",
+        "release": "43",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/x86_64/os"
+      },
+      "lifecycle": {
+        "status": "supported",
+        "source": "catalog"
+      }
+    },
+    {
+      "id": "fedora-44-amd64-server-netboot",
+      "provider_id": "fedora",
+      "name": "Fedora Server 44 amd64 netboot",
+      "catalog": {
+        "distribution": "fedora",
+        "release": "44",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+      },
+      "lifecycle": {
+        "status": "supported",
+        "source": "catalog"
+      }
+    },
+    {
       "id": "ubuntu-24044-amd64-netboot",
       "provider_id": "ubuntu",
       "name": "Ubuntu 24.04.4 amd64 netboot",

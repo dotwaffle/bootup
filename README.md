@@ -11,8 +11,9 @@ selected kernel and initrd, and hands off with kexec.
 
 - Build-time Go providers.
 - Debian bullseye, bookworm, trixie, and forky amd64 netboot targets.
+- Fedora Server 43 and 44 amd64 netboot targets.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
-- Embedded static provider catalog with local JSON replacement.
+- Generated embedded static provider catalog with local JSON replacement.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
@@ -39,6 +40,7 @@ err := verify.Artifact(verify.ArtifactInput{
 Run the normal checks:
 
 ```sh
+go generate ./internal/catalog
 go test ./...
 golangci-lint run
 go build -trimpath -o /tmp/bootup ./cmd/bootup
@@ -112,9 +114,10 @@ bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/
 Use `--discovery-family=ubuntu` to run the matching Ubuntu release-index
 discovery path.
 
-Ubuntu netboot targets can be staged from their official HTTPS release URLs by
-default. Operators can additionally provide Ubuntu release key material and
-pinned netboot artifact hashes through `--provider-config`.
+Fedora and Ubuntu netboot targets can be staged from their official HTTPS
+release URLs by default. Operators can additionally provide Fedora release URL
+overrides and pinned netboot artifact hashes through `--provider-config`.
+Ubuntu can also consume release key material plus pinned hashes.
 
 Run the serial selection flow in a Debian-capable build:
 

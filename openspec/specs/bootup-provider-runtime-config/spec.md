@@ -6,8 +6,9 @@ providers, including source URL overrides and verification material.
 
 ## Requirements
 ### Requirement: Operator provider runtime configuration
-Bootup SHALL allow operators to supply provider source and verification inputs
-for compiled-in providers through an explicit runtime configuration file.
+Bootup SHALL allow operators to supply provider source, discovery, lifecycle,
+and verification inputs for compiled-in providers through an explicit runtime
+configuration file.
 
 #### Scenario: Provider config is absent
 - **WHEN** bootup starts without a provider runtime configuration file
@@ -16,7 +17,20 @@ for compiled-in providers through an explicit runtime configuration file.
 #### Scenario: Provider config is loaded
 - **WHEN** bootup starts with a readable provider runtime configuration file
 - **THEN** bootup SHALL apply configured provider source URLs, keyring paths,
-  and artifact hash pins before target discovery
+  artifact hash pins, discovery settings, and lifecycle metadata before target
+  discovery
+
+#### Scenario: Provider discovery config is supplied
+- **WHEN** provider runtime configuration includes discovery URL and discovery
+  timeout fields for a compiled-in provider
+- **THEN** bootup SHALL validate those fields and pass them to that provider
+  before discovery can run
+
+#### Scenario: Provider lifecycle config is supplied
+- **WHEN** provider runtime configuration includes lifecycle metadata for a
+  provider release
+- **THEN** bootup SHALL validate lifecycle status, source, and date fields
+  before provider registration
 
 #### Scenario: Provider keyring path is configured
 - **WHEN** a provider runtime configuration entry references a keyring path
@@ -29,6 +43,11 @@ for compiled-in providers through an explicit runtime configuration file.
   material
 - **THEN** bootup SHALL fail startup before provider target discovery or artifact
   retrieval
+
+#### Scenario: Provider discovery config is invalid
+- **WHEN** discovery URL, discovery timeout, lifecycle status, or lifecycle date
+  configuration is malformed
+- **THEN** bootup SHALL fail startup before registering provider targets
 
 #### Scenario: Release artifacts remain provider-neutral
 - **WHEN** bootup is built with the default release packaging flow

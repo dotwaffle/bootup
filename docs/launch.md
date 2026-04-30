@@ -15,8 +15,8 @@ examples, see `docs/release.md`.
 ## Static provider catalog
 
 Bootup embeds a default static catalog of concrete provider targets. The current
-default catalog lists Debian bullseye, bookworm, and trixie amd64 netboot plus
-Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot.
+default catalog lists Debian bullseye, bookworm, trixie, and forky amd64 netboot
+plus Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot.
 
 Use `--catalog` to replace that embedded catalog with a local JSON file:
 
@@ -79,21 +79,41 @@ trust material without embedding distro keyrings in the default bootup binary:
   "providers": {
     "debian": {
       "mirror_url": "https://deb.debian.org/debian",
-      "keyring_path": "/etc/bootup/trust/debian-archive-keyring.gpg"
+      "discovery_url": "https://deb.debian.org/debian",
+      "discovery_timeout": "5s",
+      "keyring_path": "/etc/bootup/trust/debian-archive-keyring.gpg",
+      "lifecycle": {
+        "trixie": {
+          "status": "supported",
+          "source": "operator",
+          "date": "2028-06-30"
+        }
+      }
     },
     "ubuntu": {
       "release_url": "https://releases.ubuntu.com/26.04",
+      "discovery_url": "https://releases.ubuntu.com/releases",
+      "discovery_timeout": "5s",
       "keyring_path": "/etc/bootup/trust/ubuntu-release-keyring.gpg",
       "kernel_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      "initrd_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      "initrd_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "lifecycle": {
+        "26.04": {
+          "status": "supported",
+          "source": "operator",
+          "date": "2031-05-31"
+        }
+      }
     }
   }
 }
 ```
 
-Unknown provider IDs, unreadable keyring paths, malformed JSON, and invalid
-hash pins fail startup before provider target discovery. Use absolute paths for
-keyrings in initramfs and ISO environments.
+Unknown provider IDs, unreadable keyring paths, malformed JSON, invalid
+discovery URLs, invalid discovery durations, invalid lifecycle entries, and
+invalid hash pins fail startup before provider target discovery. Use absolute
+paths for keyrings in initramfs and ISO environments. Lifecycle entries are
+operator-facing decoration only; they are not artifact trust material.
 
 ## QEMU
 
@@ -141,6 +161,7 @@ compiled-in discovery family:
 
 ```sh
 bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
+bootup --mode=discover-targets --discovery-family=ubuntu --provider-config=/etc/bootup/providers.json
 ```
 
 To smoke-test menu selection without live network assumptions:

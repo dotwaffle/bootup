@@ -68,6 +68,14 @@ func TestBootupListsDefaultCatalogTargets(t *testing.T) {
 		killAndWait(t, vm)
 		t.Fatalf("expect Debian trixie catalog label: %v", err)
 	}
+	if _, err := vm.Console.ExpectString("debian-forky-amd64-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian forky target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("debian/forky/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian forky catalog label: %v", err)
+	}
 	if _, err := vm.Console.ExpectString("ubuntu-24044-amd64-netboot"); err != nil {
 		killAndWait(t, vm)
 		t.Fatalf("expect Ubuntu 24.04.4 target: %v", err)

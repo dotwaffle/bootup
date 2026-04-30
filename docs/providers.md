@@ -29,6 +29,7 @@ Bootup embeds a default static catalog. The current default catalog includes:
 - `debian-bullseye-amd64-netboot`
 - `debian-bookworm-amd64-netboot`
 - `debian-trixie-amd64-netboot`
+- `debian-forky-amd64-netboot`
 - `ubuntu-24044-amd64-netboot`
 - `ubuntu-2510-amd64-netboot`
 - `ubuntu-2604-amd64-netboot`
@@ -97,14 +98,24 @@ staging artifacts:
 
 ```sh
 bootup --mode=discover-targets --discovery-family=debian
+bootup --mode=discover-targets --discovery-family=ubuntu
 ```
 
-The Debian provider currently discovers amd64 netboot installers from the
-configured mirror. It fetches the mirror `dists/` index, filters release aliases
-such as `stable` and `testing`, probes each release for amd64 netboot checksum
-metadata, and returns one target per available release. Discovery is
-timeout-bound and uses the provider's configured mirror URL. If discovery
-fails, the already-loaded static catalog targets remain available.
+The Debian provider discovers amd64 netboot installers from the configured
+mirror or `discovery_url`. It fetches the `dists/` index, filters release
+aliases such as `stable` and `testing`, probes each release for amd64 netboot
+checksum metadata, and returns one target per available release.
+
+The Ubuntu provider discovers amd64 netboot installers from the configured
+release index. It reads release links, checks each release `SHA256SUMS` file
+for a live-server amd64 ISO, probes the `netboot/amd64/linux` and
+`netboot/amd64/initrd` paths, and returns concrete targets that the normal
+Ubuntu planner can stage.
+
+Discovery is timeout-bound and explicit. Providers accept optional
+`discovery_url`, `discovery_timeout`, and lifecycle decoration in
+`--provider-config`. If discovery fails, the already-loaded static catalog
+targets remain available.
 
 Discovery results can carry lifecycle decoration such as `supported`,
 `obsolete`, `eol`, or `unknown`. That metadata is displayed to operators as
@@ -115,18 +126,20 @@ checksum, keyring, transport, or other trust material.
 
 A hosted catalog can use the same static target model, but bootup does not fetch
 catalogs from URLs yet. URL loading needs a separate authenticity and freshness
-design covering signatures or pins, cache behavior, offline fallback, and
-operator trust configuration.
+design covering signatures or pinned digests, cache behavior, offline fallback,
+and operator trust configuration. Catalog authenticity is separate from
+distribution artifact verification; operators still configure provider trust
+material for downloaded boot artifacts.
 
 Until then, operators that want hosted content should fetch or generate the
 catalog outside bootup and pass the resulting local file with `--catalog`.
 
 ## Future mode: broader distro discovery
 
-Future provider discovery can expand beyond Debian amd64 netboot targets to
-additional distributions, architectures, variants, install options, and optional
-lifecycle data sources. That logic remains outside the static catalog contract
-so static catalog documents stay stable concrete target lists.
+Provider discovery can expand beyond the current Debian and Ubuntu amd64 netboot
+targets to additional distributions, architectures, variants, install options,
+and optional lifecycle data sources. That logic remains outside the static
+catalog contract so static catalog documents stay stable concrete target lists.
 
 ## Future mode: dynamic policy
 

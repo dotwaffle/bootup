@@ -10,7 +10,7 @@ selected kernel and initrd, and hands off with kexec.
 ## Current MVP
 
 - Build-time Go providers.
-- Debian bullseye, bookworm, and trixie amd64 netboot targets.
+- Debian bullseye, bookworm, trixie, and forky amd64 netboot targets.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
 - Embedded static provider catalog with local JSON replacement.
 - Bright terminal menu with plain serial fallback.
@@ -23,8 +23,8 @@ Bootup does not commit or package distribution archive keyrings. Callers must
 supply trust material to verification hooks when verifying signed distribution
 metadata.
 
-See `docs/providers.md` for the current static provider catalog model and the
-deferred dynamic discovery and policy modes.
+See `docs/providers.md` for the static provider catalog, implemented provider
+discovery, and deferred hosted catalog and policy modes.
 
 ```go
 err := verify.Artifact(verify.ArtifactInput{
@@ -102,12 +102,15 @@ requirements can be configured through a provider runtime config file:
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
 ```
 
-List dynamically discovered Debian amd64 netboot targets from the configured
-mirror without staging artifacts:
+List dynamically discovered amd64 netboot targets from a configured provider
+source without staging artifacts:
 
 ```sh
 bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
 ```
+
+Use `--discovery-family=ubuntu` to run the matching Ubuntu release-index
+discovery path.
 
 Ubuntu netboot targets can be staged from their official HTTPS release URLs by
 default. Operators can additionally provide Ubuntu release key material and

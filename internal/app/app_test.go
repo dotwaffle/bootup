@@ -47,8 +47,9 @@ func (p providerStub) Stage(context.Context, provider.StageConfig) (provider.Boo
 
 type discoveryProviderStub struct {
 	providerStub
-	family     provider.DiscoveryFamily
-	discovered []provider.Target
+	family      provider.DiscoveryFamily
+	discovered  []provider.Target
+	discoverErr error
 }
 
 func (p discoveryProviderStub) DiscoveryFamily() provider.DiscoveryFamily {
@@ -56,7 +57,7 @@ func (p discoveryProviderStub) DiscoveryFamily() provider.DiscoveryFamily {
 }
 
 func (p discoveryProviderStub) DiscoverTargets(context.Context) ([]provider.Target, error) {
-	return p.discovered, nil
+	return p.discovered, p.discoverErr
 }
 
 type executorStub struct {
@@ -432,6 +433,41 @@ func TestRunMenuDiscoversFamilyAndBootsTarget(t *testing.T) {
 	}
 }
 
+func TestRunMenuReportsEmptyDiscovery(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		providerStub: providerStub{targets: []provider.Target{debianTarget()}},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdin:    strings.NewReader("2\n"),
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeMenu,
+		UIMode:   app.UIModePlain,
+	})
+
+	err := runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("run app succeeded, want empty discovery error")
+	}
+	if !strings.Contains(stdout.String(), "no targets discovered for debian") {
+		t.Fatalf("stdout = %q, want empty discovery message", stdout.String())
+	}
+}
+
 func TestRunDiscoversTargetsInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
@@ -474,6 +510,73 @@ func TestRunDiscoversTargetsInNonInteractiveMode(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "debian-forky-amd64-netboot") {
 		t.Fatalf("stdout = %q, want discovered target", stdout.String())
+	}
+}
+
+func TestRunReportsEmptyDiscoveryInNonInteractiveMode(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		providerStub: providerStub{targets: []provider.Target{debianTarget()}},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:          registry,
+		Stdout:            &stdout,
+		Stderr:            &bytes.Buffer{},
+		Logger:            slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:              app.ModeDiscoverTargets,
+		DiscoveryFamilyID: "debian",
+	})
+
+	err := runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("run app succeeded, want empty discovery error")
+	}
+	if !strings.Contains(stdout.String(), "no discovered targets for debian") {
+		t.Fatalf("stdout = %q, want empty discovery message", stdout.String())
+	}
+}
+
+func TestRunListsStaticTargetsWhenDiscoveryWouldFail(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(discoveryProviderStub{
+		providerStub: providerStub{targets: []provider.Target{debianTarget()}},
+		family: provider.DiscoveryFamily{
+			ID:         "debian",
+			ProviderID: "debian",
+			Name:       "Debian",
+		},
+		discoverErr: errors.New("metadata unavailable"),
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeListTargets,
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "debian-trixie-amd64-netboot") {
+		t.Fatalf("stdout = %q, want static target", stdout.String())
 	}
 }
 

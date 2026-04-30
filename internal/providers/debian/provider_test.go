@@ -71,12 +71,20 @@ func TestProviderDiscoversAMD64NetbootTargets(t *testing.T) {
 	t.Parallel()
 
 	p := debian.NewProvider(debian.Config{
-		MirrorURL: "https://mirror.example/debian",
+		MirrorURL:    "https://mirror.example/debian",
+		DiscoveryURL: "https://discovery.example/debian",
 		Client: &http.Client{Transport: responseMap{
-			"https://mirror.example/debian/dists/": []byte(`<a href="stable/">stable/</a><a href="forky/">forky/</a><a href="sid/">sid/</a><a href="woody/">woody/</a>`),
-			"https://mirror.example/debian/dists/forky/main/installer-amd64/current/images/SHA256SUMS": []byte(strings.Repeat("a", 64) +
+			"https://discovery.example/debian/dists/": []byte(`<a href="stable/">stable/</a><a href="forky/">forky/</a><a href="sid/">sid/</a><a href="woody/">woody/</a>`),
+			"https://discovery.example/debian/dists/forky/main/installer-amd64/current/images/SHA256SUMS": []byte(strings.Repeat("a", 64) +
 				"  ./netboot/debian-installer/amd64/linux\n" + strings.Repeat("b", 64) + "  ./netboot/debian-installer/amd64/initrd.gz\n"),
 		}},
+		Lifecycle: map[string]provider.LifecycleEntry{
+			"forky": {
+				Status: provider.LifecycleSupported,
+				Source: "operator",
+				Date:   "2028-06-30",
+			},
+		},
 	})
 	targets, err := p.DiscoverTargets(context.Background())
 	if err != nil {
@@ -90,11 +98,11 @@ func TestProviderDiscoversAMD64NetbootTargets(t *testing.T) {
 	if target.ID != "debian-forky-amd64-netboot" {
 		t.Fatalf("target ID = %q, want forky target", target.ID)
 	}
-	if target.Source.BaseURL != "https://mirror.example/debian" {
+	if target.Source.BaseURL != "https://discovery.example/debian" {
 		t.Fatalf("source base URL = %q, want mirror URL", target.Source.BaseURL)
 	}
-	if target.Lifecycle.Status != provider.LifecycleUnknown {
-		t.Fatalf("lifecycle status = %q, want unknown", target.Lifecycle.Status)
+	if target.Lifecycle.Status != provider.LifecycleSupported || target.Lifecycle.Source != "operator" || target.Lifecycle.Date != "2028-06-30" {
+		t.Fatalf("lifecycle = %#v, want configured supported entry", target.Lifecycle)
 	}
 }
 

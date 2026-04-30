@@ -35,6 +35,17 @@
       }
     },
     {
+      "id": "debian-forky-amd64-netboot",
+      "provider_id": "debian",
+      "name": "Debian forky amd64 netboot",
+      "catalog": {
+        "distribution": "debian",
+        "release": "forky",
+        "architecture": "amd64",
+        "kind": "installer"
+      }
+    },
+    {
       "id": "ubuntu-24044-amd64-netboot",
       "provider_id": "ubuntu",
       "name": "Ubuntu 24.04.4 amd64 netboot",

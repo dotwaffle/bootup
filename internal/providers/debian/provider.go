@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,19 +34,23 @@ var hrefPattern = regexp.MustCompile(`(?i)href\s*=\s*["']?([^"'\s>]+)`)
 // Config configures the Debian provider.
 type Config struct {
 	MirrorURL        string
+	DiscoveryURL     string
 	Client           *http.Client
 	Keyring          []byte
 	Targets          []provider.Target
 	DiscoveryTimeout time.Duration
+	Lifecycle        map[string]provider.LifecycleEntry
 }
 
 // Provider exposes Debian netboot targets.
 type Provider struct {
 	mirrorURL        string
+	discoveryURL     string
 	client           *http.Client
 	keyring          []byte
 	targets          []provider.Target
 	discoveryTimeout time.Duration
+	lifecycle        map[string]provider.LifecycleEntry
 }
 
 // FetchConfig configures Debian artifact fetching and staging.
@@ -62,6 +67,10 @@ func NewProvider(config Config) *Provider {
 	if mirrorURL == "" {
 		mirrorURL = defaultMirrorURL
 	}
+	discoveryURL := strings.TrimRight(config.DiscoveryURL, "/")
+	if discoveryURL == "" {
+		discoveryURL = mirrorURL
+	}
 	targets := cloneTargets(config.Targets)
 	if config.Targets == nil {
 		targets = defaultTargets()
@@ -72,10 +81,12 @@ func NewProvider(config Config) *Provider {
 	}
 	return &Provider{
 		mirrorURL:        mirrorURL,
+		discoveryURL:     discoveryURL,
 		client:           config.Client,
 		keyring:          bytes.Clone(config.Keyring),
 		targets:          targets,
 		discoveryTimeout: discoveryTimeout,
+		lifecycle:        cloneLifecycle(config.Lifecycle),
 	}
 }
 
@@ -112,21 +123,21 @@ func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, erro
 	if client == nil {
 		client = http.DefaultClient
 	}
-	releases, err := discoverReleases(ctx, client, p.mirrorURL)
+	releases, err := discoverReleases(ctx, client, p.discoveryURL)
 	if err != nil {
 		return nil, err
 	}
 
 	targets := make([]provider.Target, 0, len(releases))
 	for _, release := range releases {
-		ok, err := hasAMD64Netboot(ctx, client, p.mirrorURL, release)
+		ok, err := hasAMD64Netboot(ctx, client, p.discoveryURL, release)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		targets = append(targets, discoveredTarget(p.mirrorURL, release))
+		targets = append(targets, p.discoveredTarget(release))
 	}
 	return targets, nil
 }
@@ -147,6 +158,13 @@ func defaultTargets() []provider.Target {
 
 func cloneTargets(targets []provider.Target) []provider.Target {
 	return append([]provider.Target(nil), targets...)
+}
+
+func cloneLifecycle(lifecycle map[string]provider.LifecycleEntry) map[string]provider.LifecycleEntry {
+	if len(lifecycle) == 0 {
+		return nil
+	}
+	return maps.Clone(lifecycle)
 }
 
 // Plan returns a boot plan for target.
@@ -293,7 +311,7 @@ func hasAMD64Netboot(ctx context.Context, client *http.Client, mirrorURL string,
 		bytes.Contains(body, []byte("netboot/debian-installer/amd64/initrd.gz")), nil
 }
 
-func discoveredTarget(mirrorURL string, release string) provider.Target {
+func (p *Provider) discoveredTarget(release string) provider.Target {
 	return provider.Target{
 		ID:         "debian-" + release + "-amd64-netboot",
 		ProviderID: providerID,
@@ -305,12 +323,19 @@ func discoveredTarget(mirrorURL string, release string) provider.Target {
 			Kind:         "installer",
 		},
 		Source: provider.SourceEntry{
-			BaseURL: mirrorURL,
+			BaseURL: p.discoveryURL,
 		},
-		Lifecycle: provider.LifecycleEntry{
-			Status: provider.LifecycleUnknown,
-			Source: "debian",
-		},
+		Lifecycle: p.lifecycleEntry(release),
+	}
+}
+
+func (p *Provider) lifecycleEntry(release string) provider.LifecycleEntry {
+	if entry, ok := p.lifecycle[release]; ok {
+		return entry
+	}
+	return provider.LifecycleEntry{
+		Status: provider.LifecycleUnknown,
+		Source: "debian",
 	}
 }
 

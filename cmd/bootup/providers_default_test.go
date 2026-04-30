@@ -35,6 +35,7 @@ func TestRegisterProvidersIncludesDefaultCatalogTargets(t *testing.T) {
 	for _, want := range []string{
 		"debian-bullseye-amd64-netboot",
 		"debian-bookworm-amd64-netboot",
+		"debian-forky-amd64-netboot",
 		"debian-trixie-amd64-netboot",
 		"ubuntu-24044-amd64-netboot",
 		"ubuntu-2510-amd64-netboot",
@@ -62,12 +63,11 @@ func TestRegisterProvidersIncludesDiscoveryFamilies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list discovery families: %v", err)
 	}
-	for _, family := range families {
-		if family.ID == "debian" {
-			return
+	for _, want := range []string{"debian", "ubuntu"} {
+		if !hasFamily(families, want) {
+			t.Fatalf("discovery families = %#v, want %s", families, want)
 		}
 	}
-	t.Fatalf("discovery families = %#v, want Debian", families)
 }
 
 func TestRegisterProvidersUsesCatalogDocumentAsReplacement(t *testing.T) {
@@ -105,6 +105,15 @@ func TestRegisterProvidersUsesCatalogDocumentAsReplacement(t *testing.T) {
 	if targets[0].ID != "debian-trixie-amd64-netboot" {
 		t.Fatalf("target ID = %q, want Debian trixie", targets[0].ID)
 	}
+}
+
+func hasFamily(families []provider.DiscoveryFamily, id string) bool {
+	for _, family := range families {
+		if family.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {

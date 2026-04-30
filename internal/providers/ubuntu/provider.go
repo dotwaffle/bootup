@@ -7,18 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/verify"
 )
 
 const (
-	defaultReleaseURL = "https://releases.ubuntu.com/26.04"
+	defaultReleaseURL       = "https://releases.ubuntu.com/26.04"
+	defaultDiscoveryURL     = "https://releases.ubuntu.com/releases"
+	defaultDiscoveryTimeout = 5 * time.Second
 
 	targetID        = "ubuntu-2604-amd64-netboot"
 	providerID      = "ubuntu"
@@ -27,24 +33,36 @@ const (
 	initrdStageName = "initrd"
 )
 
+var (
+	hrefPattern          = regexp.MustCompile(`(?i)href\s*=\s*["']?([^"'\s>]+)`)
+	releaseDirPattern    = regexp.MustCompile(`^\d+\.\d+$`)
+	liveServerISOPattern = regexp.MustCompile(`^ubuntu-(\d+\.\d+(?:\.\d+)?)-live-server-amd64\.iso$`)
+)
+
 // Config configures the Ubuntu provider.
 type Config struct {
-	ReleaseURL   string
-	Client       *http.Client
-	Keyring      []byte
-	KernelSHA256 string
-	InitrdSHA256 string
-	Targets      []provider.Target
+	ReleaseURL       string
+	DiscoveryURL     string
+	Client           *http.Client
+	Keyring          []byte
+	KernelSHA256     string
+	InitrdSHA256     string
+	Targets          []provider.Target
+	DiscoveryTimeout time.Duration
+	Lifecycle        map[string]provider.LifecycleEntry
 }
 
 // Provider exposes Ubuntu netboot targets.
 type Provider struct {
-	releaseURL   string
-	client       *http.Client
-	keyring      []byte
-	kernelSHA256 string
-	initrdSHA256 string
-	targets      []provider.Target
+	releaseURL       string
+	discoveryURL     string
+	client           *http.Client
+	keyring          []byte
+	kernelSHA256     string
+	initrdSHA256     string
+	targets          []provider.Target
+	discoveryTimeout time.Duration
+	lifecycle        map[string]provider.LifecycleEntry
 }
 
 // NewProvider creates an Ubuntu provider.
@@ -53,17 +71,28 @@ func NewProvider(config Config) *Provider {
 	if releaseURL == "" {
 		releaseURL = defaultReleaseURL
 	}
+	discoveryURL := strings.TrimRight(config.DiscoveryURL, "/")
+	if discoveryURL == "" {
+		discoveryURL = defaultDiscoveryURL
+	}
 	targets := cloneTargets(config.Targets)
 	if config.Targets == nil {
 		targets = defaultTargets()
 	}
+	discoveryTimeout := config.DiscoveryTimeout
+	if discoveryTimeout <= 0 {
+		discoveryTimeout = defaultDiscoveryTimeout
+	}
 	return &Provider{
-		releaseURL:   releaseURL,
-		client:       config.Client,
-		keyring:      bytes.Clone(config.Keyring),
-		kernelSHA256: config.KernelSHA256,
-		initrdSHA256: config.InitrdSHA256,
-		targets:      targets,
+		releaseURL:       releaseURL,
+		discoveryURL:     discoveryURL,
+		client:           config.Client,
+		keyring:          bytes.Clone(config.Keyring),
+		kernelSHA256:     config.KernelSHA256,
+		initrdSHA256:     config.InitrdSHA256,
+		targets:          targets,
+		discoveryTimeout: discoveryTimeout,
+		lifecycle:        cloneLifecycle(config.Lifecycle),
 	}
 }
 
@@ -75,6 +104,47 @@ func (*Provider) ID() string {
 // Targets returns supported Ubuntu targets.
 func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
 	return cloneTargets(p.targets), nil
+}
+
+// DiscoveryFamily returns the Ubuntu dynamic discovery family.
+func (*Provider) DiscoveryFamily() provider.DiscoveryFamily {
+	return provider.DiscoveryFamily{
+		ID:          providerID,
+		ProviderID:  providerID,
+		Name:        "Ubuntu",
+		Description: "Discover Ubuntu amd64 netboot installers from the configured releases index.",
+	}
+}
+
+// DiscoverTargets discovers Ubuntu amd64 netboot targets from the configured
+// releases index.
+func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, error) {
+	if p.discoveryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.discoveryTimeout)
+		defer cancel()
+	}
+
+	client := p.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	releaseURLs, err := discoverReleaseURLs(ctx, client, p.discoveryURL)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]provider.Target, 0, len(releaseURLs))
+	for _, releaseURL := range releaseURLs {
+		target, ok, err := p.discoverReleaseTarget(ctx, client, releaseURL)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			targets = append(targets, target)
+		}
+	}
+	return targets, nil
 }
 
 func defaultTargets() []provider.Target {
@@ -95,11 +165,18 @@ func cloneTargets(targets []provider.Target) []provider.Target {
 	return append([]provider.Target(nil), targets...)
 }
 
+func cloneLifecycle(lifecycle map[string]provider.LifecycleEntry) map[string]provider.LifecycleEntry {
+	if len(lifecycle) == 0 {
+		return nil
+	}
+	return maps.Clone(lifecycle)
+}
+
 // Plan returns a boot plan for target.
 func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
-	selected, ok := p.target(target.ID)
-	if !ok {
-		return provider.BootPlan{}, fmt.Errorf("unsupported Ubuntu target %q", target.ID)
+	selected, err := p.selectedTarget(target)
+	if err != nil {
+		return provider.BootPlan{}, err
 	}
 	architecture := selected.Catalog.Architecture
 	if architecture != "amd64" {
@@ -131,6 +208,22 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 	}, nil
 }
 
+func (p *Provider) selectedTarget(target provider.Target) (provider.Target, error) {
+	if selected, ok := p.target(target.ID); ok {
+		return selected, nil
+	}
+	if err := provider.ValidateTarget(providerID, target); err != nil {
+		return provider.Target{}, err
+	}
+	if target.Catalog.Distribution != providerID {
+		return provider.Target{}, fmt.Errorf("unsupported Ubuntu distribution %q for target %s", target.Catalog.Distribution, target.ID)
+	}
+	if target.Catalog.Kind != "installer" {
+		return provider.Target{}, fmt.Errorf("unsupported Ubuntu target kind %q for target %s", target.Catalog.Kind, target.ID)
+	}
+	return target, nil
+}
+
 func (p *Provider) target(id string) (provider.Target, bool) {
 	for _, target := range p.targets {
 		if target.ID == id {
@@ -155,6 +248,180 @@ func targetISOName(target provider.Target) (string, error) {
 		return liveServerISO, nil
 	}
 	return "", fmt.Errorf("source ISO name is required for Ubuntu target %s", target.ID)
+}
+
+func discoverReleaseURLs(ctx context.Context, client *http.Client, discoveryURL string) ([]string, error) {
+	indexURL := ensureTrailingSlash(discoveryURL)
+	body, status, err := fetchDiscovery(ctx, client, indexURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch Ubuntu releases index: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("fetch Ubuntu releases index: GET %s: %s", indexURL, http.StatusText(status))
+	}
+
+	base, err := url.Parse(indexURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse Ubuntu releases index URL: %w", err)
+	}
+	seen := make(map[string]struct{})
+	for _, match := range hrefPattern.FindAllSubmatch(body, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		href := string(match[1])
+		parsed, err := url.Parse(href)
+		if err != nil {
+			continue
+		}
+		resolved := base.ResolveReference(parsed)
+		if !releaseDirPattern.MatchString(pathBase(resolved.Path)) {
+			continue
+		}
+		seen[strings.TrimRight(resolved.String(), "/")] = struct{}{}
+	}
+	releaseURLs := make([]string, 0, len(seen))
+	for releaseURL := range seen {
+		releaseURLs = append(releaseURLs, releaseURL)
+	}
+	sort.Strings(releaseURLs)
+	return releaseURLs, nil
+}
+
+func (p *Provider) discoverReleaseTarget(ctx context.Context, client *http.Client, releaseURL string) (provider.Target, bool, error) {
+	shaSums, status, err := fetchDiscovery(ctx, client, releaseURL+"/SHA256SUMS")
+	if err != nil {
+		return provider.Target{}, false, fmt.Errorf("fetch Ubuntu release metadata for %s: %w", releaseURL, err)
+	}
+	if status == http.StatusNotFound {
+		return provider.Target{}, false, nil
+	}
+	if status != http.StatusOK {
+		return provider.Target{}, false, fmt.Errorf("fetch Ubuntu release metadata for %s: %s", releaseURL, http.StatusText(status))
+	}
+	isoName, release, ok, err := parseLiveServerISO(shaSums)
+	if err != nil {
+		return provider.Target{}, false, err
+	}
+	if !ok {
+		return provider.Target{}, false, nil
+	}
+	if ok, err := probeURL(ctx, client, releaseURL+"/netboot/amd64/linux"); err != nil || !ok {
+		return provider.Target{}, false, err
+	}
+	if ok, err := probeURL(ctx, client, releaseURL+"/netboot/amd64/initrd"); err != nil || !ok {
+		return provider.Target{}, false, err
+	}
+	return p.discoveredTarget(releaseURL, release, isoName), true, nil
+}
+
+func parseLiveServerISO(shaSums []byte) (string, string, bool, error) {
+	checksums, err := verify.ParseSHA256Sums(bytes.NewReader(shaSums))
+	if err != nil {
+		return "", "", false, err
+	}
+	for name := range checksums {
+		match := liveServerISOPattern.FindStringSubmatch(name)
+		if match == nil {
+			continue
+		}
+		return name, match[1], true, nil
+	}
+	return "", "", false, nil
+}
+
+func (p *Provider) discoveredTarget(releaseURL string, release string, isoName string) provider.Target {
+	return provider.Target{
+		ID:         "ubuntu-" + strings.ReplaceAll(release, ".", "") + "-amd64-netboot",
+		ProviderID: providerID,
+		Name:       "Ubuntu " + release + " amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: providerID,
+			Release:      release,
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Source: provider.SourceEntry{
+			BaseURL: releaseURL,
+			ISOName: isoName,
+		},
+		Lifecycle: p.lifecycleEntry(release),
+	}
+}
+
+func (p *Provider) lifecycleEntry(release string) provider.LifecycleEntry {
+	if entry, ok := p.lifecycle[release]; ok {
+		return entry
+	}
+	return provider.LifecycleEntry{
+		Status: provider.LifecycleUnknown,
+		Source: "ubuntu",
+	}
+}
+
+func probeURL(ctx context.Context, client *http.Client, rawURL string) (bool, error) {
+	status, err := requestStatus(ctx, client, http.MethodHead, rawURL)
+	if err != nil {
+		return false, err
+	}
+	if status == http.StatusMethodNotAllowed {
+		status, err = requestStatus(ctx, client, http.MethodGet, rawURL)
+		if err != nil {
+			return false, err
+		}
+	}
+	if status == http.StatusNotFound {
+		return false, nil
+	}
+	if status != http.StatusOK {
+		return false, fmt.Errorf("probe %s: %s", rawURL, http.StatusText(status))
+	}
+	return true, nil
+}
+
+func requestStatus(ctx context.Context, client *http.Client, method string, rawURL string) (int, error) {
+	request, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("new request: %w", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	return response.StatusCode, nil
+}
+
+func fetchDiscovery(ctx context.Context, client *http.Client, rawURL string) ([]byte, int, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("new request: %w", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, 0, fmt.Errorf("read response: %w", err)
+	}
+	return data, response.StatusCode, nil
+}
+
+func ensureTrailingSlash(value string) string {
+	if strings.HasSuffix(value, "/") {
+		return value
+	}
+	return value + "/"
+}
+
+func pathBase(value string) string {
+	value = strings.TrimRight(value, "/")
+	if index := strings.LastIndex(value, "/"); index >= 0 {
+		return value[index+1:]
+	}
+	return value
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.

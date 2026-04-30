@@ -98,6 +98,7 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 	for _, want := range []string{
 		"debian-bullseye-amd64-netboot",
 		"debian-bookworm-amd64-netboot",
+		"debian-forky-amd64-netboot",
 		"debian-trixie-amd64-netboot",
 		"ubuntu-24044-amd64-netboot",
 		"ubuntu-2510-amd64-netboot",

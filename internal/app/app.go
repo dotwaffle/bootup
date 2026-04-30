@@ -198,6 +198,9 @@ func (a *App) discoverTargets(ctx context.Context) error {
 		return fmt.Errorf("discover targets: %w", err)
 	}
 	if len(targets) == 0 {
+		if _, writeErr := fmt.Fprintf(a.config.Stdout, "no discovered targets for %s\n", familyID); writeErr != nil {
+			return fmt.Errorf("write empty discovery result: %w", writeErr)
+		}
 		return fmt.Errorf("no targets discovered for %s", familyID)
 	}
 	menu := ui.TextMenu{Width: 80}

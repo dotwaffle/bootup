@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providerconfig"
 )
 
@@ -22,13 +24,30 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 		"providers": {
 			"debian": {
 				"mirror_url": "https://mirror.example/debian",
-				"keyring_path": `+quote(keyringPath)+`
+				"discovery_url": "https://discovery.example/debian",
+				"discovery_timeout": "750ms",
+				"keyring_path": `+quote(keyringPath)+`,
+				"lifecycle": {
+					"trixie": {
+						"status": "supported",
+						"source": "operator",
+						"date": "2028-06-30"
+					}
+				}
 			},
 			"ubuntu": {
 				"release_url": "https://releases.example/26.04",
+				"discovery_url": "https://releases.example/releases/",
+				"discovery_timeout": "2s",
 				"keyring_path": `+quote(keyringPath)+`,
 				"kernel_sha256": "`+strings.Repeat("a", 64)+`",
-				"initrd_sha256": "`+strings.Repeat("b", 64)+`"
+				"initrd_sha256": "`+strings.Repeat("b", 64)+`",
+				"lifecycle": {
+					"26.04": {
+						"status": "supported",
+						"source": "operator"
+					}
+				}
 			}
 		}
 	}`))
@@ -41,11 +60,29 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	if config.Debian.MirrorURL != "https://mirror.example/debian" {
 		t.Fatalf("Debian mirror URL = %q", config.Debian.MirrorURL)
 	}
+	if config.Debian.DiscoveryURL != "https://discovery.example/debian" {
+		t.Fatalf("Debian discovery URL = %q", config.Debian.DiscoveryURL)
+	}
+	if config.Debian.DiscoveryTimeout != 750*time.Millisecond {
+		t.Fatalf("Debian discovery timeout = %s, want 750ms", config.Debian.DiscoveryTimeout)
+	}
+	if got := config.Debian.Lifecycle["trixie"]; got.Status != provider.LifecycleSupported || got.Source != "operator" || got.Date != "2028-06-30" {
+		t.Fatalf("Debian trixie lifecycle = %#v", got)
+	}
 	if !bytes.Equal(config.Debian.Keyring, keyring) {
 		t.Fatal("Debian keyring does not match configured file")
 	}
 	if config.Ubuntu.ReleaseURL != "https://releases.example/26.04" {
 		t.Fatalf("Ubuntu release URL = %q", config.Ubuntu.ReleaseURL)
+	}
+	if config.Ubuntu.DiscoveryURL != "https://releases.example/releases" {
+		t.Fatalf("Ubuntu discovery URL = %q", config.Ubuntu.DiscoveryURL)
+	}
+	if config.Ubuntu.DiscoveryTimeout != 2*time.Second {
+		t.Fatalf("Ubuntu discovery timeout = %s, want 2s", config.Ubuntu.DiscoveryTimeout)
+	}
+	if got := config.Ubuntu.Lifecycle["26.04"]; got.Status != provider.LifecycleSupported || got.Source != "operator" {
+		t.Fatalf("Ubuntu 26.04 lifecycle = %#v", got)
 	}
 	if !bytes.Equal(config.Ubuntu.Keyring, keyring) {
 		t.Fatal("Ubuntu keyring does not match configured file")
@@ -92,6 +129,26 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		{
 			name: "unknown provider field",
 			json: `{"providers":{"debian":{"keyring_path":` + quote(keyringPath) + `,"release_url":"https://example.invalid"}}}`,
+		},
+		{
+			name: "invalid discovery url",
+			json: `{"providers":{"debian":{"discovery_url":"file:///srv/debian"}}}`,
+		},
+		{
+			name: "invalid discovery timeout",
+			json: `{"providers":{"ubuntu":{"discovery_timeout":"eventually"}}}`,
+		},
+		{
+			name: "invalid lifecycle status",
+			json: `{"providers":{"debian":{"lifecycle":{"trixie":{"status":"trusted","source":"operator"}}}}}`,
+		},
+		{
+			name: "invalid lifecycle date",
+			json: `{"providers":{"ubuntu":{"lifecycle":{"26.04":{"status":"supported","source":"operator","date":"soon"}}}}}`,
+		},
+		{
+			name: "missing lifecycle source",
+			json: `{"providers":{"debian":{"lifecycle":{"trixie":{"status":"supported"}}}}}`,
 		},
 	}
 

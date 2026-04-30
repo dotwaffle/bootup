@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
@@ -50,6 +51,82 @@ func TestProviderTargetsUbuntu2604AMD64(t *testing.T) {
 	}
 }
 
+func TestProviderDiscoveryFamily(t *testing.T) {
+	t.Parallel()
+
+	family := ubuntu.NewProvider(ubuntu.Config{}).DiscoveryFamily()
+
+	if family.ID != "ubuntu" {
+		t.Fatalf("family ID = %q, want ubuntu", family.ID)
+	}
+	if family.ProviderID != "ubuntu" {
+		t.Fatalf("family provider ID = %q, want ubuntu", family.ProviderID)
+	}
+	if family.Name != "Ubuntu" {
+		t.Fatalf("family name = %q, want Ubuntu", family.Name)
+	}
+}
+
+func TestProviderDiscoversAMD64NetbootTargets(t *testing.T) {
+	t.Parallel()
+
+	shaSums := []byte(strings.Repeat("a", 64) + " *ubuntu-24.04.4-live-server-amd64.iso\n")
+	p := ubuntu.NewProvider(ubuntu.Config{
+		DiscoveryURL: "https://releases.example/releases/",
+		Client: &http.Client{Transport: responseMap{
+			"https://releases.example/releases/":                           []byte(`<a href="../">Parent</a><a href="24.04/">Ubuntu 24.04</a><a href="22.04/">Ubuntu 22.04</a>`),
+			"https://releases.example/releases/24.04/SHA256SUMS":           shaSums,
+			"https://releases.example/releases/24.04/netboot/amd64/linux":  []byte("kernel"),
+			"https://releases.example/releases/24.04/netboot/amd64/initrd": []byte("initrd"),
+			"https://releases.example/releases/22.04/SHA256SUMS":           []byte(strings.Repeat("b", 64) + " *ubuntu-22.04.5-live-server-amd64.iso\n"),
+		}},
+		Lifecycle: map[string]provider.LifecycleEntry{
+			"24.04.4": {
+				Status: provider.LifecycleSupported,
+				Source: "operator",
+				Date:   "2029-05-31",
+			},
+		},
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+
+	if len(targets) != 1 {
+		t.Fatalf("targets length = %d, want 1: %#v", len(targets), targets)
+	}
+	target := targets[0]
+	if target.ID != "ubuntu-24044-amd64-netboot" {
+		t.Fatalf("target ID = %q, want Ubuntu 24.04.4", target.ID)
+	}
+	if target.Source.BaseURL != "https://releases.example/releases/24.04" {
+		t.Fatalf("source base URL = %q", target.Source.BaseURL)
+	}
+	if target.Source.ISOName != "ubuntu-24.04.4-live-server-amd64.iso" {
+		t.Fatalf("source ISO name = %q", target.Source.ISOName)
+	}
+	if target.Lifecycle.Status != provider.LifecycleSupported || target.Lifecycle.Source != "operator" || target.Lifecycle.Date != "2029-05-31" {
+		t.Fatalf("lifecycle = %#v, want configured supported entry", target.Lifecycle)
+	}
+}
+
+func TestProviderDiscoveryUsesTimeout(t *testing.T) {
+	t.Parallel()
+
+	p := ubuntu.NewProvider(ubuntu.Config{
+		DiscoveryURL:     "https://releases.example/releases/",
+		Client:           &http.Client{Transport: blockingTransport{}},
+		DiscoveryTimeout: time.Nanosecond,
+	})
+
+	_, err := p.DiscoverTargets(context.Background())
+	if err == nil {
+		t.Fatal("discover targets succeeded, want timeout error")
+	}
+}
+
 func TestProviderPlanResolvesReleaseURLs(t *testing.T) {
 	t.Parallel()
 
@@ -83,6 +160,31 @@ func TestProviderPlanResolvesReleaseURLs(t *testing.T) {
 	}
 	if plan.Kernel.SHA256 != strings.Repeat("a", 64) {
 		t.Fatalf("kernel sha256 = %q", plan.Kernel.SHA256)
+	}
+}
+
+func TestProviderPlanAcceptsDiscoveredTarget(t *testing.T) {
+	t.Parallel()
+
+	target := ubuntuTarget("24.04.4")
+	target.Source = provider.SourceEntry{
+		BaseURL: "https://releases.example/24.04",
+		ISOName: "ubuntu-24.04.4-live-server-amd64.iso",
+	}
+	p := ubuntu.NewProvider(ubuntu.Config{
+		ReleaseURL: "https://fallback.example/26.04",
+	})
+
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if plan.Target.ID != "ubuntu-24044-amd64-netboot" {
+		t.Fatalf("planned target = %q, want discovered target", plan.Target.ID)
+	}
+	if plan.Kernel.URL != "https://releases.example/24.04/netboot/amd64/linux" {
+		t.Fatalf("kernel URL = %q", plan.Kernel.URL)
 	}
 }
 
@@ -360,6 +462,13 @@ func (m responseMap) RoundTrip(request *http.Request) (*http.Response, error) {
 		Header:     make(http.Header),
 		Request:    request,
 	}, nil
+}
+
+type blockingTransport struct{}
+
+func (blockingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	<-request.Context().Done()
+	return nil, request.Context().Err()
 }
 
 func ubuntuTarget(release string) provider.Target {

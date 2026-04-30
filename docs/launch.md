@@ -8,6 +8,8 @@ The initramfs build keeps bootup's runtime payload to a single u-root
 busybox-style binary. TLS roots are compiled into that binary through
 `github.com/breml/rootcerts`; distro archive keyrings are not packaged by
 default and must be supplied explicitly to the reusable verification hooks.
+For downloaded release artifact names, checksums, manifests, and stage-0 usage
+examples, see `docs/release.md`.
 
 ## QEMU
 
@@ -198,3 +200,6 @@ BOOTUP_QEMU_FIRMWARE=/usr/share/OVMF/OVMF_CODE_4M.fd scripts/run-qemu-iso.sh
 
 No provider behavior should depend on whether bootup arrived from PXE, iPXE,
 GRUB, or ISO media.
+
+For release ISO naming, checksum verification, and the exact published artifact
+set, see `docs/release.md`.

@@ -4,6 +4,9 @@ Bootup should prioritize an ISO artifact before any Linux-kernel-wrapper
 format. The ISO can keep shipping the same kernel plus zstd initramfs payload
 used by PXE, iPXE, and vmtest.
 
+Release artifact names, checksum verification, and iPXE/GRUB/ISO consumption
+examples are documented in `docs/release.md`.
+
 On Ubuntu systems with `grub-imageboot` installed, an operator should be able
 to place the ISO under `/boot/images/` and run `update-grub`. The package's
 `/etc/grub.d/60_grub-imageboot` script is expected to discover the ISO and add

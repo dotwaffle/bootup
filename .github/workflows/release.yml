@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Release version to use for artifact names
+        required: false
+      kernel_version:
+        description: Upstream Linux version to build
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Install release dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            grub-common \
+            grub-efi-amd64-bin \
+            grub-pc-bin \
+            jq \
+            mtools \
+            ovmf \
+            qemu-system-x86 \
+            xorriso \
+            zstd
+
+      - name: Check scripts
+        run: >
+          bash -n
+          scripts/build-debian-initramfs.sh
+          scripts/build-initramfs.sh
+          scripts/build-iso.sh
+          scripts/build-kernel.sh
+          scripts/build-release.sh
+          scripts/check-kernel-config.sh
+          scripts/check-release-artifacts.sh
+          scripts/run-qemu.sh
+          scripts/run-qemu-iso.sh
+          scripts/smoke-iso-bios.sh
+          scripts/smoke-real-debian.sh
+          scripts/smoke-real-ubuntu.sh
+          test/vmtest/run
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          version: v2.11.4
+
+      - name: Lint fixture build
+        uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          version: v2.11.4
+          args: --build-tags bootup_debian_fixture
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Test fixture build
+        run: go test -race -tags bootup_debian_fixture ./...
+
+      - name: Build release artifacts
+        env:
+          INPUT_KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
+          INPUT_RELEASE_VERSION: ${{ github.event.inputs.release_version }}
+        run: |
+          release_version="${INPUT_RELEASE_VERSION}"
+          if [[ -z "${release_version}" ]]; then
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              release_version="${GITHUB_REF_NAME}"
+            else
+              release_version="dev-${GITHUB_SHA::12}"
+            fi
+          fi
+          export BOOTUP_RELEASE_VERSION="${release_version}"
+          if [[ -n "${INPUT_KERNEL_VERSION}" ]]; then
+            export BOOTUP_KERNEL_VERSION="${INPUT_KERNEL_VERSION}"
+          fi
+          scripts/build-release.sh
+
+      - name: Validate release artifacts
+        run: scripts/check-release-artifacts.sh dist/release
+
+      - name: Smoke ISO BIOS boot
+        run: |
+          iso="$(find dist/release -maxdepth 1 -type f -name 'bootup-*-hybrid-amd64.iso' | sort | tail -n 1)"
+          if [[ -z "${iso}" ]]; then
+            echo "release ISO not found" >&2
+            exit 1
+          fi
+          scripts/smoke-iso-bios.sh "${iso}"
+
+      - name: Publish GitHub release assets
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release upload "${tag}" dist/release/* --clobber
+          else
+            gh release create "${tag}" dist/release/* \
+              --title "${tag}" \
+              --notes "Bootup ${tag}" \
+              --verify-tag
+          fi

@@ -38,9 +38,9 @@ image at build time.
 - **THEN** bootup SHALL list Ubuntu 26.04 amd64 netboot as a selectable target
 
 #### Scenario: Catalog metadata is available
-- **WHEN** a provider exposes targets
-- **THEN** each target SHOULD include catalog metadata that allows future UIs to
-  group entries without loading runtime plugins
+- **WHEN** a provider exposes static concrete boot targets
+- **THEN** each target SHALL include typed catalog metadata that allows future
+  UIs to group entries without loading runtime plugins
 
 #### Scenario: Runtime provider loading is absent
 - **WHEN** bootup is running in the target environment

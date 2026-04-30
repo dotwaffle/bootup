@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dotwaffle/bootup/internal/provider"
 )
 
@@ -39,6 +40,7 @@ func (m RichMenu) SelectTarget(ctx context.Context, targets []provider.Target) (
 	options := []tea.ProgramOption{
 		tea.WithContext(ctx),
 		tea.WithoutSignalHandler(),
+		tea.WithWindowSize(m.width(), 25),
 	}
 	if m.Stdin != nil {
 		options = append(options, tea.WithInput(m.Stdin))
@@ -109,7 +111,9 @@ func (m RichMenu) renderStatusFrame(w io.Writer, frame string, phase string, mes
 	}
 	bar := progress.New(
 		progress.WithWidth(barWidth),
-		progress.WithScaledGradient("#00D7FF", "#FFAF00"),
+		progress.WithColors(lipgloss.Color("#00D7FF"), lipgloss.Color("#FFAF00")),
+		progress.WithFillCharacters('#', '-'),
+		progress.WithScaled(true),
 	).ViewAs(percent)
 
 	phaseText := lipgloss.NewStyle().
@@ -152,7 +156,7 @@ func phasePercent(phase string) float64 {
 	}
 }
 
-func phaseColor(phase string) lipgloss.TerminalColor {
+func phaseColor(phase string) color.Color {
 	switch phase {
 	case "planning":
 		return lipgloss.Color("51")
@@ -207,21 +211,33 @@ func (m TargetPicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.updateKey(msg)
 	}
 	return m, nil
 }
 
 // View renders the picker.
-func (m TargetPicker) View() string {
+func (m TargetPicker) View() tea.View {
+	return tea.NewView(m.Render())
+}
+
+// Render returns the picker content.
+func (m TargetPicker) Render() string {
 	width := m.viewWidth()
 	contentWidth := max(width-2, 20)
 
 	var b strings.Builder
 	b.WriteString(m.banner(contentWidth))
 	b.WriteString("\n\n")
+	previousGroup := ""
 	for index, target := range m.targets {
+		group := targetGroup(target)
+		if group != previousGroup {
+			b.WriteString(m.groupLine(group, contentWidth))
+			b.WriteString("\n")
+			previousGroup = group
+		}
 		b.WriteString(m.targetLine(index, target, contentWidth))
 		b.WriteString("\n")
 	}
@@ -248,7 +264,7 @@ func (m TargetPicker) Selected() (provider.Target, error) {
 	return m.targets[m.selected], nil
 }
 
-func (m TargetPicker) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m TargetPicker) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "esc", "q":
 		m.canceled = true
@@ -276,6 +292,10 @@ func (m TargetPicker) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m TargetPicker) banner(width int) string {
+	activity := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("220")).
+		Render(m.spinner.View())
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("231")).
@@ -287,13 +307,21 @@ func (m TargetPicker) banner(width int) string {
 		Foreground(lipgloss.Color("51")).
 		Render("dynamic verified netboot")
 	line := truncate("select a boot target and hand off with kexec", width)
-	return fmt.Sprintf("%s  %s\n%s", title, tagline, line)
+	return fmt.Sprintf("%s %s  %s\n%s", activity, title, tagline, line)
+}
+
+func (m TargetPicker) groupLine(group string, width int) string {
+	label := "== " + strings.ToUpper(group) + " =="
+	return lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("45")).
+		Render(truncate(label, width))
 }
 
 func (m TargetPicker) targetLine(index int, target provider.Target, width int) string {
 	prefix := fmt.Sprintf("  %2d", index+1)
-	nameWidth := max(width-8, 16)
-	label := fmt.Sprintf("%s  %s", prefix, truncate(target.Name, nameWidth))
+	nameWidth := max(width-17, 16)
+	label := fmt.Sprintf("%s  [READY]  %s", prefix, truncate(target.Name, nameWidth))
 	meta := truncate(fmt.Sprintf("%s  %s", catalogLabel(target), target.ID), width-4)
 	if index == m.cursor {
 		return lipgloss.NewStyle().
@@ -311,6 +339,20 @@ func (m TargetPicker) targetLine(index int, target provider.Target, width int) s
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("252")).
 		Render("  " + truncate(strings.TrimSpace(label), width-4) + "\n    " + meta)
+}
+
+func targetGroup(target provider.Target) string {
+	parts := make([]string, 0, 2)
+	if target.Distribution != "" {
+		parts = append(parts, target.Distribution)
+	}
+	if target.Release != "" {
+		parts = append(parts, target.Release)
+	}
+	if len(parts) == 0 {
+		return "targets"
+	}
+	return strings.Join(parts, " / ")
 }
 
 func (m TargetPicker) detail(width int) string {

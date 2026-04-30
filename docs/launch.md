@@ -41,10 +41,34 @@ configures networking before bootup starts.
 
 Interactive menu boots use `bootup --mode=menu --ui=auto` by default. Auto mode
 uses the rich Bubble Tea terminal UI when stdin and stdout are interactive
-terminals, including normal serial consoles, and falls back to the plain
-`target> ` prompt when input or output is redirected. Force the fallback with
-`--ui=plain`; use `--ui=rich` only when a terminal is required and failure is
-preferable to fallback.
+terminals, including normal serial consoles. In the u-root busybox initramfs,
+auto mode can also reopen `/dev/console` when the init command starts with
+non-terminal stdio. It falls back to the plain `target> ` prompt when input or
+output is redirected. Force the fallback with `--ui=plain`; use `--ui=rich`
+only when a terminal is required and failure is preferable to fallback.
+
+To smoke-test menu selection without live network assumptions:
+
+```sh
+scripts/build-initramfs.sh /tmp/bootup-current-menu-initramfs.cpio 'bootup --mode=menu --ui=auto' ''
+BOOTUP_INITRAMFS=/tmp/bootup-current-menu-initramfs.cpio.zst BOOTUP_CMDLINE='console=ttyS0 panic=30' scripts/run-qemu.sh
+```
+
+On 2026-04-30, that smoke reached the rich menu under QEMU. Sending `j` then
+Enter selected Ubuntu 26.04 and reached the rich planning, verifying, and
+staging status output before failing at the expected network fetch step in an
+isolated VM.
+
+Current local size snapshot from the same worktree:
+
+| Artifact | Bytes | Approx |
+| --- | ---: | ---: |
+| Baseline bootup binary before rich UI | 10,641,318 | 11M |
+| Current bootup binary | 12,850,042 | 13M |
+| Baseline raw initramfs | 10,458,064 | 10M |
+| Baseline zstd initramfs | 3,336,900 | 3.2M |
+| Current menu raw initramfs | 11,273,160 | 11M |
+| Current menu zstd initramfs | 3,547,797 | 3.4M |
 
 For a Debian-capable single binary, generate ignored Go source from a local
 OpenPGP public keyring before building the initramfs:

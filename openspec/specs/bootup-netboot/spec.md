@@ -210,6 +210,16 @@ and provider paths under a virtual machine.
   Debian Installer boot artifacts before kexec handoff using hermetic fixture
   metadata and trust material
 
+#### Scenario: Rich terminal menu is PTY tested
+- **WHEN** the integration test launches menu mode with a pseudo-terminal
+- **THEN** the test SHALL drive keyboard input through the terminal and observe
+  the selected target being planned for boot
+
+#### Scenario: Menu smoke runs under QEMU
+- **WHEN** a local smoke run builds a menu-mode initramfs and launches QEMU
+- **THEN** bootup SHALL reach the operator menu and accept serial keyboard
+  selection in the VM
+
 #### Scenario: Real Debian smoke is explicitly enabled
 - **WHEN** the operator provides QEMU, local kernel/initramfs inputs, network
   access, and local Debian archive trust material

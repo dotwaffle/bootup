@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/dotwaffle/bootup/internal/provider"
 )
 
@@ -14,8 +14,8 @@ func TestTargetPickerNavigatesAndSelects(t *testing.T) {
 	t.Parallel()
 
 	picker := NewTargetPicker(testTargets())
-	picker = updatePicker(t, picker, tea.KeyMsg{Type: tea.KeyDown})
-	picker = updatePicker(t, picker, tea.KeyMsg{Type: tea.KeyEnter})
+	picker = updatePicker(t, picker, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	picker = updatePicker(t, picker, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 
 	target, err := picker.Selected()
 	if err != nil {
@@ -30,7 +30,7 @@ func TestTargetPickerAcceptsNumberSelection(t *testing.T) {
 	t.Parallel()
 
 	picker := NewTargetPicker(testTargets())
-	picker = updatePicker(t, picker, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	picker = updatePicker(t, picker, tea.KeyPressMsg(tea.Key{Code: '2', Text: "2"}))
 
 	target, err := picker.Selected()
 	if err != nil {
@@ -45,7 +45,7 @@ func TestTargetPickerCancel(t *testing.T) {
 	t.Parallel()
 
 	picker := NewTargetPicker(testTargets())
-	picker = updatePicker(t, picker, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	picker = updatePicker(t, picker, tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
 
 	if _, err := picker.Selected(); !errors.Is(err, ErrSelectionCanceled) {
 		t.Fatalf("selected target error = %v, want cancellation", err)
@@ -56,12 +56,15 @@ func TestTargetPickerViewRendersMenuContent(t *testing.T) {
 	t.Parallel()
 
 	picker := NewTargetPicker(testTargets())
-	got := picker.View()
+	got := picker.Render()
 
 	for _, want := range []string{
 		"BOOTUP",
+		"== DEBIAN / TRIXIE ==",
+		"== UBUNTU / 26.04 ==",
 		"Debian trixie amd64 netboot",
 		"Ubuntu 26.04 amd64 netboot",
+		"[READY]",
 		"enter boot",
 		"debian/trixie/amd64/installer",
 	} {

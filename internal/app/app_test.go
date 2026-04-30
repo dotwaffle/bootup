@@ -7,12 +7,16 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
+	expect "github.com/Netflix/go-expect"
+	"github.com/creack/pty"
 	"github.com/dotwaffle/bootup/internal/app"
 	"github.com/dotwaffle/bootup/internal/provider"
 )
 
 type providerStub struct {
+	id      string
 	targets []provider.Target
 	plan    provider.BootPlan
 	staged  provider.BootPlan
@@ -20,6 +24,9 @@ type providerStub struct {
 }
 
 func (p providerStub) ID() string {
+	if p.id != "" {
+		return p.id
+	}
 	return "debian"
 }
 
@@ -373,8 +380,114 @@ func TestRunMenuRejectsForcedRichUIWithoutTerminal(t *testing.T) {
 	if err == nil {
 		t.Fatal("run app succeeded, want rich UI terminal error")
 	}
-	if !strings.Contains(err.Error(), "rich UI requires terminal") {
-		t.Fatalf("run app error = %v, want rich UI terminal error", err)
+	if !strings.Contains(err.Error(), "rich UI requires console") {
+		t.Fatalf("run app error = %v, want rich UI console error", err)
+	}
+}
+
+func TestRunRichMenuSelectsTargetThroughPTY(t *testing.T) {
+	t.Parallel()
+
+	targets := []provider.Target{
+		{
+			ID:           "debian-trixie-amd64-netboot",
+			ProviderID:   "debian",
+			Name:         "Debian trixie amd64 netboot",
+			Architecture: "amd64",
+			Distribution: "debian",
+			Release:      "trixie",
+			Kind:         "installer",
+		},
+		{
+			ID:           "ubuntu-2604-amd64-netboot",
+			ProviderID:   "ubuntu",
+			Name:         "Ubuntu 26.04 amd64 netboot",
+			Architecture: "amd64",
+			Distribution: "ubuntu",
+			Release:      "26.04",
+			Kind:         "installer",
+		},
+	}
+	staged := provider.BootPlan{
+		Target:  targets[1],
+		Kernel:  provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+		Initrd:  provider.Artifact{Name: "initrd", Path: "/tmp/bootup/initrd"},
+		Cmdline: "console=ttyS0",
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		id:      "debian",
+		targets: []provider.Target{targets[0]},
+	}); err != nil {
+		t.Fatalf("register Debian provider: %v", err)
+	}
+	if err := registry.Register(providerStub{
+		id:      "ubuntu",
+		targets: []provider.Target{targets[1]},
+		plan:    provider.BootPlan{Target: targets[1]},
+		staged:  staged,
+	}); err != nil {
+		t.Fatalf("register Ubuntu provider: %v", err)
+	}
+
+	console, err := expect.NewConsole(expect.WithDefaultTimeout(5 * time.Second))
+	if err != nil {
+		t.Fatalf("create console: %v", err)
+	}
+	if err := pty.Setsize(console.Tty(), &pty.Winsize{Rows: 25, Cols: 80}); err != nil {
+		t.Fatalf("set console size: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := console.Close(); err != nil {
+			t.Fatalf("close console: %v", err)
+		}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	var executed provider.BootPlan
+	errc := make(chan error, 1)
+	go func() {
+		var stderr bytes.Buffer
+		runner := app.New(app.Config{
+			Registry:   registry,
+			Stdin:      console.Tty(),
+			Stdout:     console.Tty(),
+			Stderr:     &stderr,
+			Logger:     slog.New(slog.NewTextHandler(&stderr, nil)),
+			Mode:       app.ModeMenu,
+			UIMode:     app.UIModeRich,
+			StagingDir: t.TempDir(),
+			Executor:   executorStub{executed: &executed},
+		})
+		errc <- runner.Run(ctx)
+	}()
+
+	if _, err := console.ExpectString("BOOTUP"); err != nil {
+		t.Fatalf("expect rich menu banner: %v", err)
+	}
+	if _, err := console.ExpectString("Ubuntu 26.04 amd64 netboot"); err != nil {
+		t.Fatalf("expect Ubuntu target: %v", err)
+	}
+	if _, err := console.Send("j\r"); err != nil {
+		t.Fatalf("send rich menu selection: %v", err)
+	}
+	if _, err := console.ExpectString("PLANNING"); err != nil {
+		t.Fatalf("expect rich planning status: %v", err)
+	}
+
+	select {
+	case err := <-errc:
+		if err != nil {
+			t.Fatalf("run app: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("run app timed out: %v", ctx.Err())
+	}
+	if executed.Target.ID != targets[1].ID {
+		t.Fatalf("executed target = %q, want %q", executed.Target.ID, targets[1].ID)
 	}
 }
 

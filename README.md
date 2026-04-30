@@ -82,9 +82,11 @@ bootup --mode=menu --prepare-runtime
 ```
 
 Menu mode defaults to `--ui=auto`: it uses the rich keyboard-driven terminal
-interface when stdin/stdout are terminals and falls back to the plain
-`target> ` prompt for redirected input or automation. Use `--ui=plain` to force
-the fallback or `--ui=rich` to require the rich interface.
+interface when stdin/stdout are terminals. In the u-root initramfs, auto mode
+can reopen `/dev/console` for the rich UI if the init command starts with
+non-terminal stdio. It falls back to the plain `target> ` prompt for redirected
+input or automation. Use `--ui=plain` to force the fallback or `--ui=rich` to
+require the rich interface.
 
 Build a local single-binary Debian-capable image by generating ignored Go
 source from an OpenPGP public keyring, then building normally:

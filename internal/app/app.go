@@ -42,7 +42,10 @@ const (
 type UIMode string
 
 const (
-	// UIModeAuto uses the rich UI only when stdin and stdout are terminals.
+	bootConsolePath = "/dev/console"
+	uRootBusybox    = "/bbin/bb"
+
+	// UIModeAuto uses the rich UI when stdin and stdout look console-backed.
 	UIModeAuto UIMode = "auto"
 
 	// UIModeRich requires the rich terminal UI.
@@ -358,10 +361,19 @@ func (a *App) richMenu() ui.RichMenu {
 func (a *App) useRichMenu() (bool, error) {
 	switch a.config.UIMode {
 	case UIModeAuto:
-		return a.hasInteractiveTerminal(), nil
+		if a.hasInteractiveConsole() {
+			return true, nil
+		}
+		if a.attachBootConsole() && a.hasInteractiveConsole() {
+			return true, nil
+		}
+		return false, nil
 	case UIModeRich:
-		if !a.hasInteractiveTerminal() {
-			return false, errors.New("rich UI requires terminal stdin and stdout")
+		if !a.hasInteractiveConsole() {
+			a.attachBootConsole()
+		}
+		if !a.hasInteractiveConsole() {
+			return false, errors.New("rich UI requires console stdin and stdout")
 		}
 		return true, nil
 	case UIModePlain:
@@ -371,7 +383,33 @@ func (a *App) useRichMenu() (bool, error) {
 	}
 }
 
-func (a *App) hasInteractiveTerminal() bool {
+func (a *App) attachBootConsole() bool {
+	if !a.shouldAttachBootConsole() {
+		return false
+	}
+	console, err := os.OpenFile(bootConsolePath, os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	a.config.Stdin = console
+	a.config.Stdout = console
+	return true
+}
+
+func (a *App) shouldAttachBootConsole() bool {
+	stdin, stdinOK := a.config.Stdin.(*os.File)
+	stdout, stdoutOK := a.config.Stdout.(*os.File)
+	if !stdinOK || !stdoutOK {
+		return false
+	}
+	if stdin != os.Stdin || stdout != os.Stdout {
+		return false
+	}
+	_, err := os.Stat(uRootBusybox)
+	return err == nil
+}
+
+func (a *App) hasInteractiveConsole() bool {
 	stdin, ok := a.config.Stdin.(*os.File)
 	if !ok {
 		return false
@@ -380,5 +418,29 @@ func (a *App) hasInteractiveTerminal() bool {
 	if !ok {
 		return false
 	}
-	return term.IsTerminal(int(stdin.Fd())) && term.IsTerminal(int(stdout.Fd()))
+	if term.IsTerminal(int(stdin.Fd())) && term.IsTerminal(int(stdout.Fd())) {
+		return true
+	}
+	return isConsoleLikeFile(stdin) && isConsoleLikeFile(stdout)
+}
+
+func isConsoleLikeFile(file *os.File) bool {
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	modeType := info.Mode().Type()
+	if modeType&os.ModeCharDevice != 0 {
+		return true
+	}
+	if modeType == 0 || modeType&os.ModeNamedPipe != 0 || modeType&os.ModeSocket != 0 {
+		return false
+	}
+	if modeType&os.ModeDir != 0 || modeType&os.ModeDevice != 0 {
+		return false
+	}
+	// Early boot consoles can be backed by unusual fd types before termios
+	// reports a normal TTY. Treat those as interactive unless they are obvious
+	// redirection targets handled above.
+	return true
 }

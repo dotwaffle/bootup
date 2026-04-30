@@ -34,7 +34,7 @@ func TestBootupReachesTextInterface(t *testing.T) {
 	killAndWait(t, vm)
 }
 
-func TestBootupListsDebianProvider(t *testing.T) {
+func TestBootupListsDefaultCatalogTargets(t *testing.T) {
 	qemu.SkipWithoutQEMU(t)
 	if os.Getenv("VMTEST_INITRAMFS") == "" {
 		t.Skip("VMTEST_INITRAMFS is required")
@@ -47,6 +47,18 @@ func TestBootupListsDebianProvider(t *testing.T) {
 	if _, err := vm.Console.ExpectString("debian-trixie-amd64-netboot"); err != nil {
 		killAndWait(t, vm)
 		t.Fatalf("expect Debian target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("debian/trixie/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian catalog label: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("ubuntu-2604-amd64-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Ubuntu target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("ubuntu/26.04/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Ubuntu catalog label: %v", err)
 	}
 	killAndWait(t, vm)
 }

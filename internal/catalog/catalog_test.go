@@ -47,6 +47,10 @@ func TestParseValidatesAndFiltersStaticCatalog(t *testing.T) {
 					"release": "26.04",
 					"architecture": "amd64",
 					"kind": "installer"
+				},
+				"source": {
+					"base_url": "https://releases.example/26.04",
+					"iso_name": "ubuntu-26.04-live-server-amd64.iso"
 				}
 			}
 		]
@@ -71,6 +75,12 @@ func TestParseValidatesAndFiltersStaticCatalog(t *testing.T) {
 	if len(ubuntuTargets) != 1 || ubuntuTargets[0].ID != "ubuntu-2604-amd64-netboot" {
 		t.Fatalf("Ubuntu targets = %#v, want 26.04 target", ubuntuTargets)
 	}
+	if ubuntuTargets[0].Source.BaseURL != "https://releases.example/26.04" {
+		t.Fatalf("Ubuntu source base URL = %q", ubuntuTargets[0].Source.BaseURL)
+	}
+	if ubuntuTargets[0].Source.ISOName != "ubuntu-26.04-live-server-amd64.iso" {
+		t.Fatalf("Ubuntu source ISO name = %q", ubuntuTargets[0].Source.ISOName)
+	}
 }
 
 func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
@@ -86,14 +96,30 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		ids = append(ids, target.ID)
 	}
 	for _, want := range []string{
+		"debian-bullseye-amd64-netboot",
 		"debian-bookworm-amd64-netboot",
 		"debian-trixie-amd64-netboot",
+		"ubuntu-24044-amd64-netboot",
+		"ubuntu-2510-amd64-netboot",
 		"ubuntu-2604-amd64-netboot",
 	} {
 		if !slices.Contains(ids, want) {
 			t.Fatalf("default catalog IDs = %v, want %s", ids, want)
 		}
 	}
+	ubuntuTargets := doc.Targets("ubuntu")
+	for _, target := range ubuntuTargets {
+		if target.ID == "ubuntu-24044-amd64-netboot" {
+			if target.Source.BaseURL != "https://releases.ubuntu.com/24.04" {
+				t.Fatalf("Ubuntu 24.04.4 source base URL = %q", target.Source.BaseURL)
+			}
+			if target.Source.ISOName != "ubuntu-24.04.4-live-server-amd64.iso" {
+				t.Fatalf("Ubuntu 24.04.4 ISO name = %q", target.Source.ISOName)
+			}
+			return
+		}
+	}
+	t.Fatalf("default Ubuntu targets = %#v, want 24.04.4 sourceful target", ubuntuTargets)
 }
 
 func TestLoadFileLoadsLocalCatalog(t *testing.T) {
@@ -161,6 +187,26 @@ func TestParseRejectsInvalidCatalogs(t *testing.T) {
 				"provider_id": "fedora",
 				"name": "Fedora Rawhide amd64 netboot",
 				"catalog": {"distribution": "fedora", "release": "rawhide", "architecture": "amd64", "kind": "installer"}
+			}]}`,
+		},
+		{
+			name: "invalid source base url",
+			data: `{"schema_version": 1, "targets": [{
+				"id": "ubuntu-2604-amd64-netboot",
+				"provider_id": "ubuntu",
+				"name": "Ubuntu 26.04 amd64 netboot",
+				"catalog": {"distribution": "ubuntu", "release": "26.04", "architecture": "amd64", "kind": "installer"},
+				"source": {"base_url": "file:///srv/releases/26.04"}
+			}]}`,
+		},
+		{
+			name: "invalid source iso name",
+			data: `{"schema_version": 1, "targets": [{
+				"id": "ubuntu-2604-amd64-netboot",
+				"provider_id": "ubuntu",
+				"name": "Ubuntu 26.04 amd64 netboot",
+				"catalog": {"distribution": "ubuntu", "release": "26.04", "architecture": "amd64", "kind": "installer"},
+				"source": {"iso_name": "../ubuntu.iso"}
 			}]}`,
 		},
 		{

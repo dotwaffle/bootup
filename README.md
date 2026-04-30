@@ -10,8 +10,8 @@ selected kernel and initrd, and hands off with kexec.
 ## Current MVP
 
 - Build-time Go providers.
-- Debian bookworm and trixie amd64 netboot targets.
-- Ubuntu 26.04 amd64 netboot target.
+- Debian bullseye, bookworm, and trixie amd64 netboot targets.
+- Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
 - Embedded static provider catalog with local JSON replacement.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
@@ -102,7 +102,7 @@ requirements can be configured through a provider runtime config file:
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
 ```
 
-Ubuntu 26.04 netboot can be staged from the official HTTPS release URLs by
+Ubuntu netboot targets can be staged from their official HTTPS release URLs by
 default. Operators can additionally provide Ubuntu release key material and
 pinned netboot artifact hashes through `--provider-config`.
 

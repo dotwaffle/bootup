@@ -97,28 +97,64 @@ func cloneTargets(targets []provider.Target) []provider.Target {
 
 // Plan returns a boot plan for target.
 func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
-	if target.ID != targetID {
+	selected, ok := p.target(target.ID)
+	if !ok {
 		return provider.BootPlan{}, fmt.Errorf("unsupported Ubuntu target %q", target.ID)
+	}
+	architecture := selected.Catalog.Architecture
+	if architecture != "amd64" {
+		return provider.BootPlan{}, fmt.Errorf("unsupported Ubuntu architecture %q for target %s", architecture, selected.ID)
+	}
+	releaseURL := targetBaseURL(selected, p.releaseURL)
+	isoName, err := targetISOName(selected)
+	if err != nil {
+		return provider.BootPlan{}, err
 	}
 
 	return provider.BootPlan{
-		Target: target,
+		Target: selected,
 		Kernel: provider.Artifact{
 			Name:   kernelStageName,
-			URL:    p.releaseURL + "/netboot/amd64/linux",
+			URL:    fmt.Sprintf("%s/netboot/%s/linux", releaseURL, architecture),
 			SHA256: p.kernelSHA256,
 		},
 		Initrd: provider.Artifact{
 			Name:   initrdStageName,
-			URL:    p.releaseURL + "/netboot/amd64/initrd",
+			URL:    fmt.Sprintf("%s/netboot/%s/initrd", releaseURL, architecture),
 			SHA256: p.initrdSHA256,
 		},
-		Cmdline: "url=" + p.releaseURL + "/" + liveServerISO + " ip=dhcp console=ttyS0",
+		Cmdline: "url=" + releaseURL + "/" + isoName + " ip=dhcp console=ttyS0",
 		Verification: provider.Verification{
-			ChecksumURL:  p.releaseURL + "/SHA256SUMS",
-			SignatureURL: p.releaseURL + "/SHA256SUMS.gpg",
+			ChecksumURL:  releaseURL + "/SHA256SUMS",
+			SignatureURL: releaseURL + "/SHA256SUMS.gpg",
 		},
 	}, nil
+}
+
+func (p *Provider) target(id string) (provider.Target, bool) {
+	for _, target := range p.targets {
+		if target.ID == id {
+			return target, true
+		}
+	}
+	return provider.Target{}, false
+}
+
+func targetBaseURL(target provider.Target, fallback string) string {
+	if target.Source.BaseURL != "" {
+		return strings.TrimRight(target.Source.BaseURL, "/")
+	}
+	return fallback
+}
+
+func targetISOName(target provider.Target) (string, error) {
+	if target.Source.ISOName != "" {
+		return target.Source.ISOName, nil
+	}
+	if target.ID == targetID {
+		return liveServerISO, nil
+	}
+	return "", fmt.Errorf("source ISO name is required for Ubuntu target %s", target.ID)
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.
@@ -176,7 +212,11 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 		}); err != nil {
 			return provider.BootPlan{}, err
 		}
-		if err := requireChecksumEntry(shaSums, liveServerISO); err != nil {
+		isoName, err := targetISOName(plan.Target)
+		if err != nil {
+			return provider.BootPlan{}, err
+		}
+		if err := requireChecksumEntry(shaSums, isoName); err != nil {
 			return provider.BootPlan{}, err
 		}
 	}

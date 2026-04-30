@@ -15,8 +15,8 @@ examples, see `docs/release.md`.
 ## Static provider catalog
 
 Bootup embeds a default static catalog of concrete provider targets. The current
-default catalog lists Debian bookworm amd64 netboot, Debian trixie amd64
-netboot, and Ubuntu 26.04 amd64 netboot.
+default catalog lists Debian bullseye, bookworm, and trixie amd64 netboot plus
+Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot.
 
 Use `--catalog` to replace that embedded catalog with a local JSON file:
 
@@ -40,6 +40,21 @@ The file must be a schema version 1 static catalog:
         "architecture": "amd64",
         "kind": "installer"
       }
+    },
+    {
+      "id": "ubuntu-24044-amd64-netboot",
+      "provider_id": "ubuntu",
+      "name": "Ubuntu 24.04.4 amd64 netboot",
+      "catalog": {
+        "distribution": "ubuntu",
+        "release": "24.04.4",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://releases.ubuntu.com/24.04",
+        "iso_name": "ubuntu-24.04.4-live-server-amd64.iso"
+      }
     }
   ]
 }
@@ -48,7 +63,9 @@ The file must be a schema version 1 static catalog:
 The catalog is a replacement, not a merge. If the file contains only the target
 above, bootup exposes only that Debian target even though other providers may be
 compiled into the binary. Invalid catalogs fail startup before provider target
-discovery.
+discovery. `source.base_url` is an optional HTTP(S) source root for that target;
+`source.iso_name` is an optional pathless installer ISO filename used by
+providers such as Ubuntu.
 
 ## Provider runtime config
 
@@ -182,8 +199,9 @@ To attempt a real QEMU boot into Debian Installer:
 scripts/smoke-real-debian.sh /usr/share/keyrings/debian-archive-keyring.gpg
 ```
 
-The default provider set also lists Ubuntu 26.04 amd64 netboot. Its boot plan
-uses the official release netboot kernel and initrd:
+The default provider set also lists Ubuntu 24.04.4, 25.10, and 26.04 amd64
+netboot. The 26.04 boot plan uses these official release netboot artifacts by
+default:
 
 ```text
 https://releases.ubuntu.com/26.04/netboot/amd64/linux

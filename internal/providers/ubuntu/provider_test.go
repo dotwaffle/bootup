@@ -86,6 +86,38 @@ func TestProviderPlanResolvesReleaseURLs(t *testing.T) {
 	}
 }
 
+func TestProviderPlanResolvesTargetSourceURLs(t *testing.T) {
+	t.Parallel()
+
+	target := ubuntuTarget("24.04.4")
+	target.Source = provider.SourceEntry{
+		BaseURL: "https://releases.example/24.04/",
+		ISOName: "ubuntu-24.04.4-live-server-amd64.iso",
+	}
+	p := ubuntu.NewProvider(ubuntu.Config{
+		ReleaseURL: "https://mirror.example/26.04",
+		Targets:    []provider.Target{target},
+	})
+
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if plan.Kernel.URL != "https://releases.example/24.04/netboot/amd64/linux" {
+		t.Fatalf("kernel URL = %q", plan.Kernel.URL)
+	}
+	if plan.Initrd.URL != "https://releases.example/24.04/netboot/amd64/initrd" {
+		t.Fatalf("initrd URL = %q", plan.Initrd.URL)
+	}
+	if plan.Verification.ChecksumURL != "https://releases.example/24.04/SHA256SUMS" {
+		t.Fatalf("checksum URL = %q", plan.Verification.ChecksumURL)
+	}
+	if !strings.Contains(plan.Cmdline, "url=https://releases.example/24.04/ubuntu-24.04.4-live-server-amd64.iso") {
+		t.Fatalf("cmdline = %q, want source ISO URL", plan.Cmdline)
+	}
+}
+
 func TestFetchAndStageArtifactsAllowsHTTPSOnlyNetboot(t *testing.T) {
 	t.Parallel()
 
@@ -190,6 +222,52 @@ func TestFetchAndStageArtifactsVerifiesSignedMetadataAndArtifacts(t *testing.T) 
 	}
 }
 
+func TestFetchAndStageArtifactsUsesTargetSourceISOName(t *testing.T) {
+	t.Parallel()
+
+	kernel := []byte("kernel")
+	initrd := []byte("initrd")
+	isoSum := sha256.Sum256([]byte("iso"))
+	kernelSum := sha256.Sum256(kernel)
+	initrdSum := sha256.Sum256(initrd)
+	shaSums := fmt.Appendf(nil, "%x *ubuntu-24.04.4-live-server-amd64.iso\n", isoSum)
+	keyring, signature := signedSHA256Sums(t, shaSums)
+
+	client := &http.Client{Transport: responseMap{
+		"https://releases.example/24.04/SHA256SUMS":           shaSums,
+		"https://releases.example/24.04/SHA256SUMS.gpg":       signature,
+		"https://releases.example/24.04/netboot/amd64/linux":  kernel,
+		"https://releases.example/24.04/netboot/amd64/initrd": initrd,
+	}}
+	target := ubuntuTarget("24.04.4")
+	target.Source = provider.SourceEntry{
+		BaseURL: "https://releases.example/24.04",
+		ISOName: "ubuntu-24.04.4-live-server-amd64.iso",
+	}
+	p := ubuntu.NewProvider(ubuntu.Config{
+		Targets:      []provider.Target{target},
+		KernelSHA256: hex.EncodeToString(kernelSum[:]),
+		InitrdSHA256: hex.EncodeToString(initrdSum[:]),
+	})
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	staged, err := ubuntu.FetchAndStageArtifacts(context.Background(), ubuntu.FetchConfig{
+		Plan:       plan,
+		Client:     client,
+		Keyring:    bytes.NewReader(keyring),
+		StagingDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("fetch and stage: %v", err)
+	}
+	if filepath.Base(staged.Kernel.Path) != "linux" {
+		t.Fatalf("staged kernel path = %q, want linux", staged.Kernel.Path)
+	}
+}
+
 func TestProviderStageUsesConfiguredTrust(t *testing.T) {
 	t.Parallel()
 
@@ -282,4 +360,18 @@ func (m responseMap) RoundTrip(request *http.Request) (*http.Response, error) {
 		Header:     make(http.Header),
 		Request:    request,
 	}, nil
+}
+
+func ubuntuTarget(release string) provider.Target {
+	return provider.Target{
+		ID:         "ubuntu-" + strings.ReplaceAll(release, ".", "") + "-amd64-netboot",
+		ProviderID: "ubuntu",
+		Name:       "Ubuntu " + release + " amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "ubuntu",
+			Release:      release,
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
 }

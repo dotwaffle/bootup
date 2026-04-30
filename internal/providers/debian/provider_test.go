@@ -112,6 +112,29 @@ func TestProviderPlanResolvesConfiguredBookwormInstallerURLs(t *testing.T) {
 	}
 }
 
+func TestProviderPlanUsesTargetSourceBaseURL(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget("bookworm")
+	target.Source.BaseURL = "https://source.example/debian/"
+	p := debian.NewProvider(debian.Config{
+		MirrorURL: "https://mirror.example/debian",
+		Targets:   []provider.Target{target},
+	})
+
+	plan, err := p.Plan(context.Background(), target)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+
+	if plan.Kernel.URL != "https://source.example/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux" {
+		t.Fatalf("kernel URL = %q", plan.Kernel.URL)
+	}
+	if plan.Verification.MetadataURL != "https://source.example/debian/dists/bookworm/InRelease" {
+		t.Fatalf("metadata URL = %q", plan.Verification.MetadataURL)
+	}
+}
+
 func TestVerifyInReleaseReturnsTrustedPlaintext(t *testing.T) {
 	t.Parallel()
 

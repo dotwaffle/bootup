@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -30,6 +32,12 @@ type CatalogEntry struct {
 	Kind         string `json:"kind"`
 }
 
+// SourceEntry describes provider source metadata for a concrete boot target.
+type SourceEntry struct {
+	BaseURL string `json:"base_url,omitempty"`
+	ISOName string `json:"iso_name,omitempty"`
+}
+
 // Target describes an operating system installer or live environment that
 // bootup can prepare and hand off to.
 type Target struct {
@@ -37,6 +45,7 @@ type Target struct {
 	ProviderID string       `json:"provider_id"`
 	Name       string       `json:"name"`
 	Catalog    CatalogEntry `json:"catalog"`
+	Source     SourceEntry  `json:"source,omitzero"`
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.
@@ -172,6 +181,9 @@ func ValidateTarget(providerID string, target Target) error {
 	if err := validateCatalogEntry(target.ID, target.Catalog); err != nil {
 		return err
 	}
+	if err := validateSourceEntry(target.ID, target.Source); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -187,6 +199,33 @@ func validateCatalogEntry(targetID string, catalog CatalogEntry) error {
 	}
 	if strings.TrimSpace(catalog.Kind) == "" {
 		return fmt.Errorf("%w: target %s catalog kind is empty", ErrInvalidTarget, targetID)
+	}
+	return nil
+}
+
+func validateSourceEntry(targetID string, source SourceEntry) error {
+	if strings.TrimSpace(source.BaseURL) != source.BaseURL {
+		return fmt.Errorf("%w: target %s source base URL has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	if source.BaseURL != "" {
+		parsed, err := url.Parse(source.BaseURL)
+		if err != nil {
+			return fmt.Errorf("%w: target %s source base URL is invalid: %w", ErrInvalidTarget, targetID, err)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("%w: target %s source base URL must use http or https", ErrInvalidTarget, targetID)
+		}
+		if parsed.Host == "" {
+			return fmt.Errorf("%w: target %s source base URL must include host", ErrInvalidTarget, targetID)
+		}
+	}
+	if strings.TrimSpace(source.ISOName) != source.ISOName {
+		return fmt.Errorf("%w: target %s source ISO name has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	if source.ISOName != "" {
+		if strings.ContainsAny(source.ISOName, `/\`) || filepath.Base(source.ISOName) != source.ISOName {
+			return fmt.Errorf("%w: target %s source ISO name must be a filename", ErrInvalidTarget, targetID)
+		}
 	}
 	return nil
 }

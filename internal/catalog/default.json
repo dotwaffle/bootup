@@ -2,6 +2,17 @@
   "schema_version": 1,
   "targets": [
     {
+      "id": "debian-bullseye-amd64-netboot",
+      "provider_id": "debian",
+      "name": "Debian bullseye amd64 netboot",
+      "catalog": {
+        "distribution": "debian",
+        "release": "bullseye",
+        "architecture": "amd64",
+        "kind": "installer"
+      }
+    },
+    {
       "id": "debian-bookworm-amd64-netboot",
       "provider_id": "debian",
       "name": "Debian bookworm amd64 netboot",
@@ -24,6 +35,36 @@
       }
     },
     {
+      "id": "ubuntu-24044-amd64-netboot",
+      "provider_id": "ubuntu",
+      "name": "Ubuntu 24.04.4 amd64 netboot",
+      "catalog": {
+        "distribution": "ubuntu",
+        "release": "24.04.4",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://releases.ubuntu.com/24.04",
+        "iso_name": "ubuntu-24.04.4-live-server-amd64.iso"
+      }
+    },
+    {
+      "id": "ubuntu-2510-amd64-netboot",
+      "provider_id": "ubuntu",
+      "name": "Ubuntu 25.10 amd64 netboot",
+      "catalog": {
+        "distribution": "ubuntu",
+        "release": "25.10",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://releases.ubuntu.com/25.10",
+        "iso_name": "ubuntu-25.10-live-server-amd64.iso"
+      }
+    },
+    {
       "id": "ubuntu-2604-amd64-netboot",
       "provider_id": "ubuntu",
       "name": "Ubuntu 26.04 amd64 netboot",
@@ -32,6 +73,9 @@
         "release": "26.04",
         "architecture": "amd64",
         "kind": "installer"
+      },
+      "source": {
+        "iso_name": "ubuntu-26.04-live-server-amd64.iso"
       }
     }
   ]

@@ -2,6 +2,7 @@ package provider_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -131,6 +132,30 @@ func TestRegistryRejectsInvalidProviderTargets(t *testing.T) {
 				t.Fatalf("targets error = %v, want %v", err, provider.ErrInvalidTarget)
 			}
 		})
+	}
+}
+
+func TestTargetJSONOmitsZeroSource(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "debian-trixie-amd64-netboot",
+		ProviderID: "debian",
+		Name:       "Debian trixie amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "debian",
+			Release:      "trixie",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}
+
+	data, err := json.Marshal(target)
+	if err != nil {
+		t.Fatalf("marshal target: %v", err)
+	}
+	if string(data) != `{"id":"debian-trixie-amd64-netboot","provider_id":"debian","name":"Debian trixie amd64 netboot","catalog":{"distribution":"debian","release":"trixie","architecture":"amd64","kind":"installer"}}` {
+		t.Fatalf("target JSON = %s", data)
 	}
 }
 

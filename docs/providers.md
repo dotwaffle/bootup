@@ -11,6 +11,7 @@ Each static target carries typed catalog metadata:
 - release, for example `trixie` or `26.04`
 - architecture, currently `amd64`
 - kind, for example `installer`
+- optional source facts such as a target source URL or installer ISO filename
 
 The operator interfaces use that metadata for grouping and labels. Providers
 still own boot planning and artifact staging, so the catalog describes what can
@@ -24,8 +25,11 @@ not appear until bootup itself or future static catalog content is updated.
 
 Bootup embeds a default static catalog. The current default catalog includes:
 
+- `debian-bullseye-amd64-netboot`
 - `debian-bookworm-amd64-netboot`
 - `debian-trixie-amd64-netboot`
+- `ubuntu-24044-amd64-netboot`
+- `ubuntu-2510-amd64-netboot`
 - `ubuntu-2604-amd64-netboot`
 
 Operators can replace the embedded catalog with a local JSON file using
@@ -51,6 +55,21 @@ Catalog documents use schema version 1:
         "architecture": "amd64",
         "kind": "installer"
       }
+    },
+    {
+      "id": "ubuntu-24044-amd64-netboot",
+      "provider_id": "ubuntu",
+      "name": "Ubuntu 24.04.4 amd64 netboot",
+      "catalog": {
+        "distribution": "ubuntu",
+        "release": "24.04.4",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://releases.ubuntu.com/24.04",
+        "iso_name": "ubuntu-24.04.4-live-server-amd64.iso"
+      }
     }
   ]
 }
@@ -58,7 +77,9 @@ Catalog documents use schema version 1:
 
 The document is data only. It selects concrete targets for provider code that is
 already compiled into bootup; it cannot load provider plugins or executable
-policy.
+policy. `source.base_url` is an absolute HTTP(S) provider source root for that
+target, and `source.iso_name` is a pathless installer ISO filename used by
+providers that need one.
 
 ## Future mode: hosted static catalogs
 

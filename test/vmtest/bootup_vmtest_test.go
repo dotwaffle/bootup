@@ -44,6 +44,14 @@ func TestBootupListsDefaultCatalogTargets(t *testing.T) {
 		qemu.WithAppendKernel("console=ttyS0"),
 		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
 	)
+	if _, err := vm.Console.ExpectString("debian-bullseye-amd64-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian bullseye target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("debian/bullseye/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Debian bullseye catalog label: %v", err)
+	}
 	if _, err := vm.Console.ExpectString("debian-bookworm-amd64-netboot"); err != nil {
 		killAndWait(t, vm)
 		t.Fatalf("expect Debian bookworm target: %v", err)
@@ -60,13 +68,29 @@ func TestBootupListsDefaultCatalogTargets(t *testing.T) {
 		killAndWait(t, vm)
 		t.Fatalf("expect Debian trixie catalog label: %v", err)
 	}
+	if _, err := vm.Console.ExpectString("ubuntu-24044-amd64-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Ubuntu 24.04.4 target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("ubuntu/24.04.4/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Ubuntu 24.04.4 catalog label: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("ubuntu-2510-amd64-netboot"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Ubuntu 25.10 target: %v", err)
+	}
+	if _, err := vm.Console.ExpectString("ubuntu/25.10/amd64/installer"); err != nil {
+		killAndWait(t, vm)
+		t.Fatalf("expect Ubuntu 25.10 catalog label: %v", err)
+	}
 	if _, err := vm.Console.ExpectString("ubuntu-2604-amd64-netboot"); err != nil {
 		killAndWait(t, vm)
-		t.Fatalf("expect Ubuntu target: %v", err)
+		t.Fatalf("expect Ubuntu 26.04 target: %v", err)
 	}
 	if _, err := vm.Console.ExpectString("ubuntu/26.04/amd64/installer"); err != nil {
 		killAndWait(t, vm)
-		t.Fatalf("expect Ubuntu catalog label: %v", err)
+		t.Fatalf("expect Ubuntu 26.04 catalog label: %v", err)
 	}
 	killAndWait(t, vm)
 }

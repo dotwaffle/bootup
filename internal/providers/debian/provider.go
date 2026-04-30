@@ -105,8 +105,9 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 	if architecture != "amd64" {
 		return provider.BootPlan{}, fmt.Errorf("unsupported Debian architecture %q for target %s", architecture, selected.ID)
 	}
+	baseURL := targetBaseURL(selected, p.mirrorURL)
 
-	imagesBase := fmt.Sprintf("%s/dists/%s/main/installer-%s/current/images", p.mirrorURL, release, architecture)
+	imagesBase := fmt.Sprintf("%s/dists/%s/main/installer-%s/current/images", baseURL, release, architecture)
 	installerBase := imagesBase + "/netboot"
 	return provider.BootPlan{
 		Target: selected,
@@ -120,10 +121,17 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 		},
 		Cmdline: "priority=low console=ttyS0",
 		Verification: provider.Verification{
-			MetadataURL: fmt.Sprintf("%s/dists/%s/InRelease", p.mirrorURL, release),
+			MetadataURL: fmt.Sprintf("%s/dists/%s/InRelease", baseURL, release),
 			ChecksumURL: imagesBase + "/SHA256SUMS",
 		},
 	}, nil
+}
+
+func targetBaseURL(target provider.Target, fallback string) string {
+	if target.Source.BaseURL != "" {
+		return strings.TrimRight(target.Source.BaseURL, "/")
+	}
+	return fallback
 }
 
 func (p *Provider) target(id string) (provider.Target, bool) {

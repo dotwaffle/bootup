@@ -92,15 +92,15 @@ scripts/check-kernel-config.sh /path/to/.config
 ```
 
 Stage a target non-interactively. Providers with stronger distribution trust
-requirements must be configured by the application code that compiles them in:
+requirements can be configured through a provider runtime config file:
 
 ```sh
-bootup --mode=stage-target --target=debian-trixie-amd64-netboot
+bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
 ```
 
 Ubuntu 26.04 netboot can be staged from the official HTTPS release URLs by
-default. Custom builds can additionally provide Ubuntu release key material and
-pinned netboot artifact hashes.
+default. Operators can additionally provide Ubuntu release key material and
+pinned netboot artifact hashes through `--provider-config`.
 
 Run the serial selection flow in a Debian-capable build:
 
@@ -115,16 +115,8 @@ non-terminal stdio. It falls back to the plain `target> ` prompt for redirected
 input or automation. Use `--ui=plain` to force the fallback or `--ui=rich` to
 require the rich interface.
 
-Build a local single-binary Debian-capable image by generating ignored Go
-source from an OpenPGP public keyring, then building normally:
-
-```sh
-go run ./cmd/bootup-keyring-source -o internal/trustmaterial/debian_archive_keyring_generated.go /usr/share/keyrings/debian-archive-keyring.gpg
-go build -trimpath -o /tmp/bootup ./cmd/bootup
-```
-
-Build a Debian-capable initramfs without leaving generated keyring source in the
-worktree:
+Build a Debian-capable initramfs by including an operator-supplied OpenPGP
+public keyring and generated provider config in the initramfs:
 
 ```sh
 scripts/build-debian-initramfs.sh /usr/share/keyrings/debian-archive-keyring.gpg

@@ -7,9 +7,38 @@ staging, and kexec handoff.
 The initramfs build keeps bootup's runtime payload to a single u-root
 busybox-style binary. TLS roots are compiled into that binary through
 `github.com/breml/rootcerts`; distro archive keyrings are not packaged by
-default and must be supplied explicitly to the reusable verification hooks.
+default and must be supplied explicitly through provider runtime configuration
+or reusable verification hooks.
 For downloaded release artifact names, checksums, manifests, and stage-0 usage
 examples, see `docs/release.md`.
+
+## Provider runtime config
+
+Use `--provider-config` to point bootup at a JSON file that configures
+compiled-in providers before target discovery. Provider entries are keyed by
+provider ID, so each distribution source can carry its own operator-selected
+trust material without embedding distro keyrings in the default bootup binary:
+
+```json
+{
+  "providers": {
+    "debian": {
+      "mirror_url": "https://deb.debian.org/debian",
+      "keyring_path": "/etc/bootup/trust/debian-archive-keyring.gpg"
+    },
+    "ubuntu": {
+      "release_url": "https://releases.ubuntu.com/26.04",
+      "keyring_path": "/etc/bootup/trust/ubuntu-release-keyring.gpg",
+      "kernel_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "initrd_sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    }
+  }
+}
+```
+
+Unknown provider IDs, unreadable keyring paths, malformed JSON, and invalid
+hash pins fail startup before provider target discovery. Use absolute paths for
+keyrings in initramfs and ISO environments.
 
 ## QEMU
 
@@ -72,12 +101,25 @@ Current local size snapshot from the same worktree:
 | Current menu raw initramfs | 11,273,160 | 11M |
 | Current menu zstd initramfs | 3,547,797 | 3.4M |
 
-For a Debian-capable single binary, generate ignored Go source from a local
-OpenPGP public keyring before building the initramfs:
+For a Debian-capable initramfs, include a local OpenPGP public keyring and a
+provider config file in the initramfs:
 
 ```sh
-go run ./cmd/bootup-keyring-source -o internal/trustmaterial/debian_archive_keyring_generated.go /usr/share/keyrings/debian-archive-keyring.gpg
-scripts/build-initramfs.sh dist/bootup-initramfs.cpio 'bootup --mode=menu --prepare-runtime' ''
+cat >/tmp/bootup-providers.json <<'EOF'
+{
+  "providers": {
+    "debian": {
+      "keyring_path": "/etc/bootup/trust/debian-archive-keyring.gpg"
+    }
+  }
+}
+EOF
+
+scripts/build-initramfs.sh \
+  dist/bootup-initramfs.cpio \
+  'bootup --mode=menu --prepare-runtime --provider-config=/etc/bootup/providers.json' \
+  '' \
+  '/tmp/bootup-providers.json:/etc/bootup/providers.json,/usr/share/keyrings/debian-archive-keyring.gpg:/etc/bootup/trust/debian-archive-keyring.gpg'
 ```
 
 `--prepare-runtime` does not run a user-space DHCP client. Network addressing
@@ -89,8 +131,8 @@ by the kernel are exposed through `/proc/net/pnp`; bootup copies those hints
 into `/etc/resolv.conf` when that file is absent. See `docs/kernel.md` for the
 kernel config fragment and validator.
 
-The helper below performs the same build and removes the ignored generated
-source after the initramfs has been created:
+The helper below performs the same build by generating a temporary provider
+config and including the chosen keyring as an initramfs file:
 
 ```sh
 scripts/build-debian-initramfs.sh /usr/share/keyrings/debian-archive-keyring.gpg
@@ -179,7 +221,7 @@ It requires `grub-mkrescue`, `xorriso`, and GRUB's x86_64 EFI modules from
 local smoke artifact.
 
 For a Debian-capable ISO, first build an initramfs with caller-supplied Debian
-archive trust material, then pass it to the ISO builder:
+archive trust material and provider config, then pass it to the ISO builder:
 
 ```sh
 scripts/build-debian-initramfs.sh /path/to/debian-archive-keyring.gpg dist/bootup-custom-initramfs.cpio

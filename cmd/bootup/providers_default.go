@@ -6,18 +6,24 @@ import (
 	"fmt"
 
 	"github.com/dotwaffle/bootup/internal/provider"
+	"github.com/dotwaffle/bootup/internal/providerconfig"
 	"github.com/dotwaffle/bootup/internal/providers/debian"
 	"github.com/dotwaffle/bootup/internal/providers/ubuntu"
-	"github.com/dotwaffle/bootup/internal/trustmaterial"
 )
 
-func registerProviders(registry *provider.Registry) error {
+func registerProviders(registry *provider.Registry, config providerconfig.Config) error {
 	if err := registry.Register(debian.NewProvider(debian.Config{
-		Keyring: trustmaterial.DebianArchiveKeyring(),
+		MirrorURL: config.Debian.MirrorURL,
+		Keyring:   config.Debian.Keyring,
 	})); err != nil {
 		return fmt.Errorf("register Debian provider: %w", err)
 	}
-	if err := registry.Register(ubuntu.NewProvider(ubuntu.Config{})); err != nil {
+	if err := registry.Register(ubuntu.NewProvider(ubuntu.Config{
+		ReleaseURL:   config.Ubuntu.ReleaseURL,
+		Keyring:      config.Ubuntu.Keyring,
+		KernelSHA256: config.Ubuntu.KernelSHA256,
+		InitrdSHA256: config.Ubuntu.InitrdSHA256,
+	})); err != nil {
 		return fmt.Errorf("register Ubuntu provider: %w", err)
 	}
 	return nil

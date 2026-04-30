@@ -11,6 +11,7 @@ import (
 	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
 	"github.com/dotwaffle/bootup/internal/provider"
+	"github.com/dotwaffle/bootup/internal/providerconfig"
 	"github.com/dotwaffle/bootup/internal/runtime"
 
 	_ "github.com/breml/rootcerts"
@@ -31,10 +32,20 @@ func run(ctx context.Context, args []string) error {
 	uiMode := flags.String("ui", string(app.UIModeAuto), "menu UI mode: auto, rich, plain")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
+	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	hold := flags.Bool("hold", false, "wait after the selected mode completes")
 	prepareRuntime := flags.Bool("prepare-runtime", false, "validate network, CA roots, and time before provider operations")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
+	}
+
+	var providerConfig providerconfig.Config
+	if *providerConfigPath != "" {
+		config, err := providerconfig.LoadFile(*providerConfigPath)
+		if err != nil {
+			return fmt.Errorf("load provider config: %w", err)
+		}
+		providerConfig = config
 	}
 
 	var preparers []app.Preparer
@@ -49,7 +60,7 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	registry := provider.NewRegistry()
-	if err := registerProviders(registry); err != nil {
+	if err := registerProviders(registry, providerConfig); err != nil {
 		return err
 	}
 

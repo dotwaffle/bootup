@@ -90,7 +90,7 @@ NET_MODULE="$(modinfo -n e1000)"
 scripts/build-debian-initramfs.sh \
   /usr/share/keyrings/debian-archive-keyring.gpg \
   dist/bootup-debian-smoke-initramfs.cpio \
-  "gosh -c 'insmod ${NET_MODULE} || true; ip link set eth0 up; ip addr add 10.0.2.15/24 dev eth0 || true; ip route add default via 10.0.2.2 dev eth0 || true; echo nameserver 10.0.2.3 >/etc/resolv.conf; bootup --mode=boot-target --target=debian-trixie-amd64-netboot --staging-dir=/tmp/bootup'" \
+  "gosh -c 'insmod ${NET_MODULE} || true; ip link set eth0 up; ip addr add 10.0.2.15/24 dev eth0 || true; ip route add default via 10.0.2.2 dev eth0 || true; echo nameserver 10.0.2.3 >/etc/resolv.conf; bootup --mode=boot-target --target=debian-trixie-amd64-netboot --staging-dir=/tmp/bootup --provider-config=/etc/bootup/providers.json'" \
   "${NET_MODULE}"
 ```
 

@@ -3,8 +3,8 @@
 Bootup releases publish an amd64 artifact set for the default provider-neutral
 stage-1 environment. The default release initramfs and ISO do not embed
 distribution-specific archive keyrings or trust bundles. Providers that need
-stronger validation consume operator-supplied trust material through provider or
-application configuration.
+stronger validation consume operator-supplied trust material through
+`--provider-config` or application configuration.
 
 ## Artifact Set
 

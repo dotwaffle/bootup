@@ -75,23 +75,6 @@ kernel_version_from_path() {
 	exit 1
 }
 
-ensure_no_generated_trust_material() {
-	local trust_dir="$1"
-	local -a generated=()
-
-	if [[ -d "${trust_dir}" ]]; then
-		mapfile -t generated < <(find "${trust_dir}" -maxdepth 1 -type f -name '*generated*.go' | sort)
-	fi
-	if [[ "${#generated[@]}" -eq 0 ]]; then
-		return
-	fi
-
-	printf 'generated trust material is present; default release artifacts must not embed it:\n' >&2
-	printf '  %s\n' "${generated[@]}" >&2
-	printf 'remove generated trust-material source before building the default release\n' >&2
-	exit 1
-}
-
 sha256_file() {
 	sha256sum "$1" | awk '{print $1}'
 }
@@ -148,8 +131,6 @@ out_dir="$(cd -- "${out_dir}" && pwd)"
 work_dir="$(cd -- "${work_dir}" && pwd)"
 kernel_dir="$(cd -- "${kernel_dir}" && pwd)"
 find "${out_dir}" -maxdepth 1 -type f -name 'bootup-*' -delete
-
-ensure_no_generated_trust_material "${repo_root}/internal/trustmaterial"
 
 binary_name="bootup-${release_version}-linux-${arch}"
 binary_path="${out_dir}/${binary_name}"

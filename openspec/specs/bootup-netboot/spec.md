@@ -84,6 +84,12 @@ Bootup SHALL verify downloaded target boot artifacts before staging them for
 kexec when provider verification material is available, and SHALL otherwise
 constrain explicitly documented HTTPS-only provider paths to HTTPS URLs.
 
+#### Scenario: Runtime config supplies provider verification material
+- **WHEN** bootup starts with provider runtime configuration containing
+  verification material for a compiled-in provider
+- **THEN** bootup SHALL pass that verification material to provider boot
+  planning and staging before artifact retrieval
+
 #### Scenario: Debian metadata verifies successfully
 - **WHEN** the Debian provider downloads archive metadata and installer
   checksum data

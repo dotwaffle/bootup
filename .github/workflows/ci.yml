@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Check scripts
-        run: bash -n scripts/build-initramfs.sh scripts/run-qemu.sh
+        run: bash -n scripts/build-initramfs.sh scripts/build-kernel.sh scripts/run-qemu.sh test/vmtest/run
 
       - name: Lint
         uses: golangci/golangci-lint-action@v9.2.0

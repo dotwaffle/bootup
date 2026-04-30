@@ -9,6 +9,14 @@ import (
 	"github.com/hugelgupf/vmtest/qemu"
 )
 
+func killAndWait(t *testing.T, vm *qemu.VM) {
+	t.Helper()
+	if err := vm.Kill(); err != nil {
+		t.Fatalf("kill VM: %v", err)
+	}
+	_ = vm.Wait()
+}
+
 func TestBootupReachesTextInterface(t *testing.T) {
 	qemu.SkipWithoutQEMU(t)
 	if os.Getenv("VMTEST_INITRAMFS") == "" {
@@ -20,12 +28,10 @@ func TestBootupReachesTextInterface(t *testing.T) {
 		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
 	)
 	if _, err := vm.Console.ExpectString("bootup targets"); err != nil {
-		vm.Kill()
+		killAndWait(t, vm)
 		t.Fatalf("expect text interface: %v", err)
 	}
-	if err := vm.Kill(); err != nil {
-		t.Fatalf("kill VM: %v", err)
-	}
+	killAndWait(t, vm)
 }
 
 func TestBootupListsDebianProvider(t *testing.T) {
@@ -39,12 +45,10 @@ func TestBootupListsDebianProvider(t *testing.T) {
 		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
 	)
 	if _, err := vm.Console.ExpectString("debian-trixie-amd64-netboot"); err != nil {
-		vm.Kill()
+		killAndWait(t, vm)
 		t.Fatalf("expect Debian target: %v", err)
 	}
-	if err := vm.Kill(); err != nil {
-		t.Fatalf("kill VM: %v", err)
-	}
+	killAndWait(t, vm)
 }
 
 func TestBootupStagesDebianFixture(t *testing.T) {
@@ -60,16 +64,14 @@ func TestBootupStagesDebianFixture(t *testing.T) {
 		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
 	)
 	if _, err := vm.Console.ExpectString("kernel\t/tmp/bootup/linux"); err != nil {
-		vm.Kill()
+		killAndWait(t, vm)
 		t.Fatalf("expect staged kernel: %v", err)
 	}
 	if _, err := vm.Console.ExpectString("initrd\t/tmp/bootup/initrd.gz"); err != nil {
-		vm.Kill()
+		killAndWait(t, vm)
 		t.Fatalf("expect staged initrd: %v", err)
 	}
-	if err := vm.Kill(); err != nil {
-		t.Fatalf("kill VM: %v", err)
-	}
+	killAndWait(t, vm)
 }
 
 func TestBootupAttemptsRealDebianKexec(t *testing.T) {
@@ -86,10 +88,8 @@ func TestBootupAttemptsRealDebianKexec(t *testing.T) {
 		qemu.LogSerialByLine(qemu.DefaultPrint("bootup", t.Logf)),
 	)
 	if _, err := vm.Console.ExpectString("[loading] Debian trixie amd64 netboot"); err != nil {
-		vm.Kill()
+		killAndWait(t, vm)
 		t.Fatalf("expect kexec loading status: %v", err)
 	}
-	if err := vm.Kill(); err != nil {
-		t.Fatalf("kill VM: %v", err)
-	}
+	killAndWait(t, vm)
 }

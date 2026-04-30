@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+latest_stable_kernel() {
+	if ! command -v curl >/dev/null 2>&1; then
+		printf 'curl not found; install curl or set BOOTUP_KERNEL_VERSION\n' >&2
+		exit 1
+	fi
+	if ! command -v jq >/dev/null 2>&1; then
+		printf 'jq not found; install jq or set BOOTUP_KERNEL_VERSION\n' >&2
+		exit 1
+	fi
+
+	curl --fail --silent --show-error --location https://www.kernel.org/releases.json \
+		| jq --exit-status --raw-output '.latest_stable.version'
+}
+
+usage() {
+	printf 'usage: %s [--] [go test args...]\n' "$0" >&2
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+	usage
+	exit 0
+fi
+
+if [[ "${1:-}" == "--" ]]; then
+	shift
+fi
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cache_root="${BOOTUP_VMTEST_CACHE:-${XDG_CACHE_HOME:-"${HOME}/.cache"}/bootup/vmtest}"
+kernel_version="${BOOTUP_KERNEL_VERSION:-$(latest_stable_kernel)}"
+if [[ ! "${kernel_version}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+	printf 'bad kernel version: %s\n' "${kernel_version}" >&2
+	exit 1
+fi
+mkdir -p "${cache_root}"
+cache_root="$(cd -- "${cache_root}" && pwd)"
+
+kernel_path="${cache_root}/linux-${kernel_version}-bootup-amd64-bzImage"
+config_path="${cache_root}/linux-${kernel_version}-bootup-amd64.config"
+
+if [[ -z "${VMTEST_KERNEL:-}" ]]; then
+	if [[ ! -f "${kernel_path}" ]]; then
+		tmp="$(mktemp -d "${cache_root}/kernel.XXXXXX")"
+		cleanup() {
+			rm -rf "${tmp}"
+		}
+		trap cleanup EXIT
+
+		BOOTUP_KERNEL_VERSION="${kernel_version}" \
+			"${repo_root}/scripts/build-kernel.sh" "${tmp}"
+		install -m 0644 \
+			"${tmp}/linux-${kernel_version}-bootup-amd64-bzImage" \
+			"${kernel_path}"
+		install -m 0644 \
+			"${tmp}/linux-${kernel_version}-bootup-amd64.config" \
+			"${config_path}"
+
+		trap - EXIT
+		cleanup
+	fi
+	export VMTEST_KERNEL="${kernel_path}"
+fi
+
+if [[ -z "${VMTEST_INITRAMFS:-}" ]]; then
+	initramfs="${repo_root}/dist/bootup-initramfs.cpio.zst"
+	if [[ ! -f "${initramfs}" ]]; then
+		"${repo_root}/scripts/build-initramfs.sh" \
+			"${repo_root}/dist/bootup-initramfs.cpio" \
+			'bootup --hold' \
+			''
+	fi
+	export VMTEST_INITRAMFS="${initramfs}"
+fi
+
+if [[ -z "${VMTEST_QEMU:-}" ]]; then
+	qemu="$(command -v qemu-system-x86_64 || true)"
+	if [[ -z "${qemu}" ]]; then
+		printf 'qemu-system-x86_64 not found; install QEMU or set VMTEST_QEMU\n' >&2
+		exit 1
+	fi
+
+	kvm_arg=()
+	if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+		kvm_arg=(-enable-kvm)
+	fi
+	export VMTEST_QEMU="${qemu} ${kvm_arg[*]} -m 1G"
+fi
+
+export VMTEST_ARCH="${VMTEST_ARCH:-amd64}"
+
+exec go test -tags vmtest -count=1 -v ./test/vmtest "$@"

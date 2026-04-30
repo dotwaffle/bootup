@@ -46,6 +46,21 @@ Run the tagged vmtest package compile/skip path:
 go test -tags vmtest ./test/vmtest
 ```
 
+Run vmtest with an auto-built cached latest-stable kernel:
+
+```sh
+test/vmtest/run
+```
+
+Build a purpose-built bootup kernel with Docker:
+
+```sh
+scripts/build-kernel.sh
+```
+
+The kernel builder follows kernel.org's latest stable release by default. Set
+`BOOTUP_KERNEL_VERSION` to pin a specific upstream release.
+
 Build an initramfs:
 
 ```sh

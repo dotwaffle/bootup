@@ -14,9 +14,27 @@ environment with kernel-provided network configuration.
 - **THEN** the repository SHALL identify the required built-in IPv4 DHCP
   autoconfiguration and NIC driver options for `ip=::::::dhcp`
 
+#### Scenario: Kernel boot defaults are documented
+- **WHEN** an operator builds a bootup-oriented kernel
+- **THEN** the repository SHALL identify kernel image compression, serial and
+  framebuffer console defaults, kexec, panic reboot, and initramfs
+  decompression options required for bootup
+
+#### Scenario: Local media chainload support is documented
+- **WHEN** an operator builds a bootup-oriented kernel for systems with local
+  disks or removable media
+- **THEN** the repository SHALL identify built-in partition, storage,
+  keyboard, ext4, and VFAT options needed to inspect common local boot media
+
 #### Scenario: Kernel binaries are not committed
 - **WHEN** the repository provides kernel build guidance
 - **THEN** it SHALL avoid committing compiled kernel images or module trees
+
+#### Scenario: Latest stable kernel can be built
+- **WHEN** an operator runs the repository kernel build helper without a pinned
+  kernel version
+- **THEN** the helper SHALL query kernel.org release metadata and build the
+  latest stable upstream Linux release
 
 #### Scenario: Kernel config is validated locally
 - **WHEN** an operator points the validation helper at a kernel config file

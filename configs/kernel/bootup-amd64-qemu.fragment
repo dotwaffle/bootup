@@ -1,7 +1,27 @@
-# Minimal bootup-oriented amd64/QEMU kernel fragment.
+# Bootup-oriented amd64 kernel fragment.
 #
 # This is not a complete defconfig. Merge it into a normal x86_64 baseline
 # with scripts/kconfig/merge_config.sh, then review the resulting .config.
+
+# Keep the kernel image itself compact.
+CONFIG_KERNEL_ZSTD=y
+# CONFIG_WERROR is not set
+
+# Minimal kernel features needed for Go/u-root userspace.
+CONFIG_64BIT=y
+CONFIG_BINFMT_ELF=y
+CONFIG_BLOCK=y
+CONFIG_EPOLL=y
+CONFIG_FUTEX=y
+CONFIG_PRINTK=y
+CONFIG_TTY=y
+
+# Provide useful defaults even when a stage-0 loader supplies no command line.
+# Keep both VGA and serial consoles so bare-metal monitors and serial/IPMI users
+# can see boot progress. Do not set CONFIG_CMDLINE_OVERRIDE; loaders should
+# still be able to append or replace policy for a deployment.
+CONFIG_CMDLINE_BOOL=y
+CONFIG_CMDLINE="console=tty0 console=ttyS0,115200n8 earlyprintk=ttyS0,115200 panic=30 ip=::::::dhcp"
 
 # Boot an initramfs and expose normal early userspace filesystems.
 CONFIG_BLK_DEV_INITRD=y
@@ -12,14 +32,56 @@ CONFIG_SYSFS=y
 CONFIG_TMPFS=y
 
 # Bootup hands off to the selected target with kexec.
+CONFIG_CRYPTO=y
+CONFIG_CRYPTO_SHA256=y
 CONFIG_KEXEC=y
 CONFIG_KEXEC_FILE=y
+CONFIG_RELOCATABLE=y
+
+# Serial console support for QEMU, IPMI/KVM, and real rack hardware.
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
+CONFIG_SERIAL_8250_PCI=y
+CONFIG_EARLY_PRINTK=y
+
+# Firmware-provided framebuffer and local console support for physical monitors.
+CONFIG_SYSFB=y
+CONFIG_FB=y
+# Keep the smaller fbdev simple framebuffer path for now. On modern kernels
+# the DRM simple driver conflicts with it.
+# CONFIG_DRM_SIMPLEDRM is not set
+CONFIG_FB_SIMPLE=y
+CONFIG_FB_EFI=y
+CONFIG_FB_VESA=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_VGA_CONSOLE=y
+CONFIG_FONT_8x16=y
+
+# Local keyboard support for monitor-attached machines.
+CONFIG_INPUT=y
+CONFIG_INPUT_KEYBOARD=y
+CONFIG_KEYBOARD_ATKBD=y
+CONFIG_SERIO=y
+CONFIG_SERIO_I8042=y
+CONFIG_SERIO_LIBPS2=y
+CONFIG_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_USB_HID=y
+
+# UEFI boot and GPT support.
+CONFIG_EFI=y
+CONFIG_EFI_STUB=y
+CONFIG_EFI_PARTITION=y
+CONFIG_MSDOS_PARTITION=y
 
 # Kernel-side IPv4 autoconfiguration for ip=::::::dhcp.
 CONFIG_NET=y
 CONFIG_NETDEVICES=y
 CONFIG_ETHERNET=y
 CONFIG_INET=y
+CONFIG_PACKET=y
+CONFIG_UNIX=y
+CONFIG_IPV6=y
 CONFIG_IP_PNP=y
 CONFIG_IP_PNP_DHCP=y
 
@@ -30,6 +92,50 @@ CONFIG_E1000=y
 CONFIG_VIRTIO=y
 CONFIG_VIRTIO_PCI=y
 CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_CONSOLE=y
+CONFIG_HW_RANDOM=y
+CONFIG_HW_RANDOM_VIRTIO=y
+
+# Common local disk paths for chainloading kernels from attached storage.
+CONFIG_SCSI=y
+CONFIG_BLK_DEV_SD=y
+CONFIG_ATA=y
+CONFIG_SATA_AHCI=y
+CONFIG_ATA_PIIX=y
+CONFIG_ATA_GENERIC=y
+CONFIG_BLK_DEV_NVME=y
+CONFIG_USB=y
+CONFIG_USB_XHCI_HCD=y
+CONFIG_USB_XHCI_PCI=y
+CONFIG_USB_EHCI_HCD=y
+CONFIG_USB_OHCI_HCD=y
+CONFIG_USB_OHCI_HCD_PCI=y
+CONFIG_USB_UHCI_HCD=y
+CONFIG_USB_STORAGE=y
+
+# Common local filesystems used by Linux installs and EFI system partitions.
+CONFIG_EXT4_FS=y
+CONFIG_EXT4_USE_FOR_EXT2=y
+CONFIG_JBD2=y
+CONFIG_CRC16=y
+CONFIG_FAT_FS=y
+CONFIG_MSDOS_FS=y
+CONFIG_VFAT_FS=y
+CONFIG_FAT_DEFAULT_CODEPAGE=437
+CONFIG_FAT_DEFAULT_IOCHARSET="iso8859-1"
+CONFIG_NLS=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ISO8859_1=y
+
+# Useful local/VM attachment points for tests and diagnostics.
+CONFIG_BLK_DEV_LOOP=y
+CONFIG_MISC_FILESYSTEMS=y
+CONFIG_SQUASHFS=y
+CONFIG_NET_9P=y
+CONFIG_NET_9P_VIRTIO=y
+CONFIG_9P_FS=y
+CONFIG_DMI_SYSFS=y
 
 # The repository builds zstd-compressed initramfs images by default.
 CONFIG_RD_ZSTD=y

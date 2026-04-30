@@ -20,6 +20,34 @@ go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
 The tests expect the VM to reach the serial text interface and list the Debian
 trixie amd64 provider target.
 
+The repository wrapper builds a default initramfs when needed, queries
+kernel.org for the latest stable Linux release, builds and caches the matching
+bootup kernel, and runs the tagged VM tests:
+
+```sh
+test/vmtest/run
+```
+
+Use `BOOTUP_KERNEL_VERSION` to pin a specific upstream kernel version, or
+`BOOTUP_VMTEST_CACHE` to change the cache directory.
+
+Build a purpose-built bootup kernel for vmtest/QEMU with Docker:
+
+```sh
+scripts/build-kernel.sh
+```
+
+Use its output as `VMTEST_KERNEL` or `BOOTUP_KERNEL`:
+
+```sh
+VMTEST_KERNEL="$(ls -1 dist/kernel/linux-*-bootup-amd64-bzImage | tail -n 1)" \
+go run github.com/hugelgupf/vmtest/tools/runvmtest@latest -- \
+  go test -tags vmtest ./test/vmtest
+```
+
+The exact version in the output path follows kernel.org's latest stable release
+unless `BOOTUP_KERNEL_VERSION` is set.
+
 Build a second hermetic fixture initramfs that selects Debian and stages signed
 fixture artifacts through the real Debian provider code:
 

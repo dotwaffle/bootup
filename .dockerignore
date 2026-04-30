@@ -1,0 +1,9 @@
+.git
+.codex
+dist
+tmp
+*.cpio
+*.cpio.zst
+*.img
+*.iso
+*.log

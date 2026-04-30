@@ -3,7 +3,6 @@
 ## Purpose
 Define bootup's static catalog document sources for concrete provider targets,
 including the embedded default catalog and local replacement catalogs.
-
 ## Requirements
 ### Requirement: Static catalog document source
 Bootup SHALL source concrete static provider targets from a versioned static
@@ -18,6 +17,11 @@ catalog document.
 - **WHEN** bootup starts with a local catalog path
 - **THEN** bootup SHALL load that catalog document instead of the embedded
   static catalog document
+
+#### Scenario: Catalog source metadata is loaded
+- **WHEN** a static catalog target includes optional source metadata
+- **THEN** bootup SHALL pass that source metadata to the compiled-in provider
+  selected for the target
 
 #### Scenario: Catalog source is data only
 - **WHEN** bootup loads a static catalog document
@@ -37,6 +41,10 @@ Bootup SHALL validate static catalog documents before provider target discovery.
   distribution, release, architecture, or target kind
 - **THEN** bootup SHALL reject the catalog before registering provider targets
 
+#### Scenario: Catalog target source metadata is invalid
+- **WHEN** a catalog target includes malformed source metadata
+- **THEN** bootup SHALL reject the catalog before registering provider targets
+
 #### Scenario: Catalog target IDs collide
 - **WHEN** a catalog document contains duplicate target IDs
 - **THEN** bootup SHALL reject the catalog before registering provider targets
@@ -54,10 +62,20 @@ Bootup SHALL validate static catalog documents before provider target discovery.
 Bootup SHALL include a default static catalog with the initial compiled-in
 provider target set.
 
+#### Scenario: Debian bullseye target is in default catalog
+- **WHEN** bootup starts with the default static catalog
+- **THEN** it SHALL expose Debian bullseye amd64 netboot as a selectable static
+  target
+
 #### Scenario: Debian bookworm target is in default catalog
 - **WHEN** bootup starts with the default static catalog
 - **THEN** it SHALL expose Debian bookworm amd64 netboot as a selectable static
   target
+
+#### Scenario: Ubuntu point release targets are in default catalog
+- **WHEN** bootup starts with the default static catalog
+- **THEN** it SHALL expose Ubuntu 24.04.4 amd64 netboot, Ubuntu 25.10 amd64
+  netboot, and Ubuntu 26.04 amd64 netboot as selectable static targets
 
 #### Scenario: Existing default targets remain in default catalog
 - **WHEN** bootup starts with the default static catalog
@@ -77,3 +95,4 @@ of the implemented static catalog source.
 - **WHEN** bootup lists targets from a static catalog document
 - **THEN** it SHALL NOT discover new distro releases, architectures, install
   options, end-of-life status, or script-driven boot policy at runtime
+

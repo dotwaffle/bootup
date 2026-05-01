@@ -659,6 +659,9 @@ func TestRunMenuRejectsForcedRichUIWithoutTerminal(t *testing.T) {
 
 func TestRunRichMenuSelectsTargetThroughPTY(t *testing.T) {
 	t.Parallel()
+	if raceDetectorEnabled {
+		t.Skip("Bubble Tea's Linux cancelreader races during PTY shutdown under -race")
+	}
 
 	targets := []provider.Target{debianTarget(), ubuntuTarget()}
 	staged := provider.BootPlan{

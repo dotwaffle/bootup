@@ -87,14 +87,16 @@ func TestParseValidatesAndFiltersStaticCatalog(t *testing.T) {
 func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}
 
 	var ids []string
-	for _, target := range append(append(doc.Targets("debian"), doc.Targets("ubuntu")...), doc.Targets("fedora")...) {
-		ids = append(ids, target.ID)
+	for _, providerID := range []string{"debian", "ubuntu", "fedora", "linux", "local"} {
+		for _, target := range doc.Targets(providerID) {
+			ids = append(ids, target.ID)
+		}
 	}
 	for _, want := range []string{
 		"debian-bullseye-amd64-netboot",
@@ -106,6 +108,11 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		"ubuntu-2604-amd64-netboot",
 		"fedora-43-amd64-server-netboot",
 		"fedora-44-amd64-server-netboot",
+		"local-disk-auto",
+		"opensuse-leap-160-amd64-netboot",
+		"archlinux-latest-amd64-netboot",
+		"gparted-live-1813-amd64",
+		"memtest86plus-800-amd64",
 	} {
 		if !slices.Contains(ids, want) {
 			t.Fatalf("default catalog IDs = %v, want %s", ids, want)
@@ -124,6 +131,89 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		}
 	}
 	t.Fatalf("default Ubuntu targets = %#v, want 24.04.4 sourceful target", ubuntuTargets)
+}
+
+func TestLoadDefaultIncludesGenericLinuxSourceTargets(t *testing.T) {
+	t.Parallel()
+
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	if err != nil {
+		t.Fatalf("load default catalog: %v", err)
+	}
+
+	linuxTargets := doc.Targets("linux")
+	for _, target := range linuxTargets {
+		if target.ID != "opensuse-leap-160-amd64-netboot" {
+			continue
+		}
+		if target.Catalog.Distribution != "opensuse" {
+			t.Fatalf("openSUSE distribution = %q", target.Catalog.Distribution)
+		}
+		if target.Source.KernelPath != "boot/x86_64/loader/linux" {
+			t.Fatalf("openSUSE kernel path = %q", target.Source.KernelPath)
+		}
+		if target.Source.InitrdPath != "boot/x86_64/loader/initrd" {
+			t.Fatalf("openSUSE initrd path = %q", target.Source.InitrdPath)
+		}
+		if target.Source.Cmdline == "" {
+			t.Fatal("openSUSE cmdline is empty")
+		}
+		return
+	}
+	t.Fatalf("default Linux targets = %#v, want openSUSE target", linuxTargets)
+}
+
+func TestLoadDefaultIncludesLocalBootAction(t *testing.T) {
+	t.Parallel()
+
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	if err != nil {
+		t.Fatalf("load default catalog: %v", err)
+	}
+
+	targets := doc.Targets("local")
+	if len(targets) != 1 {
+		t.Fatalf("local targets = %#v, want one target", targets)
+	}
+	if targets[0].Action != "localboot" {
+		t.Fatalf("local action = %q, want localboot", targets[0].Action)
+	}
+}
+
+func TestGenerateAllowsTargetDistributionDifferentFromProvider(t *testing.T) {
+	t.Parallel()
+
+	generated, err := catalog.Generate([]byte(`{
+		"schema_version": 1,
+		"providers": [{
+			"id": "linux",
+			"targets": [{
+				"id": "opensuse-leap-160-amd64-netboot",
+				"name": "openSUSE Leap 16.0 amd64 installer",
+				"distribution": "opensuse",
+				"release": "leap-16.0",
+				"architecture": "amd64",
+				"kind": "installer",
+				"source": {
+					"base_url": "https://download.example/opensuse",
+					"kernel_path": "boot/x86_64/loader/linux",
+					"initrd_path": "boot/x86_64/loader/initrd",
+					"cmdline": "install={base_url}"
+				}
+			}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("generate catalog: %v", err)
+	}
+	doc, err := catalog.Parse(generated, []string{"linux"})
+	if err != nil {
+		t.Fatalf("parse generated catalog: %v", err)
+	}
+	target := doc.Targets("linux")[0]
+	if target.ProviderID != "linux" || target.Catalog.Distribution != "opensuse" {
+		t.Fatalf("target provider/distribution = %q/%q", target.ProviderID, target.Catalog.Distribution)
+	}
 }
 
 func TestGeneratedDefaultCatalogIsCurrent(t *testing.T) {
@@ -145,7 +235,7 @@ func TestGeneratedDefaultCatalogIsCurrent(t *testing.T) {
 func TestGeneratedDefaultPreservesFedoraLifecycle(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}

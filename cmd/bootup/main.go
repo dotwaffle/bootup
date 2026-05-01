@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/dotwaffle/bootup/internal/app"
 	"github.com/dotwaffle/bootup/internal/catalog"
@@ -41,6 +42,11 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
 	catalogPath := flags.String("catalog", "", "static provider catalog JSON path")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
+	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
+	netIface := flags.String("net-iface", "", "network interface to configure before provider operations")
+	netAddress := flags.String("net-address", "", "CIDR address to configure before provider operations")
+	netGateway := flags.String("net-gateway", "", "default gateway to configure before provider operations")
+	netDNS := flags.String("net-dns", "", "comma-separated DNS servers to configure before provider operations")
 	hold := flags.Bool("hold", false, "wait after the selected mode completes")
 	prepareRuntime := flags.Bool("prepare-runtime", false, "validate network, CA roots, and time before provider operations")
 	if err := flags.Parse(args); err != nil {
@@ -62,9 +68,17 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	}
 
 	var preparers []app.Preparer
+	networkConfig := runtime.NetworkConfig{
+		Interface:   *netIface,
+		AddressCIDR: *netAddress,
+		Gateway:     *netGateway,
+		DNSServers:  parseDNSServers(*netDNS),
+	}
+	if *prepareRuntime || hasNetworkConfig(networkConfig) {
+		preparers = append(preparers, runtime.NetworkPreparer{Config: networkConfig})
+	}
 	if *prepareRuntime {
 		preparers = append(preparers,
-			runtime.NetworkPreparer{},
 			app.PrepareFunc(func(ctx context.Context) error {
 				return runtime.CertPreparer{}.Prepare()
 			}),
@@ -88,11 +102,30 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		TargetID:          *targetID,
 		DiscoveryFamilyID: *discoveryFamilyID,
 		StagingDir:        *stagingDir,
+		CmdlineAppend:     *cmdlineAppend,
 		Hold:              *hold,
 		Executor:          handoff.KexecExecutor{},
 		Preparers:         preparers,
 	})
 	return runner.Run(ctx)
+}
+
+func parseDNSServers(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	servers := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if server := strings.TrimSpace(part); server != "" {
+			servers = append(servers, server)
+		}
+	}
+	return servers
+}
+
+func hasNetworkConfig(config runtime.NetworkConfig) bool {
+	return config.Interface != "" || config.AddressCIDR != "" || config.Gateway != "" || len(config.DNSServers) > 0
 }
 
 func loadCatalog(path string) (catalog.Document, error) {

@@ -36,6 +36,7 @@ go run github.com/u-root/u-root \
 	github.com/u-root/u-root/cmds/core/wget \
 	github.com/u-root/u-root/cmds/core/mount \
 	github.com/u-root/u-root/cmds/core/insmod \
+	github.com/u-root/u-root/cmds/boot/boot \
 	./cmd/bootup
 
 zstd -q -f -19 --keep "${out}" -o "${zstd_out}"

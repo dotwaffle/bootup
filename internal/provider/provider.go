@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -43,9 +44,23 @@ type CatalogEntry struct {
 
 // SourceEntry describes provider source metadata for a concrete boot target.
 type SourceEntry struct {
-	BaseURL string `json:"base_url,omitzero"`
-	ISOName string `json:"iso_name,omitzero"`
+	BaseURL    string `json:"base_url,omitzero"`
+	ISOName    string `json:"iso_name,omitzero"`
+	KernelPath string `json:"kernel_path,omitzero"`
+	InitrdPath string `json:"initrd_path,omitzero"`
+	Cmdline    string `json:"cmdline,omitzero"`
 }
+
+// BootAction describes how bootup hands off to a selected target.
+type BootAction string
+
+const (
+	// BootActionLinuxKexec stages Linux boot artifacts and executes kexec.
+	BootActionLinuxKexec BootAction = "linux-kexec"
+
+	// BootActionLocalBoot runs the local disk boot path.
+	BootActionLocalBoot BootAction = "localboot"
+)
 
 // LifecycleStatus describes informational lifecycle decoration for a target.
 type LifecycleStatus string
@@ -79,6 +94,7 @@ type Target struct {
 	ID         string         `json:"id"`
 	ProviderID string         `json:"provider_id"`
 	Name       string         `json:"name"`
+	Action     BootAction     `json:"action,omitzero"`
 	Catalog    CatalogEntry   `json:"catalog"`
 	Source     SourceEntry    `json:"source,omitzero"`
 	Lifecycle  LifecycleEntry `json:"lifecycle,omitzero"`
@@ -102,10 +118,24 @@ type Verification struct {
 // BootPlan describes the artifacts and command line required for kexec.
 type BootPlan struct {
 	Target       Target
+	Action       BootAction
 	Kernel       Artifact
 	Initrd       Artifact
 	Cmdline      string
 	Verification Verification
+}
+
+// ResolvedAction returns the plan action, defaulting old plans to Linux kexec.
+func (p BootPlan) ResolvedAction() BootAction {
+	return ResolveBootAction(p.Action)
+}
+
+// ResolveBootAction returns action, defaulting an empty value to Linux kexec.
+func ResolveBootAction(action BootAction) BootAction {
+	if action == "" {
+		return BootActionLinuxKexec
+	}
+	return action
 }
 
 // StageConfig configures provider-specific artifact staging.
@@ -305,6 +335,9 @@ func ValidateTarget(providerID string, target Target) error {
 	if strings.TrimSpace(target.Name) == "" {
 		return fmt.Errorf("%w: target %s has empty name", ErrInvalidTarget, target.ID)
 	}
+	if err := validateBootAction(target.ID, target.Action); err != nil {
+		return err
+	}
 	if err := validateCatalogEntry(target.ID, target.Catalog); err != nil {
 		return err
 	}
@@ -315,6 +348,15 @@ func ValidateTarget(providerID string, target Target) error {
 		return err
 	}
 	return nil
+}
+
+func validateBootAction(targetID string, action BootAction) error {
+	switch ResolveBootAction(action) {
+	case BootActionLinuxKexec, BootActionLocalBoot:
+		return nil
+	default:
+		return fmt.Errorf("%w: target %s boot action %q is invalid", ErrInvalidTarget, targetID, action)
+	}
 }
 
 func validateCatalogEntry(targetID string, catalog CatalogEntry) error {
@@ -356,6 +398,38 @@ func validateSourceEntry(targetID string, source SourceEntry) error {
 		if strings.ContainsAny(source.ISOName, `/\`) || filepath.Base(source.ISOName) != source.ISOName {
 			return fmt.Errorf("%w: target %s source ISO name must be a filename", ErrInvalidTarget, targetID)
 		}
+	}
+	if err := validateSourcePath(targetID, "kernel path", source.KernelPath); err != nil {
+		return err
+	}
+	if err := validateSourcePath(targetID, "initrd path", source.InitrdPath); err != nil {
+		return err
+	}
+	if strings.TrimSpace(source.Cmdline) != source.Cmdline {
+		return fmt.Errorf("%w: target %s source cmdline has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	return nil
+}
+
+func validateSourcePath(targetID string, name string, value string) error {
+	if strings.TrimSpace(value) != value {
+		return fmt.Errorf("%w: target %s source %s has surrounding whitespace", ErrInvalidTarget, targetID, name)
+	}
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return fmt.Errorf("%w: target %s source %s is invalid: %w", ErrInvalidTarget, targetID, name, err)
+	}
+	if parsed.IsAbs() || parsed.Host != "" {
+		return fmt.Errorf("%w: target %s source %s must be relative", ErrInvalidTarget, targetID, name)
+	}
+	if strings.HasPrefix(value, "/") || strings.Contains(value, `\`) {
+		return fmt.Errorf("%w: target %s source %s must be a clean relative URL path", ErrInvalidTarget, targetID, name)
+	}
+	if clean := path.Clean(value); clean == "." || clean != value || clean == ".." || strings.HasPrefix(clean, "../") {
+		return fmt.Errorf("%w: target %s source %s must be a clean relative URL path", ErrInvalidTarget, targetID, name)
 	}
 	return nil
 }

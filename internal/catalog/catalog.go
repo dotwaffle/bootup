@@ -63,8 +63,9 @@ func Generate(data []byte) ([]byte, error) {
 				ID:         targetSource.ID,
 				ProviderID: providerSource.ID,
 				Name:       targetSource.Name,
+				Action:     targetSource.Action,
 				Catalog: provider.CatalogEntry{
-					Distribution: providerSource.ID,
+					Distribution: targetSource.distribution(providerSource.ID),
 					Release:      targetSource.Release,
 					Architecture: targetSource.Architecture,
 					Kind:         targetSource.Kind,
@@ -154,9 +155,18 @@ type sourceProvider struct {
 type sourceTarget struct {
 	ID           string                  `json:"id"`
 	Name         string                  `json:"name"`
+	Action       provider.BootAction     `json:"action,omitzero"`
+	Distribution string                  `json:"distribution,omitzero"`
 	Release      string                  `json:"release"`
 	Architecture string                  `json:"architecture"`
 	Kind         string                  `json:"kind"`
 	Source       provider.SourceEntry    `json:"source,omitzero"`
 	Lifecycle    provider.LifecycleEntry `json:"lifecycle,omitzero"`
+}
+
+func (t sourceTarget) distribution(fallback string) string {
+	if t.Distribution != "" {
+		return t.Distribution
+	}
+	return fallback
 }

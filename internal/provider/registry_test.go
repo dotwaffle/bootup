@@ -287,6 +287,124 @@ func TestRegistryRejectsInvalidProviderTargets(t *testing.T) {
 	}
 }
 
+func TestRegistryAcceptsSupportedBootAction(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "local-disk-auto",
+		ProviderID: "local",
+		Name:       "Boot from local disk",
+		Action:     provider.BootActionLocalBoot,
+		Catalog: provider.CatalogEntry{
+			Distribution: "local",
+			Release:      "disk",
+			Architecture: "amd64",
+			Kind:         "localboot",
+		},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{id: "local", targets: []provider.Target{target}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	targets, err := registry.Targets(context.Background())
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].Action != provider.BootActionLocalBoot {
+		t.Fatalf("targets = %#v, want localboot action", targets)
+	}
+}
+
+func TestRegistryRejectsInvalidBootAction(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "local-disk-auto",
+		ProviderID: "local",
+		Name:       "Boot from local disk",
+		Action:     provider.BootAction("memdisk"),
+		Catalog: provider.CatalogEntry{
+			Distribution: "local",
+			Release:      "disk",
+			Architecture: "amd64",
+			Kind:         "localboot",
+		},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{id: "local", targets: []provider.Target{target}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	_, err := registry.Targets(context.Background())
+	if !errors.Is(err, provider.ErrInvalidTarget) {
+		t.Fatalf("targets error = %v, want %v", err, provider.ErrInvalidTarget)
+	}
+}
+
+func TestRegistryValidatesStaticLinuxSource(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "opensuse-leap-160-amd64-netboot",
+		ProviderID: "linux",
+		Name:       "openSUSE Leap 16.0 amd64 installer",
+		Catalog: provider.CatalogEntry{
+			Distribution: "opensuse",
+			Release:      "leap-16.0",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Source: provider.SourceEntry{
+			BaseURL:    "https://download.example/opensuse",
+			KernelPath: "boot/x86_64/loader/linux",
+			InitrdPath: "boot/x86_64/loader/initrd",
+			Cmdline:    "install={base_url} console=ttyS0",
+		},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{id: "linux", targets: []provider.Target{target}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	targets, err := registry.Targets(context.Background())
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if targets[0].Source.KernelPath != "boot/x86_64/loader/linux" {
+		t.Fatalf("kernel path = %q", targets[0].Source.KernelPath)
+	}
+}
+
+func TestRegistryRejectsUnsafeStaticLinuxSourcePath(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "opensuse-leap-160-amd64-netboot",
+		ProviderID: "linux",
+		Name:       "openSUSE Leap 16.0 amd64 installer",
+		Catalog: provider.CatalogEntry{
+			Distribution: "opensuse",
+			Release:      "leap-16.0",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Source: provider.SourceEntry{
+			BaseURL:    "https://download.example/opensuse",
+			KernelPath: "../linux",
+		},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{id: "linux", targets: []provider.Target{target}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+	_, err := registry.Targets(context.Background())
+	if !errors.Is(err, provider.ErrInvalidTarget) {
+		t.Fatalf("targets error = %v, want %v", err, provider.ErrInvalidTarget)
+	}
+}
+
 func TestTargetJSONOmitsZeroSource(t *testing.T) {
 	t.Parallel()
 

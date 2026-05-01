@@ -12,6 +12,9 @@ selected kernel and initrd, and hands off with kexec.
 - Build-time Go providers.
 - Debian bullseye, bookworm, trixie, and forky amd64 netboot targets.
 - Fedora Server 43 and 44 amd64 netboot targets.
+- Linux-shaped static targets for openSUSE Leap, Arch Linux, GParted Live, and
+  MemTest86+.
+- Local disk boot through u-root's local boot path.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
 - Generated embedded static provider catalog with local JSON replacement.
 - Bright terminal menu with plain serial fallback.
@@ -102,6 +105,19 @@ requirements can be configured through a provider runtime config file:
 
 ```sh
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
+```
+
+Append installer or utility kernel parameters without editing provider code:
+
+```sh
+bootup --mode=boot-target --target=fedora-44-amd64-server-netboot --append-cmdline='inst.vnc console=ttyS1'
+```
+
+Configure networking directly before provider operations when kernel DHCP is
+not available:
+
+```sh
+bootup --mode=menu --net-iface=eth0 --net-address=192.0.2.10/24 --net-gateway=192.0.2.1 --net-dns=192.0.2.53
 ```
 
 List dynamically discovered amd64 netboot targets from a configured provider

@@ -90,6 +90,7 @@ type Config struct {
 	TargetID            string
 	DiscoveryFamilyID   string
 	StagingDir          string
+	CmdlineAppend       string
 	Hold                bool
 	Executor            Executor
 	Preparers           []Preparer
@@ -227,6 +228,7 @@ func (a *App) planTarget(ctx context.Context) error {
 		}
 		return err
 	}
+	plan = a.applyCmdlineAppend(plan)
 	if _, err := fmt.Fprintf(a.config.Stdout, "kernel\t%s\ninitrd\t%s\ncmdline\t%s\n", plan.Kernel.URL, plan.Initrd.URL, plan.Cmdline); err != nil {
 		return fmt.Errorf("write boot plan: %w", err)
 	}
@@ -265,6 +267,7 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 		}
 		return provider.BootPlan{}, err
 	}
+	plan = a.applyCmdlineAppend(plan)
 	if err := renderer.RenderStatus(a.config.Stdout, "verifying", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
@@ -285,6 +288,24 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 		return provider.BootPlan{}, fmt.Errorf("write staged boot plan: %w", err)
 	}
 	return staged, nil
+}
+
+func (a *App) applyCmdlineAppend(plan provider.BootPlan) provider.BootPlan {
+	plan.Cmdline = appendCmdline(plan.Cmdline, a.config.CmdlineAppend)
+	return plan
+}
+
+func appendCmdline(base string, extra string) string {
+	base = strings.TrimSpace(base)
+	extra = strings.TrimSpace(extra)
+	switch {
+	case base == "":
+		return extra
+	case extra == "":
+		return base
+	default:
+		return base + " " + extra
+	}
 }
 
 func (a *App) bootTarget(ctx context.Context) error {

@@ -16,11 +16,13 @@ import (
 )
 
 type providerStub struct {
-	id      string
-	targets []provider.Target
-	plan    provider.BootPlan
-	staged  provider.BootPlan
-	planned *provider.Target
+	id             string
+	targets        []provider.Target
+	plan           provider.BootPlan
+	staged         provider.BootPlan
+	planned        *provider.Target
+	stageConfig    *provider.StageConfig
+	stageInputPlan bool
 }
 
 func (p providerStub) ID() string {
@@ -41,7 +43,13 @@ func (p providerStub) Plan(_ context.Context, target provider.Target) (provider.
 	return p.plan, nil
 }
 
-func (p providerStub) Stage(context.Context, provider.StageConfig) (provider.BootPlan, error) {
+func (p providerStub) Stage(_ context.Context, config provider.StageConfig) (provider.BootPlan, error) {
+	if p.stageConfig != nil {
+		*p.stageConfig = config
+	}
+	if p.stageInputPlan {
+		return config.Plan, nil
+	}
 	return p.staged, nil
 }
 
@@ -280,6 +288,47 @@ func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 		if !strings.Contains(stdout.String(), phase) {
 			t.Fatalf("stdout = %q, want phase %s", stdout.String(), phase)
 		}
+	}
+}
+
+func TestRunAppendsCmdlineBeforeStaging(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget()
+	plan := provider.BootPlan{
+		Target:  target,
+		Kernel:  provider.Artifact{Name: "linux", URL: "https://example.test/linux"},
+		Initrd:  provider.Artifact{Name: "initrd.gz", URL: "https://example.test/initrd.gz"},
+		Cmdline: "priority=low",
+	}
+	var stageConfig provider.StageConfig
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets:        []provider.Target{target},
+		plan:           plan,
+		stageConfig:    &stageConfig,
+		stageInputPlan: true,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	runner := app.New(app.Config{
+		Registry:      registry,
+		Stdout:        &bytes.Buffer{},
+		Stderr:        &bytes.Buffer{},
+		Logger:        slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:          app.ModeStageTarget,
+		TargetID:      "debian-trixie-amd64-netboot",
+		StagingDir:    t.TempDir(),
+		CmdlineAppend: "inst.vnc console=ttyS1",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if stageConfig.Plan.Cmdline != "priority=low inst.vnc console=ttyS1" {
+		t.Fatalf("staged cmdline = %q", stageConfig.Plan.Cmdline)
 	}
 }
 

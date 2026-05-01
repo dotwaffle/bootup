@@ -17,6 +17,11 @@ type fakeLoader struct {
 	err      error
 }
 
+type fakeLocalBooter struct {
+	cmdlines []string
+	err      error
+}
+
 type loadCall struct {
 	kernel  string
 	initrd  string
@@ -24,13 +29,22 @@ type loadCall struct {
 }
 
 func (l *fakeLoader) Load(kernel *os.File, initrd *os.File, cmdline string) error {
-	l.loads = append(l.loads, loadCall{kernel: kernel.Name(), initrd: initrd.Name(), cmdline: cmdline})
+	call := loadCall{kernel: kernel.Name(), cmdline: cmdline}
+	if initrd != nil {
+		call.initrd = initrd.Name()
+	}
+	l.loads = append(l.loads, call)
 	return l.err
 }
 
 func (l *fakeLoader) Execute() error {
 	l.executes++
 	return l.err
+}
+
+func (b *fakeLocalBooter) Boot(_ context.Context, cmdline string) error {
+	b.cmdlines = append(b.cmdlines, cmdline)
+	return b.err
 }
 
 func TestKexecLoadsThenExecutesPlan(t *testing.T) {
@@ -64,6 +78,33 @@ func TestKexecLoadsThenExecutesPlan(t *testing.T) {
 	}
 }
 
+func TestKexecAllowsKernelOnlyPlan(t *testing.T) {
+	t.Parallel()
+
+	kernel := writeTempFile(t, "mt86plus")
+	loader := &fakeLoader{}
+	executor := handoff.KexecExecutor{Loader: loader}
+	plan := provider.BootPlan{
+		Action:  provider.BootActionLinuxKexec,
+		Kernel:  provider.Artifact{Path: kernel},
+		Cmdline: "console=ttyS0",
+	}
+
+	if err := executor.Execute(context.Background(), plan); err != nil {
+		t.Fatalf("execute kexec: %v", err)
+	}
+
+	if len(loader.loads) != 1 {
+		t.Fatalf("loads = %d, want 1", len(loader.loads))
+	}
+	if loader.loads[0].initrd != "" {
+		t.Fatalf("initrd = %q, want none", loader.loads[0].initrd)
+	}
+	if loader.executes != 1 {
+		t.Fatalf("executes = %d, want 1", loader.executes)
+	}
+}
+
 func TestKexecReportsLoadFailure(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +117,43 @@ func TestKexecReportsLoadFailure(t *testing.T) {
 	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("execute error = %v, want wrapped %v", err, wantErr)
+	}
+}
+
+func TestExecutorDispatchesLocalBootAction(t *testing.T) {
+	t.Parallel()
+
+	loader := &fakeLoader{}
+	localBooter := &fakeLocalBooter{}
+	executor := handoff.KexecExecutor{
+		Loader:      loader,
+		LocalBooter: localBooter,
+	}
+
+	err := executor.Execute(context.Background(), provider.BootPlan{
+		Action:  provider.BootActionLocalBoot,
+		Cmdline: "console=ttyS0",
+	})
+	if err != nil {
+		t.Fatalf("execute localboot: %v", err)
+	}
+	if len(localBooter.cmdlines) != 1 || localBooter.cmdlines[0] != "console=ttyS0" {
+		t.Fatalf("local boot cmdlines = %#v, want console append", localBooter.cmdlines)
+	}
+	if len(loader.loads) != 0 || loader.executes != 0 {
+		t.Fatalf("kexec loader used for localboot: loads=%#v executes=%d", loader.loads, loader.executes)
+	}
+}
+
+func TestExecutorRejectsUnsupportedAction(t *testing.T) {
+	t.Parallel()
+
+	executor := handoff.KexecExecutor{Loader: &fakeLoader{}}
+	err := executor.Execute(context.Background(), provider.BootPlan{
+		Action: provider.BootAction("memdisk"),
+	})
+	if err == nil {
+		t.Fatal("execute unsupported action succeeded")
 	}
 }
 

@@ -8,11 +8,13 @@ runtime discovery of concrete targets through compiled-in Go code.
 
 Each static target carries typed catalog metadata:
 
-- distribution, for example `debian`, `fedora`, or `ubuntu`
+- distribution, for example `debian`, `fedora`, `opensuse`, or `gparted`
 - release, for example `trixie` or `26.04`
 - architecture, currently `amd64`
-- kind, for example `installer`
-- optional source facts such as a target source URL or installer ISO filename
+- kind, for example `installer`, `tool`, or `localboot`
+- optional boot action, such as `localboot`; omitted means `linux-kexec`
+- optional source facts such as a target source URL, installer ISO filename,
+  kernel path, initrd path, or command line
 
 The operator interfaces use that metadata for grouping and labels. Providers
 still own boot planning and artifact staging, so the catalog describes what can
@@ -32,6 +34,11 @@ Bootup embeds a default static catalog. The current default catalog includes:
 - `debian-forky-amd64-netboot`
 - `fedora-43-amd64-server-netboot`
 - `fedora-44-amd64-server-netboot`
+- `local-disk-auto`
+- `opensuse-leap-160-amd64-netboot`
+- `archlinux-latest-amd64-netboot`
+- `gparted-live-1813-amd64`
+- `memtest86plus-800-amd64`
 - `ubuntu-24044-amd64-netboot`
 - `ubuntu-2510-amd64-netboot`
 - `ubuntu-2604-amd64-netboot`
@@ -58,39 +65,50 @@ Catalog documents use schema version 1:
 {
   "schema_version": 1,
   "targets": [
-	    {
-	      "id": "debian-trixie-amd64-netboot",
-	      "provider_id": "debian",
-	      "name": "Debian trixie amd64 netboot",
+    {
+      "id": "debian-trixie-amd64-netboot",
+      "provider_id": "debian",
+      "name": "Debian trixie amd64 netboot",
       "catalog": {
         "distribution": "debian",
         "release": "trixie",
         "architecture": "amd64",
-	        "kind": "installer"
-	      }
-	    },
-	    {
-	      "id": "fedora-44-amd64-server-netboot",
-	      "provider_id": "fedora",
-	      "name": "Fedora Server 44 amd64 netboot",
-	      "catalog": {
-	        "distribution": "fedora",
-	        "release": "44",
-	        "architecture": "amd64",
-	        "kind": "installer"
-	      },
-	      "source": {
-	        "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
-	      },
-	      "lifecycle": {
-	        "status": "supported",
-	        "source": "catalog"
-	      }
-	    },
-	    {
-	      "id": "ubuntu-24044-amd64-netboot",
-	      "provider_id": "ubuntu",
-	      "name": "Ubuntu 24.04.4 amd64 netboot",
+        "kind": "installer"
+      }
+    },
+    {
+      "id": "opensuse-leap-160-amd64-netboot",
+      "provider_id": "linux",
+      "name": "openSUSE Leap 16.0 amd64 installer",
+      "catalog": {
+        "distribution": "opensuse",
+        "release": "leap-16.0",
+        "architecture": "amd64",
+        "kind": "installer"
+      },
+      "source": {
+        "base_url": "https://download.opensuse.org/distribution/leap/16.0/repo/oss",
+        "kernel_path": "boot/x86_64/loader/linux",
+        "initrd_path": "boot/x86_64/loader/initrd",
+        "cmdline": "netsetup=dhcp install={base_url} console=ttyS0"
+      }
+    },
+    {
+      "id": "local-disk-auto",
+      "provider_id": "local",
+      "name": "Boot from local disk",
+      "action": "localboot",
+      "catalog": {
+        "distribution": "local",
+        "release": "disk",
+        "architecture": "amd64",
+        "kind": "localboot"
+      }
+    },
+    {
+      "id": "ubuntu-24044-amd64-netboot",
+      "provider_id": "ubuntu",
+      "name": "Ubuntu 24.04.4 amd64 netboot",
       "catalog": {
         "distribution": "ubuntu",
         "release": "24.04.4",
@@ -110,9 +128,16 @@ The document is data only. It selects concrete targets for provider code that is
 already compiled into bootup; it cannot load provider plugins or executable
 policy. `source.base_url` is an absolute HTTP(S) provider source root for that
 target, and `source.iso_name` is a pathless installer ISO filename used by
-providers that need one. `lifecycle` is informational decoration for operator
-display; it is not signature, checksum, transport, keyring, or other trust
-material.
+providers that need one. The generic `linux` provider also accepts
+`source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`.
+Those paths are clean relative URL paths resolved against `source.base_url`.
+The command line may include `{base_url}` to refer to the trimmed source root.
+`lifecycle` is informational decoration for operator display; it is not
+signature, checksum, transport, keyring, or other trust material.
+
+The `local` provider exposes `local-disk-auto` as a `localboot` action. It does
+not download artifacts; handoff invokes u-root's local boot command to inspect
+local boot configuration and continue from disk.
 
 ## Implemented mode: provider discovery
 
@@ -148,6 +173,12 @@ Server target, planning resolves `images/pxeboot/vmlinuz`,
 `images/pxeboot/initrd.img`, and an `inst.repo=` command line from the target
 source URL or an operator-supplied `release_url` override.
 
+The generic Linux provider currently handles openSUSE Leap, Arch Linux,
+GParted Live, and MemTest86+ catalog targets. These are Linux-shaped paths:
+kernel plus optional initrd plus command line, staged over HTTPS. MemTest86+
+8.00 is a kernel-only Linux bzImage target and therefore does not require
+memdisk or multiboot support.
+
 Discovery is timeout-bound and explicit. Providers accept optional
 `discovery_url`, `discovery_timeout`, and lifecycle decoration in
 `--provider-config`. If discovery fails, the already-loaded static catalog
@@ -177,6 +208,12 @@ targets to additional distributions, architectures, variants, install options,
 and optional lifecycle data sources. Fedora is static-only for now. That logic
 remains outside the static catalog contract so static catalog documents stay
 stable concrete target lists.
+
+BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
+chainload flows are intentionally deferred. The salstar BSD and several tool
+paths depend on bootloader semantics that are not the same as Linux
+kernel/initrd kexec. They should be added only after bootup has a dedicated
+executor family for those handoff types.
 
 ## Future mode: dynamic policy
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -44,5 +45,35 @@ func TestRunAcceptsDiscoverTargetsModeFlag(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "discovery family is required") {
 		t.Fatalf("run error = %v, want discovery family requirement", err)
+	}
+}
+
+func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "plan-target",
+		"--target", "memtest86plus-800-amd64",
+		"--append-cmdline", "console=ttyS1",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "cmdline\tconsole=ttyS1") {
+		t.Fatalf("stdout = %q, want appended cmdline", stdout.String())
+	}
+}
+
+func TestParseDNSServers(t *testing.T) {
+	t.Parallel()
+
+	got := parseDNSServers("192.0.2.53, 192.0.2.54")
+	want := []string{"192.0.2.53", "192.0.2.54"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("DNS servers = %#v, want %#v", got, want)
+	}
+	if got := parseDNSServers(" "); len(got) != 0 {
+		t.Fatalf("empty DNS servers = %#v, want none", got)
 	}
 }

@@ -16,8 +16,9 @@ examples, see `docs/release.md`.
 
 Bootup embeds a default static catalog of concrete provider targets. The current
 default catalog lists Debian bullseye, bookworm, trixie, and forky amd64
-netboot, Fedora Server 43 and 44 amd64 netboot, plus Ubuntu 24.04.4, 25.10,
-and 26.04 amd64 netboot.
+netboot, Fedora Server 43 and 44 amd64 netboot, openSUSE Leap, Arch Linux,
+GParted Live, MemTest86+, local disk boot, plus Ubuntu 24.04.4, 25.10, and
+26.04 amd64 netboot.
 
 Use `--catalog` to replace that embedded catalog with a local JSON file:
 
@@ -84,7 +85,10 @@ entries above, bootup exposes only those targets even though other providers may
 be compiled into the binary. Invalid catalogs fail startup before provider
 target discovery. `source.base_url` is an optional HTTP(S) source root for that
 target; `source.iso_name` is an optional pathless installer ISO filename used by
-providers such as Ubuntu.
+providers such as Ubuntu. Generic Linux catalog targets also use
+`source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`.
+The `localboot` action does not download artifacts and hands off to u-root's
+local disk boot path.
 
 The embedded catalog is generated from `internal/catalog/source.json`. Run
 `go generate ./internal/catalog` after editing the source.
@@ -244,6 +248,26 @@ by the kernel are exposed through `/proc/net/pnp`; bootup copies those hints
 into `/etc/resolv.conf` when that file is absent. See `docs/kernel.md` for the
 kernel config fragment and validator.
 
+When kernel DHCP is unavailable, bootup can configure a simple static network
+before provider operations:
+
+```sh
+bootup --mode=menu \
+  --net-iface=eth0 \
+  --net-address=10.0.2.15/24 \
+  --net-gateway=10.0.2.2 \
+  --net-dns=10.0.2.3
+```
+
+Additional installer or utility parameters can be appended without changing
+provider code:
+
+```sh
+bootup --mode=boot-target \
+  --target=fedora-44-amd64-server-netboot \
+  --append-cmdline='inst.vnc console=tty0 console=ttyS1,115200'
+```
+
 The helper below performs the same build by generating a temporary provider
 config and including the chosen keyring as an initramfs file:
 
@@ -293,6 +317,10 @@ The Ubuntu smoke builds a normal bootup initramfs, configures QEMU user
 networking in the initramfs for host kernels without kernel DHCP support, stages
 the Ubuntu netboot artifacts over HTTPS, and attempts kexec. A timeout after
 the target kernel starts is expected for a manual smoke run.
+
+BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
+chainload flows are not executable catalog targets yet. They need a dedicated
+handoff family rather than the current Linux kernel/initrd kexec path.
 
 Expected local failure modes:
 

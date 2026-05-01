@@ -80,6 +80,67 @@ func TestNetworkPreparerCopiesKernelResolver(t *testing.T) {
 	}
 }
 
+func TestNetworkPreparerAppliesExplicitNetworkConfig(t *testing.T) {
+	t.Parallel()
+
+	runner := &fakeCommandRunner{}
+	writes := map[string]string{}
+	preparer := runtime.NetworkPreparer{
+		Config: runtime.NetworkConfig{
+			Interface:   "eth0",
+			AddressCIDR: "192.0.2.10/24",
+			Gateway:     "192.0.2.1",
+			DNSServers:  []string{"192.0.2.53", "192.0.2.54"},
+		},
+		Runner: runner,
+		Interfaces: func() ([]net.Interface, error) {
+			return []net.Interface{{Name: "eth0", Flags: net.FlagUp}}, nil
+		},
+		ReadFile: func(string) ([]byte, error) {
+			return nil, os.ErrNotExist
+		},
+		WriteFile: func(name string, data []byte, _ os.FileMode) error {
+			writes[name] = string(data)
+			return nil
+		},
+	}
+
+	if err := preparer.Prepare(context.Background()); err != nil {
+		t.Fatalf("prepare network: %v", err)
+	}
+	if len(runner.calls) != 3 {
+		t.Fatalf("command calls = %#v, want link, address, and route", runner.calls)
+	}
+	wantCalls := []commandCall{
+		{name: "ip", args: []string{"link", "set", "dev", "eth0", "up"}},
+		{name: "ip", args: []string{"addr", "add", "192.0.2.10/24", "dev", "eth0"}},
+		{name: "ip", args: []string{"route", "replace", "default", "via", "192.0.2.1", "dev", "eth0"}},
+	}
+	for i, want := range wantCalls {
+		if runner.calls[i].name != want.name || !equalStrings(runner.calls[i].args, want.args) {
+			t.Fatalf("call %d = %#v, want %#v", i, runner.calls[i], want)
+		}
+	}
+	if writes["/etc/resolv.conf"] != "nameserver 192.0.2.53\nnameserver 192.0.2.54\n" {
+		t.Fatalf("resolver write = %q", writes["/etc/resolv.conf"])
+	}
+}
+
+func TestNetworkPreparerRejectsStaticAddressWithoutInterface(t *testing.T) {
+	t.Parallel()
+
+	preparer := runtime.NetworkPreparer{
+		Config: runtime.NetworkConfig{
+			AddressCIDR: "192.0.2.10/24",
+		},
+	}
+
+	err := preparer.Prepare(context.Background())
+	if err == nil {
+		t.Fatal("prepare network succeeded, want interface requirement")
+	}
+}
+
 func TestNetworkPreparerRejectsMissingInterface(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +157,18 @@ func TestNetworkPreparerRejectsMissingInterface(t *testing.T) {
 	if err == nil {
 		t.Fatal("prepare network succeeded, want missing interface error")
 	}
+}
+
+func equalStrings(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestCertPreparerRequiresSystemPool(t *testing.T) {

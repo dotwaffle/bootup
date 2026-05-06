@@ -31,7 +31,7 @@ func TestLiveDebianStagesInstallerArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("targets: %v", err)
 	}
-	plan, err := p.Plan(ctx, targets[0])
+	plan, err := p.Plan(ctx, provider.PlanInput{Target: targets[0]})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

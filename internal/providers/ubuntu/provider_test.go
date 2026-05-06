@@ -135,9 +135,11 @@ func TestProviderPlanResolvesReleaseURLs(t *testing.T) {
 		KernelSHA256: strings.Repeat("a", 64),
 		InitrdSHA256: strings.Repeat("b", 64),
 	})
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         "ubuntu-2604-amd64-netboot",
-		ProviderID: "ubuntu",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "ubuntu-2604-amd64-netboot",
+			ProviderID: "ubuntu",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -175,7 +177,7 @@ func TestProviderPlanAcceptsDiscoveredTarget(t *testing.T) {
 		ReleaseURL: "https://fallback.example/26.04",
 	})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -201,7 +203,7 @@ func TestProviderPlanResolvesTargetSourceURLs(t *testing.T) {
 		Targets:    []provider.Target{target},
 	})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -294,9 +296,11 @@ func TestFetchAndStageArtifactsVerifiesSignedMetadataAndArtifacts(t *testing.T) 
 		KernelSHA256: hex.EncodeToString(kernelSum[:]),
 		InitrdSHA256: hex.EncodeToString(initrdSum[:]),
 	})
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         "ubuntu-2604-amd64-netboot",
-		ProviderID: "ubuntu",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "ubuntu-2604-amd64-netboot",
+			ProviderID: "ubuntu",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -351,7 +355,7 @@ func TestFetchAndStageArtifactsUsesTargetSourceISOName(t *testing.T) {
 		KernelSHA256: hex.EncodeToString(kernelSum[:]),
 		InitrdSHA256: hex.EncodeToString(initrdSum[:]),
 	})
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -394,9 +398,11 @@ func TestProviderStageUsesConfiguredTrust(t *testing.T) {
 		KernelSHA256: hex.EncodeToString(kernelSum[:]),
 		InitrdSHA256: hex.EncodeToString(initrdSum[:]),
 	})
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         "ubuntu-2604-amd64-netboot",
-		ProviderID: "ubuntu",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "ubuntu-2604-amd64-netboot",
+			ProviderID: "ubuntu",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)

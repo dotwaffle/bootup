@@ -101,7 +101,8 @@ func cloneTargets(targets []provider.Target) []provider.Target {
 }
 
 // Plan returns a boot plan for target.
-func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
+func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	target := input.Target
 	selected, err := p.selectedTarget(target)
 	if err != nil {
 		return provider.BootPlan{}, err
@@ -112,7 +113,7 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 	}
 	releaseURL := p.targetBaseURL(selected)
 
-	return provider.BootPlan{
+	plan := provider.BootPlan{
 		Target: selected,
 		Kernel: provider.Artifact{
 			Name:   kernelStageName,
@@ -125,7 +126,8 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 			SHA256: p.initrdSHA256,
 		},
 		Cmdline: "inst.repo=" + releaseURL + " ip=dhcp console=ttyS0",
-	}, nil
+	}
+	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
 func (p *Provider) selectedTarget(target provider.Target) (provider.Target, error) {

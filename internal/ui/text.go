@@ -65,14 +65,50 @@ func (m TextMenu) RenderBootOptions(w io.Writer, options []BootOption) error {
 		return fmt.Errorf("write header: %w", err)
 	}
 	for index, option := range options {
-		name := optionName(option)
-		if decoration := optionDecoration(option); decoration != "" {
-			name += "  " + decoration
+		if option.Kind == BootOptionTarget {
+			if err := m.renderTargetOption(w, index+1, option.Target); err != nil {
+				return err
+			}
+			continue
 		}
-		line := fmt.Sprintf("%d  %s  %s  %s", index+1, optionLabel(option), optionID(option), name)
-		if _, err := fmt.Fprintln(w, truncate(line, m.width())); err != nil {
+		line := fmt.Sprintf("%d  %s  %s  %s", index+1, optionLabel(option), optionID(option), optionName(option))
+		if err := m.writeLine(w, line); err != nil {
 			return fmt.Errorf("write boot option %s: %w", optionID(option), err)
 		}
+	}
+	return nil
+}
+
+// RenderTargetDetails writes detailed metadata for one target.
+func (m TextMenu) RenderTargetDetails(w io.Writer, target provider.Target) error {
+	if err := m.writeLine(w, "bootup target"); err != nil {
+		return fmt.Errorf("write target header: %w", err)
+	}
+	lines := []string{
+		"id: " + target.ID,
+		"name: " + target.Name,
+		"provider: " + target.ProviderID,
+		"action: " + string(provider.ResolveBootAction(target.Action)),
+		"distribution: " + target.Catalog.Distribution,
+		"release: " + target.Catalog.Release,
+		"architecture: " + target.Catalog.Architecture,
+		"kind: " + target.Catalog.Kind,
+	}
+	for _, line := range lines {
+		if err := m.writeLine(w, line); err != nil {
+			return fmt.Errorf("write target detail: %w", err)
+		}
+	}
+	if lifecycle := targetLifecycleDetail(target.Lifecycle); lifecycle != "" {
+		if err := m.writeLine(w, "lifecycle: "+lifecycle); err != nil {
+			return fmt.Errorf("write target lifecycle: %w", err)
+		}
+	}
+	if err := m.renderSourceDetails(w, target.Source); err != nil {
+		return err
+	}
+	if err := m.renderOptionDetails(w, target.Options); err != nil {
+		return err
 	}
 	return nil
 }
@@ -80,7 +116,7 @@ func (m TextMenu) RenderBootOptions(w io.Writer, options []BootOption) error {
 // RenderStatus writes a named phase status line.
 func (m TextMenu) RenderStatus(w io.Writer, phase string, message string) error {
 	line := fmt.Sprintf("[%s] %s", phase, message)
-	if _, err := fmt.Fprintln(w, truncate(line, m.width())); err != nil {
+	if err := m.writeLine(w, line); err != nil {
 		return fmt.Errorf("write status: %w", err)
 	}
 	return nil
@@ -96,7 +132,7 @@ func (m TextMenu) RenderFatal(w io.Writer, message string) error {
 	if _, err := fmt.Fprintln(w, "bootup failure"); err != nil {
 		return fmt.Errorf("write fatal header: %w", err)
 	}
-	if _, err := fmt.Fprintln(w, truncate("reason: "+message, m.width())); err != nil {
+	if err := m.writeLine(w, "reason: "+message); err != nil {
 		return fmt.Errorf("write fatal error: %w", err)
 	}
 	return nil
@@ -157,6 +193,82 @@ func (m TextMenu) width() int {
 	return m.Width
 }
 
+func (m TextMenu) renderTargetOption(w io.Writer, index int, target provider.Target) error {
+	name := target.Name
+	if decoration := lifecycleLabel(target.Lifecycle); decoration != "" {
+		name += "  " + decoration
+	}
+	line := fmt.Sprintf("%d  %s  %s  %s", index, catalogLabel(target), target.ID, name)
+	if err := m.writeLine(w, line); err != nil {
+		return fmt.Errorf("write boot option %s: %w", target.ID, err)
+	}
+	metadata := fmt.Sprintf("   distribution=%s release=%s architecture=%s kind=%s provider=%s action=%s",
+		target.Catalog.Distribution,
+		target.Catalog.Release,
+		target.Catalog.Architecture,
+		target.Catalog.Kind,
+		target.ProviderID,
+		provider.ResolveBootAction(target.Action),
+	)
+	if err := m.writeLine(w, metadata); err != nil {
+		return fmt.Errorf("write boot option metadata %s: %w", target.ID, err)
+	}
+	return nil
+}
+
+func (m TextMenu) renderSourceDetails(w io.Writer, source provider.SourceEntry) error {
+	if source == (provider.SourceEntry{}) {
+		return nil
+	}
+	if err := m.writeLine(w, "source:"); err != nil {
+		return fmt.Errorf("write source header: %w", err)
+	}
+	for _, line := range []string{
+		"  base_url: " + source.BaseURL,
+		"  iso_name: " + source.ISOName,
+		"  kernel_path: " + source.KernelPath,
+		"  initrd_path: " + source.InitrdPath,
+		"  cmdline: " + source.Cmdline,
+	} {
+		if strings.HasSuffix(line, ": ") {
+			continue
+		}
+		if err := m.writeLine(w, line); err != nil {
+			return fmt.Errorf("write source detail: %w", err)
+		}
+	}
+	return nil
+}
+
+func (m TextMenu) renderOptionDetails(w io.Writer, options []provider.TargetOption) error {
+	if len(options) == 0 {
+		return nil
+	}
+	if err := m.writeLine(w, "options:"); err != nil {
+		return fmt.Errorf("write options header: %w", err)
+	}
+	for _, option := range options {
+		line := fmt.Sprintf("  - %s %s %s", option.ID, option.Type, option.Label)
+		switch option.Type {
+		case provider.TargetOptionBool:
+			line += " fragment=" + option.Fragment
+		case provider.TargetOptionString:
+			line += " template=" + option.Template
+		case provider.TargetOptionEnum:
+			line += " values=" + optionValuesLabel(option.Values)
+		}
+		if err := m.writeLine(w, line); err != nil {
+			return fmt.Errorf("write option detail %s: %w", option.ID, err)
+		}
+	}
+	return nil
+}
+
+func (m TextMenu) writeLine(w io.Writer, line string) error {
+	_, err := fmt.Fprintln(w, truncate(line, m.width()))
+	return err
+}
+
 func optionID(option BootOption) string {
 	switch option.Kind {
 	case BootOptionTarget:
@@ -193,13 +305,6 @@ func optionLabel(option BootOption) string {
 	}
 }
 
-func optionDecoration(option BootOption) string {
-	if option.Kind != BootOptionTarget {
-		return ""
-	}
-	return lifecycleLabel(option.Target.Lifecycle)
-}
-
 func catalogLabel(target provider.Target) string {
 	parts := make([]string, 0, 4)
 	if target.Catalog.Distribution != "" {
@@ -232,6 +337,32 @@ func lifecycleLabel(lifecycle provider.LifecycleEntry) string {
 		parts = append(parts, lifecycle.Source)
 	}
 	return "(" + strings.Join(parts, " ") + ")"
+}
+
+func targetLifecycleDetail(lifecycle provider.LifecycleEntry) string {
+	if lifecycle == (provider.LifecycleEntry{}) {
+		return ""
+	}
+	parts := []string{string(lifecycle.Status)}
+	if lifecycle.Date != "" {
+		parts = append(parts, lifecycle.Date)
+	}
+	if lifecycle.Source != "" {
+		parts = append(parts, lifecycle.Source)
+	}
+	return strings.Join(parts, " ")
+}
+
+func optionValuesLabel(values []provider.TargetOptionValue) string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		part := value.Value
+		if value.Fragment != "" {
+			part += ":" + value.Fragment
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ",")
 }
 
 func truncate(s string, width int) string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/dotwaffle/bootup/internal/provider"
@@ -14,6 +15,7 @@ type testProvider struct {
 	targets []provider.Target
 	plan    provider.BootPlan
 	staged  provider.BootPlan
+	planned *provider.PlanInput
 }
 
 func (p testProvider) ID() string {
@@ -24,7 +26,10 @@ func (p testProvider) Targets(context.Context) ([]provider.Target, error) {
 	return p.targets, nil
 }
 
-func (p testProvider) Plan(context.Context, provider.Target) (provider.BootPlan, error) {
+func (p testProvider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	if p.planned != nil {
+		*p.planned = input
+	}
 	return p.plan, nil
 }
 
@@ -79,7 +84,7 @@ func TestRegistryListsTargetsFromRegisteredProvider(t *testing.T) {
 	if len(targets) != 1 {
 		t.Fatalf("targets length = %d, want 1", len(targets))
 	}
-	if targets[0] != target {
+	if !reflect.DeepEqual(targets[0], target) {
 		t.Fatalf("target = %#v, want %#v", targets[0], target)
 	}
 }
@@ -158,7 +163,7 @@ func TestRegistryDiscoversTargetsForSelectedFamily(t *testing.T) {
 	if discoverCalls != 1 {
 		t.Fatalf("discovery calls = %d, want 1", discoverCalls)
 	}
-	if len(targets) != 1 || targets[0] != target {
+	if len(targets) != 1 || !reflect.DeepEqual(targets[0], target) {
 		t.Fatalf("targets = %#v, want %#v", targets, []provider.Target{target})
 	}
 }
@@ -212,7 +217,7 @@ func TestRegistryKeepsStaticTargetsWhenDiscoveryFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list targets after discovery failure: %v", err)
 	}
-	if len(targets) != 1 || targets[0] != staticTarget {
+	if len(targets) != 1 || !reflect.DeepEqual(targets[0], staticTarget) {
 		t.Fatalf("targets after discovery failure = %#v, want static target", targets)
 	}
 }
@@ -459,12 +464,123 @@ func TestRegistryPlansThroughTargetProvider(t *testing.T) {
 		t.Fatalf("register provider: %v", err)
 	}
 
-	got, err := registry.Plan(context.Background(), target)
+	got, err := registry.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan target: %v", err)
 	}
-	if got != plan {
+	if !reflect.DeepEqual(got, plan) {
 		t.Fatalf("plan = %#v, want %#v", got, plan)
+	}
+}
+
+func TestRegistryPassesSelectedOptionsToProviderPlan(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	target := targetWithOptions()
+	var planned provider.PlanInput
+
+	if err := registry.Register(testProvider{
+		id:      "linux",
+		targets: []provider.Target{target},
+		plan:    provider.BootPlan{Target: target, Cmdline: "install=default"},
+		planned: &planned,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	options := []provider.SelectedOption{
+		{ID: "text-install", Value: "true"},
+		{ID: "mirror-url", Value: "https://mirror.example/opensuse"},
+	}
+	if _, err := registry.Plan(context.Background(), provider.PlanInput{Target: target, Options: options}); err != nil {
+		t.Fatalf("plan target: %v", err)
+	}
+	if !reflect.DeepEqual(planned.Options, options) {
+		t.Fatalf("planned options = %#v, want %#v", planned.Options, options)
+	}
+}
+
+func TestRegistryRejectsInvalidSelectedOptionsBeforeProviderPlan(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options []provider.SelectedOption
+	}{
+		{
+			name:    "unknown option",
+			options: []provider.SelectedOption{{ID: "missing", Value: "true"}},
+		},
+		{
+			name:    "invalid bool value",
+			options: []provider.SelectedOption{{ID: "text-install", Value: "sometimes"}},
+		},
+		{
+			name:    "invalid enum value",
+			options: []provider.SelectedOption{{ID: "serial-console", Value: "ttyS9"}},
+		},
+		{
+			name:    "invalid string value",
+			options: []provider.SelectedOption{{ID: "mirror-url", Value: " https://mirror.example/opensuse"}},
+		},
+		{
+			name: "duplicate selection",
+			options: []provider.SelectedOption{
+				{ID: "text-install", Value: "true"},
+				{ID: "text-install", Value: "false"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			registry := provider.NewRegistry()
+			target := targetWithOptions()
+			var planned provider.PlanInput
+			if err := registry.Register(testProvider{
+				id:      "linux",
+				targets: []provider.Target{target},
+				plan:    provider.BootPlan{Target: target},
+				planned: &planned,
+			}); err != nil {
+				t.Fatalf("register provider: %v", err)
+			}
+
+			_, err := registry.Plan(context.Background(), provider.PlanInput{Target: target, Options: tt.options})
+			if !errors.Is(err, provider.ErrInvalidTargetOption) {
+				t.Fatalf("plan error = %v, want %v", err, provider.ErrInvalidTargetOption)
+			}
+			if planned.Target.ID != "" {
+				t.Fatalf("provider planned target = %#v, want no provider call", planned.Target)
+			}
+		})
+	}
+}
+
+func TestApplySelectedOptionsAppendsFragmentsInTargetOrder(t *testing.T) {
+	t.Parallel()
+
+	target := targetWithOptions()
+	plan := provider.BootPlan{
+		Target:  target,
+		Cmdline: "install=default console=ttyS0",
+	}
+	selected := []provider.SelectedOption{
+		{ID: "mirror-url", Value: "https://mirror.example/opensuse"},
+		{ID: "serial-console", Value: "ttyS1"},
+		{ID: "text-install", Value: "true"},
+	}
+
+	got, err := provider.ApplySelectedOptions(plan, selected)
+	if err != nil {
+		t.Fatalf("apply selected options: %v", err)
+	}
+	want := "install=default console=ttyS0 console=ttyS1 textmode=1 install=https://mirror.example/opensuse"
+	if got.Cmdline != want {
+		t.Fatalf("cmdline = %q, want %q", got.Cmdline, want)
 	}
 }
 
@@ -490,7 +606,44 @@ func TestRegistryStagesThroughTargetProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage target: %v", err)
 	}
-	if got != staged {
+	if !reflect.DeepEqual(got, staged) {
 		t.Fatalf("staged plan = %#v, want %#v", got, staged)
+	}
+}
+
+func targetWithOptions() provider.Target {
+	return provider.Target{
+		ID:         "opensuse-leap-160-amd64-netboot",
+		ProviderID: "linux",
+		Name:       "openSUSE Leap 16.0 amd64 installer",
+		Catalog: provider.CatalogEntry{
+			Distribution: "opensuse",
+			Release:      "leap-16.0",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Options: []provider.TargetOption{
+			{
+				ID:    "serial-console",
+				Label: "Serial console",
+				Type:  provider.TargetOptionEnum,
+				Values: []provider.TargetOptionValue{
+					{Value: "ttyS0", Fragment: "console=ttyS0"},
+					{Value: "ttyS1", Fragment: "console=ttyS1"},
+				},
+			},
+			{
+				ID:       "text-install",
+				Label:    "Text install",
+				Type:     provider.TargetOptionBool,
+				Fragment: "textmode=1",
+			},
+			{
+				ID:       "mirror-url",
+				Label:    "Installer mirror URL",
+				Type:     provider.TargetOptionString,
+				Template: "install={value}",
+			},
+		},
 	}
 }

@@ -86,7 +86,50 @@
           "lifecycle": {
             "status": "supported",
             "source": "catalog"
-          }
+          },
+          "options": [
+            {
+              "id": "serial-console",
+              "label": "Serial console",
+              "type": "enum",
+              "values": [
+                {
+                  "value": "ttyS0",
+                  "label": "ttyS0",
+                  "fragment": "console=ttyS0"
+                },
+                {
+                  "value": "ttyS1",
+                  "label": "ttyS1",
+                  "fragment": "console=ttyS1"
+                }
+              ]
+            },
+            {
+              "id": "text-install",
+              "label": "Text install",
+              "type": "bool",
+              "fragment": "textmode=1"
+            },
+            {
+              "id": "vnc-install",
+              "label": "VNC install",
+              "type": "bool",
+              "fragment": "vnc=1"
+            },
+            {
+              "id": "mirror-url",
+              "label": "Installer mirror URL",
+              "type": "string",
+              "template": "install={value}"
+            },
+            {
+              "id": "autoyast-url",
+              "label": "AutoYaST profile URL",
+              "type": "string",
+              "template": "autoyast={value}"
+            }
+          ]
         },
         {
           "id": "archlinux-latest-amd64-netboot",

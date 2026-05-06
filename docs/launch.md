@@ -87,6 +87,8 @@ target discovery. `source.base_url` is an optional HTTP(S) source root for that
 target; `source.iso_name` is an optional pathless installer ISO filename used by
 providers such as Ubuntu. Generic Linux catalog targets also use
 `source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`.
+Targets may also declare `options`; each option is validated catalog data that
+can append a kernel command-line fragment when selected with `--option`.
 The `localboot` action does not download artifacts and hands off to u-root's
 local disk boot path.
 
@@ -187,12 +189,38 @@ of concrete discovered targets. Force the fallback with `--ui=plain`; use
 `--ui=rich` only when a terminal is required and failure is preferable to
 fallback.
 
+For non-interactive catalog inspection, list static targets or show one target
+without staging artifacts:
+
+```sh
+bootup --mode=list-targets
+bootup --mode=show-target --target=opensuse-leap-160-amd64-netboot
+```
+
+The list output includes each target ID, display name, distribution, release,
+architecture, provider, and boot action. The show output includes target
+metadata, source artifact references, lifecycle decoration when present, and
+declared option definitions.
+
 For a non-interactive discovery diagnostic, list concrete targets for one
 compiled-in discovery family:
 
 ```sh
 bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
 bootup --mode=discover-targets --discovery-family=ubuntu --provider-config=/etc/bootup/providers.json
+```
+
+Select catalog-declared target options with repeatable `--option id=value`
+flags. Bootup validates the selected option IDs and values before planning. Any
+option command-line fragments are appended after provider defaults and before
+global `--append-cmdline` text:
+
+```sh
+bootup --mode=plan-target \
+  --target=opensuse-leap-160-amd64-netboot \
+  --option=text-install=true \
+  --option=mirror-url=https://mirror.example/opensuse \
+  --append-cmdline=console=ttyS1
 ```
 
 To smoke-test menu selection without live network assumptions:

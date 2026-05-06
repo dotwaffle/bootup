@@ -55,6 +55,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sahilm/fuzzy v0.1.1 // indirect
+	github.com/therootcompany/xz v1.0.1 // indirect
 	github.com/u-root/cpuid v0.0.1-0.20250320140348-cc5fe81d966c // indirect
 	github.com/u-root/gobusybox/src v0.0.0-20250101170133-2e884e4509c7 // indirect
 	github.com/u-root/mkuimage v0.0.0-20250905073043-9a40452f5d3b // indirect

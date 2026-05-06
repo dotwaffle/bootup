@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -20,9 +21,10 @@ type providerStub struct {
 	targets        []provider.Target
 	plan           provider.BootPlan
 	staged         provider.BootPlan
-	planned        *provider.Target
+	planned        *provider.PlanInput
 	stageConfig    *provider.StageConfig
 	stageInputPlan bool
+	applyOptions   bool
 }
 
 func (p providerStub) ID() string {
@@ -36,9 +38,12 @@ func (p providerStub) Targets(context.Context) ([]provider.Target, error) {
 	return p.targets, nil
 }
 
-func (p providerStub) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
+func (p providerStub) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
 	if p.planned != nil {
-		*p.planned = target
+		*p.planned = input
+	}
+	if p.applyOptions {
+		return provider.ApplySelectedOptions(p.plan, input.Options)
 	}
 	return p.plan, nil
 }
@@ -138,6 +143,96 @@ func TestRunListsTargetsInNonInteractiveMode(t *testing.T) {
 	}
 }
 
+func TestRunShowsSelectedTargetDetails(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget()
+	target.Source = provider.SourceEntry{
+		BaseURL:    "https://mirror.example/debian",
+		KernelPath: "netboot/linux",
+		InitrdPath: "netboot/initrd.gz",
+	}
+	target.Lifecycle = provider.LifecycleEntry{
+		Status: provider.LifecycleSupported,
+		Source: "catalog",
+	}
+	target.Options = []provider.TargetOption{{
+		ID:       "text-install",
+		Label:    "Text install",
+		Type:     provider.TargetOptionBool,
+		Fragment: "textmode=1",
+	}}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{targets: []provider.Target{target}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeShowTarget,
+		TargetID: "debian-trixie-amd64-netboot",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"id: debian-trixie-amd64-netboot",
+		"provider: debian",
+		"base_url: https://mirror.example/debian",
+		"lifecycle: supported catalog",
+		"text-install bool Text install fragment=textmode=1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestRunShowTargetRejectsUnknownWithoutPlanning(t *testing.T) {
+	t.Parallel()
+
+	var planned provider.PlanInput
+	var stageConfig provider.StageConfig
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets:     []provider.Target{debianTarget()},
+		planned:     &planned,
+		stageConfig: &stageConfig,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeShowTarget,
+		TargetID: "missing-target",
+	})
+
+	err := runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("run app succeeded, want unknown target error")
+	}
+	if !strings.Contains(err.Error(), `target "missing-target" not found`) {
+		t.Fatalf("run error = %v, want unknown target", err)
+	}
+	if planned.Target.ID != "" {
+		t.Fatalf("planned target = %#v, want no planning", planned.Target)
+	}
+	if stageConfig.StagingDir != "" {
+		t.Fatalf("stage config = %#v, want no staging", stageConfig)
+	}
+}
+
 func TestRunPreparesRuntimeBeforeListingTargets(t *testing.T) {
 	t.Parallel()
 
@@ -214,7 +309,7 @@ func TestRunPlansSelectedTargetInNonInteractiveMode(t *testing.T) {
 		Initrd:  provider.Artifact{Name: "initrd.gz", URL: "https://example.test/initrd.gz"},
 		Cmdline: "priority=low",
 	}
-	var planned provider.Target
+	var planned provider.PlanInput
 
 	registry := provider.NewRegistry()
 	if err := registry.Register(providerStub{
@@ -238,7 +333,7 @@ func TestRunPlansSelectedTargetInNonInteractiveMode(t *testing.T) {
 	if err := runner.Run(context.Background()); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
-	if planned.ID != target.ID {
+	if planned.Target.ID != target.ID {
 		t.Fatalf("planned target = %#v, want %#v", planned, target)
 	}
 	if !strings.Contains(stdout.String(), "https://example.test/linux") {
@@ -329,6 +424,71 @@ func TestRunAppendsCmdlineBeforeStaging(t *testing.T) {
 	}
 	if stageConfig.Plan.Cmdline != "priority=low inst.vnc console=ttyS1" {
 		t.Fatalf("staged cmdline = %q", stageConfig.Plan.Cmdline)
+	}
+}
+
+func TestRunPassesTargetOptionsAndAppendsCmdlineLast(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget()
+	target.Options = []provider.TargetOption{
+		{
+			ID:       "text-install",
+			Label:    "Text install",
+			Type:     provider.TargetOptionBool,
+			Fragment: "textmode=1",
+		},
+		{
+			ID:       "mirror-url",
+			Label:    "Mirror URL",
+			Type:     provider.TargetOptionString,
+			Template: "install={value}",
+		},
+	}
+	plan := provider.BootPlan{
+		Target:  target,
+		Cmdline: "priority=low",
+	}
+	selectedOptions := []provider.SelectedOption{
+		{ID: "mirror-url", Value: "https://mirror.example/debian"},
+		{ID: "text-install", Value: "true"},
+	}
+	var planned provider.PlanInput
+	var stageConfig provider.StageConfig
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets:        []provider.Target{target},
+		plan:           plan,
+		planned:        &planned,
+		stageConfig:    &stageConfig,
+		stageInputPlan: true,
+		applyOptions:   true,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	runner := app.New(app.Config{
+		Registry:      registry,
+		Stdout:        &bytes.Buffer{},
+		Stderr:        &bytes.Buffer{},
+		Logger:        slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:          app.ModeStageTarget,
+		TargetID:      "debian-trixie-amd64-netboot",
+		TargetOptions: selectedOptions,
+		StagingDir:    t.TempDir(),
+		CmdlineAppend: "console=ttyS1",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !reflect.DeepEqual(planned.Options, selectedOptions) {
+		t.Fatalf("planned options = %#v, want %#v", planned.Options, selectedOptions)
+	}
+	wantCmdline := "priority=low textmode=1 install=https://mirror.example/debian console=ttyS1"
+	if stageConfig.Plan.Cmdline != wantCmdline {
+		t.Fatalf("staged cmdline = %q, want %q", stageConfig.Plan.Cmdline, wantCmdline)
 	}
 }
 

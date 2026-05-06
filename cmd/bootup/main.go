@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -43,6 +44,8 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	catalogPath := flags.String("catalog", "", "static provider catalog JSON path")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
+	var targetOptions optionFlags
+	flags.Var(&targetOptions, "option", "target option selection as id=value; repeatable")
 	netIface := flags.String("net-iface", "", "network interface to configure before provider operations")
 	netAddress := flags.String("net-address", "", "CIDR address to configure before provider operations")
 	netGateway := flags.String("net-gateway", "", "default gateway to configure before provider operations")
@@ -100,6 +103,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		Mode:              app.Mode(*mode),
 		UIMode:            app.UIMode(*uiMode),
 		TargetID:          *targetID,
+		TargetOptions:     []provider.SelectedOption(targetOptions),
 		DiscoveryFamilyID: *discoveryFamilyID,
 		StagingDir:        *stagingDir,
 		CmdlineAppend:     *cmdlineAppend,
@@ -108,6 +112,35 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		Preparers:         preparers,
 	})
 	return runner.Run(ctx)
+}
+
+type optionFlags []provider.SelectedOption
+
+func (f *optionFlags) String() string {
+	if f == nil || len(*f) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(*f))
+	for _, option := range *f {
+		parts = append(parts, option.ID+"="+option.Value)
+	}
+	return strings.Join(parts, ",")
+}
+
+func (f *optionFlags) Set(value string) error {
+	id, optionValue, ok := strings.Cut(value, "=")
+	if !ok {
+		return errors.New("target option must use id=value")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("target option ID is required")
+	}
+	if optionValue == "" {
+		return fmt.Errorf("target option %s value is required", id)
+	}
+	*f = append(*f, provider.SelectedOption{ID: id, Value: optionValue})
+	return nil
 }
 
 func parseDNSServers(value string) []string {

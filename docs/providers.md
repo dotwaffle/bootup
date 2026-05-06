@@ -15,6 +15,8 @@ Each static target carries typed catalog metadata:
 - optional boot action, such as `localboot`; omitted means `linux-kexec`
 - optional source facts such as a target source URL, installer ISO filename,
   kernel path, initrd path, or command line
+- optional target option definitions that validate operator-selected values
+  and append command-line fragments
 
 The operator interfaces use that metadata for grouping and labels. Providers
 still own boot planning and artifact staging, so the catalog describes what can
@@ -91,7 +93,21 @@ Catalog documents use schema version 1:
         "kernel_path": "boot/x86_64/loader/linux",
         "initrd_path": "boot/x86_64/loader/initrd",
         "cmdline": "netsetup=dhcp install={base_url} console=ttyS0"
-      }
+      },
+      "options": [
+        {
+          "id": "text-install",
+          "label": "Text install",
+          "type": "bool",
+          "fragment": "textmode=1"
+        },
+        {
+          "id": "mirror-url",
+          "label": "Installer mirror URL",
+          "type": "string",
+          "template": "install={value}"
+        }
+      ]
     },
     {
       "id": "local-disk-auto",
@@ -134,6 +150,18 @@ Those paths are clean relative URL paths resolved against `source.base_url`.
 The command line may include `{base_url}` to refer to the trimmed source root.
 `lifecycle` is informational decoration for operator display; it is not
 signature, checksum, transport, keyring, or other trust material.
+
+Target options are non-executable catalog data. Supported option types are
+`bool`, `enum`, and `string`. Boolean options append their `fragment` only when
+selected as `true`. Enum options define allowed `values`, each with an optional
+fragment. String options expand exactly one `{value}` placeholder in
+`template`. Bootup rejects duplicate option IDs, unsupported types, invalid enum
+values, and fragments or templates with surrounding whitespace or control
+characters.
+
+Operators select options with repeatable `--option id=value` flags. Selected
+fragments are appended after provider defaults and before `--append-cmdline`,
+so operator append text remains the final command-line addition.
 
 The `local` provider exposes `local-disk-auto` as a `localboot` action. It does
 not download artifacts; handoff invokes u-root's local boot command to inspect

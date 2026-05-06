@@ -216,6 +216,170 @@ func TestGenerateAllowsTargetDistributionDifferentFromProvider(t *testing.T) {
 	}
 }
 
+func TestGeneratePreservesTargetOptions(t *testing.T) {
+	t.Parallel()
+
+	generated, err := catalog.Generate([]byte(`{
+		"schema_version": 1,
+		"providers": [{
+			"id": "linux",
+			"targets": [{
+				"id": "opensuse-leap-160-amd64-netboot",
+				"name": "openSUSE Leap 16.0 amd64 installer",
+				"distribution": "opensuse",
+				"release": "leap-16.0",
+				"architecture": "amd64",
+				"kind": "installer",
+				"source": {
+					"base_url": "https://download.example/opensuse",
+					"kernel_path": "boot/x86_64/loader/linux",
+					"initrd_path": "boot/x86_64/loader/initrd",
+					"cmdline": "install={base_url}"
+				},
+				"options": [
+					{
+						"id": "serial",
+						"label": "Serial console",
+						"type": "bool",
+						"fragment": "console=ttyS0"
+					},
+					{
+						"id": "install-mode",
+						"label": "Install mode",
+						"type": "enum",
+						"values": [
+							{"value": "text", "label": "Text install", "fragment": "textmode=1"},
+							{"value": "vnc", "label": "VNC install", "fragment": "vnc=1"}
+						]
+					},
+					{
+						"id": "mirror",
+						"label": "Mirror URL",
+						"type": "string",
+						"template": "install={value}"
+					}
+				]
+			}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("generate catalog: %v", err)
+	}
+	doc, err := catalog.Parse(generated, []string{"linux"})
+	if err != nil {
+		t.Fatalf("parse generated catalog: %v", err)
+	}
+	target := doc.Targets("linux")[0]
+	if len(target.Options) != 3 {
+		t.Fatalf("target options = %#v, want three options", target.Options)
+	}
+	if target.Options[0].ID != "serial" || target.Options[0].Fragment != "console=ttyS0" {
+		t.Fatalf("first option = %#v, want serial console bool option", target.Options[0])
+	}
+	if got := target.Options[1].Values[1].Fragment; got != "vnc=1" {
+		t.Fatalf("enum value fragment = %q, want vnc=1", got)
+	}
+	if got := target.Options[2].Template; got != "install={value}" {
+		t.Fatalf("string option template = %q, want install={value}", got)
+	}
+}
+
+func TestGenerateRejectsInvalidTargetOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options string
+	}{
+		{
+			name:    "missing id",
+			options: `[{"label": "Serial console", "type": "bool", "fragment": "console=ttyS0"}]`,
+		},
+		{
+			name: "duplicate ids",
+			options: `[
+				{"id": "serial", "label": "Serial console", "type": "bool", "fragment": "console=ttyS0"},
+				{"id": "serial", "label": "Serial console again", "type": "bool", "fragment": "console=ttyS1"}
+			]`,
+		},
+		{
+			name:    "unsupported type",
+			options: `[{"id": "serial", "label": "Serial console", "type": "script", "fragment": "console=ttyS0"}]`,
+		},
+		{
+			name:    "missing enum values",
+			options: `[{"id": "install-mode", "label": "Install mode", "type": "enum"}]`,
+		},
+		{
+			name: "duplicate enum values",
+			options: `[{
+				"id": "install-mode",
+				"label": "Install mode",
+				"type": "enum",
+				"values": [
+					{"value": "text", "fragment": "textmode=1"},
+					{"value": "text", "fragment": "textmode=1"}
+				]
+			}]`,
+		},
+		{
+			name: "invalid enum value",
+			options: `[{
+				"id": "install-mode",
+				"label": "Install mode",
+				"type": "enum",
+				"values": [
+					{"value": "bad value", "fragment": "textmode=1"}
+				]
+			}]`,
+		},
+		{
+			name:    "malformed fragment",
+			options: `[{"id": "serial", "label": "Serial console", "type": "bool", "fragment": " console=ttyS0"}]`,
+		},
+		{
+			name:    "string template without value",
+			options: `[{"id": "mirror", "label": "Mirror URL", "type": "string", "template": "install=https://example.test"}]`,
+		},
+		{
+			name:    "executable behavior",
+			options: `[{"id": "hook", "label": "Runtime hook", "type": "bool", "fragment": "hook=1", "script": "echo unsafe"}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := strings.ReplaceAll(`{
+				"schema_version": 1,
+				"providers": [{
+					"id": "linux",
+					"targets": [{
+						"id": "opensuse-leap-160-amd64-netboot",
+						"name": "openSUSE Leap 16.0 amd64 installer",
+						"distribution": "opensuse",
+						"release": "leap-16.0",
+						"architecture": "amd64",
+						"kind": "installer",
+						"source": {
+							"base_url": "https://download.example/opensuse",
+							"kernel_path": "boot/x86_64/loader/linux",
+							"initrd_path": "boot/x86_64/loader/initrd",
+							"cmdline": "install={base_url}"
+						},
+						"options": __OPTIONS__
+					}]
+				}]
+			}`, "__OPTIONS__", tt.options)
+			_, err := catalog.Generate([]byte(data))
+			if !errors.Is(err, catalog.ErrInvalidCatalog) {
+				t.Fatalf("generate error = %v, want %v", err, catalog.ErrInvalidCatalog)
+			}
+		})
+	}
+}
+
 func TestGeneratedDefaultCatalogIsCurrent(t *testing.T) {
 	t.Parallel()
 

@@ -47,9 +47,11 @@ func TestProviderPlanResolvesServerNetbootURLs(t *testing.T) {
 		InitrdSHA256: strings.Repeat("b", 64),
 	})
 
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         "fedora-44-amd64-server-netboot",
-		ProviderID: "fedora",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "fedora-44-amd64-server-netboot",
+			ProviderID: "fedora",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -76,7 +78,7 @@ func TestProviderPlanUsesTargetSourceBaseURL(t *testing.T) {
 	target.Source.BaseURL = "https://download.example/fedora/releases/43/Server/x86_64/os/"
 	p := fedora.NewProvider(fedora.Config{Targets: []provider.Target{target}})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

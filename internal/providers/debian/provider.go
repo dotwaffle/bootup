@@ -169,7 +169,8 @@ func cloneLifecycle(lifecycle map[string]provider.LifecycleEntry) map[string]pro
 }
 
 // Plan returns a boot plan for target.
-func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
+func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	target := input.Target
 	selected, err := p.selectedTarget(target)
 	if err != nil {
 		return provider.BootPlan{}, err
@@ -183,7 +184,7 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 
 	imagesBase := fmt.Sprintf("%s/dists/%s/main/installer-%s/current/images", baseURL, release, architecture)
 	installerBase := imagesBase + "/netboot"
-	return provider.BootPlan{
+	plan := provider.BootPlan{
 		Target: selected,
 		Kernel: provider.Artifact{
 			Name: "linux",
@@ -198,7 +199,8 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 			MetadataURL: fmt.Sprintf("%s/dists/%s/InRelease", baseURL, release),
 			ChecksumURL: imagesBase + "/SHA256SUMS",
 		},
-	}, nil
+	}
+	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
 func (p *Provider) selectedTarget(target provider.Target) (provider.Target, error) {

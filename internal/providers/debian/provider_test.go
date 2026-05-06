@@ -125,9 +125,11 @@ func TestProviderPlanResolvesInstallerURLs(t *testing.T) {
 	t.Parallel()
 
 	p := debian.NewProvider(debian.Config{MirrorURL: "https://mirror.example/debian"})
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "debian-trixie-amd64-netboot",
+			ProviderID: "debian",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -157,7 +159,7 @@ func TestProviderPlanAcceptsDiscoveredTarget(t *testing.T) {
 	target.Source.BaseURL = "https://mirror.example/debian"
 	p := debian.NewProvider(debian.Config{MirrorURL: "https://fallback.example/debian"})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -178,9 +180,11 @@ func TestProviderPlanResolvesConfiguredBookwormInstallerURLs(t *testing.T) {
 		MirrorURL: "https://mirror.example/debian",
 		Targets:   []provider.Target{target},
 	})
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         target.ID,
-		ProviderID: "debian",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         target.ID,
+			ProviderID: "debian",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -213,7 +217,7 @@ func TestProviderPlanUsesTargetSourceBaseURL(t *testing.T) {
 		Targets:   []provider.Target{target},
 	})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -306,9 +310,11 @@ func TestFetchAndStageArtifactsVerifiesSignedMetadataAndArtifacts(t *testing.T) 
 	}}
 
 	p := debian.NewProvider(debian.Config{MirrorURL: "https://mirror.example/debian"})
-	plan, err := p.Plan(context.Background(), provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "debian-trixie-amd64-netboot",
+			ProviderID: "debian",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -365,7 +371,7 @@ func TestFetchAndStageArtifactsUsesSelectedRelease(t *testing.T) {
 		MirrorURL: "https://mirror.example/debian",
 		Targets:   []provider.Target{target},
 	})
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -417,7 +423,7 @@ func TestProviderStageUsesConfiguredKeyring(t *testing.T) {
 		ID:         "debian-trixie-amd64-netboot",
 		ProviderID: "debian",
 	}
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

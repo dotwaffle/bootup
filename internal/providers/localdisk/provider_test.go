@@ -2,6 +2,7 @@ package localdisk_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/dotwaffle/bootup/internal/provider"
@@ -25,7 +26,7 @@ func TestProviderPlansLocalBootAction(t *testing.T) {
 	}
 	p := localdisk.NewProvider(localdisk.Config{Targets: []provider.Target{target}})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -40,7 +41,7 @@ func TestProviderPlansLocalBootAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if staged != plan {
+	if !reflect.DeepEqual(staged, plan) {
 		t.Fatalf("staged plan = %#v, want original plan", staged)
 	}
 }

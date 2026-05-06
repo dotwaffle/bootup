@@ -59,7 +59,7 @@ func Generate(data []byte) ([]byte, error) {
 	doc.SchemaVersion = schemaVersion
 	for _, providerSource := range source.Providers {
 		for _, targetSource := range providerSource.Targets {
-			doc.Entries = append(doc.Entries, provider.Target{
+			target := provider.Target{
 				ID:         targetSource.ID,
 				ProviderID: providerSource.ID,
 				Name:       targetSource.Name,
@@ -72,7 +72,12 @@ func Generate(data []byte) ([]byte, error) {
 				},
 				Source:    targetSource.Source,
 				Lifecycle: targetSource.Lifecycle,
-			})
+				Options:   targetSource.Options,
+			}
+			if err := provider.ValidateTarget(providerSource.ID, target); err != nil {
+				return nil, fmt.Errorf("%w: %w", ErrInvalidCatalog, err)
+			}
+			doc.Entries = append(doc.Entries, target)
 		}
 	}
 	generated, err := json.MarshalIndent(doc, "", "  ")
@@ -162,6 +167,7 @@ type sourceTarget struct {
 	Kind         string                  `json:"kind"`
 	Source       provider.SourceEntry    `json:"source,omitzero"`
 	Lifecycle    provider.LifecycleEntry `json:"lifecycle,omitzero"`
+	Options      []provider.TargetOption `json:"options,omitzero"`
 }
 
 func (t sourceTarget) distribution(fallback string) string {

@@ -33,6 +33,9 @@ const (
 	// and exits. It is useful for non-interactive diagnostics.
 	ModeDiscoverTargets Mode = "discover-targets"
 
+	// ModeShowTarget prints detailed metadata for TargetID and exits.
+	ModeShowTarget Mode = "show-target"
+
 	// ModePlanTarget selects TargetID and prints its boot plan without handoff.
 	ModePlanTarget Mode = "plan-target"
 
@@ -88,6 +91,7 @@ type Config struct {
 	Mode                Mode
 	UIMode              UIMode
 	TargetID            string
+	TargetOptions       []provider.SelectedOption
 	DiscoveryFamilyID   string
 	StagingDir          string
 	CmdlineAppend       string
@@ -162,6 +166,8 @@ func (a *App) runMode(ctx context.Context) error {
 		return a.listTargets(ctx)
 	case ModeDiscoverTargets:
 		return a.discoverTargets(ctx)
+	case ModeShowTarget:
+		return a.showTarget(ctx)
 	case ModePlanTarget:
 		return a.planTarget(ctx)
 	case ModeStageTarget:
@@ -185,6 +191,18 @@ func (a *App) listTargets(ctx context.Context) error {
 	menu := ui.TextMenu{Width: 80}
 	if err := menu.RenderTargets(a.config.Stdout, targets); err != nil {
 		return fmt.Errorf("render targets: %w", err)
+	}
+	return nil
+}
+
+func (a *App) showTarget(ctx context.Context) error {
+	target, err := a.selectTarget(ctx)
+	if err != nil {
+		return err
+	}
+	menu := ui.TextMenu{Width: 120}
+	if err := menu.RenderTargetDetails(a.config.Stdout, target); err != nil {
+		return fmt.Errorf("render target details: %w", err)
 	}
 	return nil
 }
@@ -221,7 +239,10 @@ func (a *App) planTarget(ctx context.Context) error {
 	if err := menu.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
 		return fmt.Errorf("render status: %w", err)
 	}
-	plan, err := a.config.Registry.Plan(ctx, target)
+	plan, err := a.config.Registry.Plan(ctx, provider.PlanInput{
+		Target:  target,
+		Options: a.config.TargetOptions,
+	})
 	if err != nil {
 		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return fmt.Errorf("render fatal error: %w", renderErr)
@@ -260,7 +281,10 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 	if err := renderer.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
-	plan, err := a.config.Registry.Plan(ctx, target)
+	plan, err := a.config.Registry.Plan(ctx, provider.PlanInput{
+		Target:  target,
+		Options: a.config.TargetOptions,
+	})
 	if err != nil {
 		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return provider.BootPlan{}, fmt.Errorf("render fatal error: %w", renderErr)

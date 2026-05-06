@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // ErrDuplicateProvider is returned when two providers use the same ID.
@@ -29,6 +30,9 @@ var ErrDiscoveryFamilyNotFound = errors.New("discovery family not found")
 // ErrInvalidTarget is returned when a provider exposes malformed target
 // metadata.
 var ErrInvalidTarget = errors.New("invalid target")
+
+// ErrInvalidTargetOption is returned when selected target options are invalid.
+var ErrInvalidTargetOption = errors.New("invalid target option")
 
 // ErrInvalidDiscoveryFamily is returned when a provider exposes malformed
 // discovery family metadata.
@@ -88,6 +92,43 @@ type LifecycleEntry struct {
 	Date   string          `json:"date,omitzero"`
 }
 
+// TargetOptionType identifies how a target option value is validated.
+type TargetOptionType string
+
+const (
+	// TargetOptionBool appends a fixed fragment when selected true.
+	TargetOptionBool TargetOptionType = "bool"
+
+	// TargetOptionEnum selects one of a fixed set of allowed values.
+	TargetOptionEnum TargetOptionType = "enum"
+
+	// TargetOptionString expands a selected string value through a template.
+	TargetOptionString TargetOptionType = "string"
+)
+
+// TargetOptionValue describes one allowed enum value.
+type TargetOptionValue struct {
+	Value    string `json:"value"`
+	Label    string `json:"label,omitzero"`
+	Fragment string `json:"fragment,omitzero"`
+}
+
+// TargetOption describes one operator-selectable target option.
+type TargetOption struct {
+	ID       string              `json:"id"`
+	Label    string              `json:"label"`
+	Type     TargetOptionType    `json:"type"`
+	Fragment string              `json:"fragment,omitzero"`
+	Values   []TargetOptionValue `json:"values,omitzero"`
+	Template string              `json:"template,omitzero"`
+}
+
+// SelectedOption describes an operator-selected target option value.
+type SelectedOption struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
+}
+
 // Target describes an operating system installer or live environment that
 // bootup can prepare and hand off to.
 type Target struct {
@@ -98,6 +139,13 @@ type Target struct {
 	Catalog    CatalogEntry   `json:"catalog"`
 	Source     SourceEntry    `json:"source,omitzero"`
 	Lifecycle  LifecycleEntry `json:"lifecycle,omitzero"`
+	Options    []TargetOption `json:"options,omitzero"`
+}
+
+// PlanInput describes an explicit provider planning request.
+type PlanInput struct {
+	Target  Target
+	Options []SelectedOption
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.
@@ -148,7 +196,7 @@ type StageConfig struct {
 type Provider interface {
 	ID() string
 	Targets(context.Context) ([]Target, error)
-	Plan(context.Context, Target) (BootPlan, error)
+	Plan(context.Context, PlanInput) (BootPlan, error)
 }
 
 // DiscoveryFamily describes a compiled-in provider family that can discover
@@ -274,15 +322,34 @@ func (r *Registry) DiscoverTargets(ctx context.Context, familyID string) ([]Targ
 }
 
 // Plan returns the boot plan for target from its provider.
-func (r *Registry) Plan(ctx context.Context, target Target) (BootPlan, error) {
-	provider, ok := r.providers[target.ProviderID]
+func (r *Registry) Plan(ctx context.Context, input PlanInput) (BootPlan, error) {
+	if err := ValidateSelectedOptions(input.Target, input.Options); err != nil {
+		return BootPlan{}, err
+	}
+	provider, ok := r.providers[input.Target.ProviderID]
 	if !ok {
-		return BootPlan{}, fmt.Errorf("%w: %s", ErrProviderNotFound, target.ProviderID)
+		return BootPlan{}, fmt.Errorf("%w: %s", ErrProviderNotFound, input.Target.ProviderID)
 	}
-	plan, err := provider.Plan(ctx, target)
+	plan, err := provider.Plan(ctx, input)
 	if err != nil {
-		return BootPlan{}, fmt.Errorf("plan target %s: %w", target.ID, err)
+		return BootPlan{}, fmt.Errorf("plan target %s: %w", input.Target.ID, err)
 	}
+	return plan, nil
+}
+
+// ValidateSelectedOptions validates selected option values against target.
+func ValidateSelectedOptions(target Target, selected []SelectedOption) error {
+	_, err := selectedOptionFragments(target, selected)
+	return err
+}
+
+// ApplySelectedOptions appends selected option command-line fragments to plan.
+func ApplySelectedOptions(plan BootPlan, selected []SelectedOption) (BootPlan, error) {
+	fragments, err := selectedOptionFragments(plan.Target, selected)
+	if err != nil {
+		return BootPlan{}, err
+	}
+	plan.Cmdline = appendCmdline(plan.Cmdline, strings.Join(fragments, " "))
 	return plan, nil
 }
 
@@ -345,6 +412,9 @@ func ValidateTarget(providerID string, target Target) error {
 		return err
 	}
 	if err := validateLifecycleEntry(target.ID, target.Lifecycle); err != nil {
+		return err
+	}
+	if err := validateTargetOptions(target.ID, target.Options); err != nil {
 		return err
 	}
 	return nil
@@ -457,4 +527,226 @@ func validateLifecycleEntry(targetID string, lifecycle LifecycleEntry) error {
 		}
 	}
 	return nil
+}
+
+func validateTargetOptions(targetID string, options []TargetOption) error {
+	seen := make(map[string]struct{}, len(options))
+	for _, option := range options {
+		if strings.TrimSpace(option.ID) == "" {
+			return fmt.Errorf("%w: target %s option ID is empty", ErrInvalidTarget, targetID)
+		}
+		if !validOptionID(option.ID) {
+			return fmt.Errorf("%w: target %s option %q ID is invalid", ErrInvalidTarget, targetID, option.ID)
+		}
+		if _, ok := seen[option.ID]; ok {
+			return fmt.Errorf("%w: target %s option ID %q is duplicate", ErrInvalidTarget, targetID, option.ID)
+		}
+		seen[option.ID] = struct{}{}
+		if strings.TrimSpace(option.Label) == "" {
+			return fmt.Errorf("%w: target %s option %s label is empty", ErrInvalidTarget, targetID, option.ID)
+		}
+		if err := validateTargetOptionBehavior(targetID, option); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func selectedOptionFragments(target Target, selected []SelectedOption) ([]string, error) {
+	if len(selected) == 0 {
+		return nil, nil
+	}
+	selectedByID := make(map[string]SelectedOption, len(selected))
+	for _, option := range selected {
+		if strings.TrimSpace(option.ID) == "" {
+			return nil, fmt.Errorf("%w: target %s selected option ID is empty", ErrInvalidTargetOption, target.ID)
+		}
+		if _, ok := selectedByID[option.ID]; ok {
+			return nil, fmt.Errorf("%w: target %s selected option %q is duplicate", ErrInvalidTargetOption, target.ID, option.ID)
+		}
+		selectedByID[option.ID] = option
+	}
+
+	var fragments []string
+	for _, option := range target.Options {
+		selectedOption, ok := selectedByID[option.ID]
+		if !ok {
+			continue
+		}
+		delete(selectedByID, option.ID)
+		fragment, err := selectedOptionFragment(target.ID, option, selectedOption)
+		if err != nil {
+			return nil, err
+		}
+		if fragment != "" {
+			fragments = append(fragments, fragment)
+		}
+	}
+	for id := range selectedByID {
+		return nil, fmt.Errorf("%w: target %s does not declare option %q", ErrInvalidTargetOption, target.ID, id)
+	}
+	return fragments, nil
+}
+
+func selectedOptionFragment(targetID string, option TargetOption, selected SelectedOption) (string, error) {
+	switch option.Type {
+	case TargetOptionBool:
+		switch selected.Value {
+		case "true":
+			return option.Fragment, nil
+		case "false":
+			return "", nil
+		default:
+			return "", fmt.Errorf("%w: target %s option %s value %q is not boolean", ErrInvalidTargetOption, targetID, option.ID, selected.Value)
+		}
+	case TargetOptionEnum:
+		for _, value := range option.Values {
+			if selected.Value == value.Value {
+				return value.Fragment, nil
+			}
+		}
+		return "", fmt.Errorf("%w: target %s option %s value %q is not allowed", ErrInvalidTargetOption, targetID, option.ID, selected.Value)
+	case TargetOptionString:
+		if strings.TrimSpace(selected.Value) == "" {
+			return "", fmt.Errorf("%w: target %s option %s value is empty", ErrInvalidTargetOption, targetID, option.ID)
+		}
+		if strings.TrimSpace(selected.Value) != selected.Value || containsSpaceOrControl(selected.Value) {
+			return "", fmt.Errorf("%w: target %s option %s value %q is invalid", ErrInvalidTargetOption, targetID, option.ID, selected.Value)
+		}
+		fragment := strings.ReplaceAll(option.Template, "{value}", selected.Value)
+		if err := validateExpandedCmdlineFragment(targetID, option.ID, fragment); err != nil {
+			return "", err
+		}
+		return fragment, nil
+	default:
+		return "", fmt.Errorf("%w: target %s option %s type %q is invalid", ErrInvalidTargetOption, targetID, option.ID, option.Type)
+	}
+}
+
+func validateExpandedCmdlineFragment(targetID string, optionID string, fragment string) error {
+	if err := validateCmdlineFragment(targetID, optionID, fragment, true); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidTargetOption, err)
+	}
+	return nil
+}
+
+func validateTargetOptionBehavior(targetID string, option TargetOption) error {
+	switch option.Type {
+	case TargetOptionBool:
+		if len(option.Values) != 0 || option.Template != "" {
+			return fmt.Errorf("%w: target %s bool option %s has incompatible fields", ErrInvalidTarget, targetID, option.ID)
+		}
+		return validateCmdlineFragment(targetID, option.ID, option.Fragment, true)
+	case TargetOptionEnum:
+		if option.Fragment != "" || option.Template != "" {
+			return fmt.Errorf("%w: target %s enum option %s has incompatible fields", ErrInvalidTarget, targetID, option.ID)
+		}
+		return validateOptionValues(targetID, option)
+	case TargetOptionString:
+		if option.Fragment != "" || len(option.Values) != 0 {
+			return fmt.Errorf("%w: target %s string option %s has incompatible fields", ErrInvalidTarget, targetID, option.ID)
+		}
+		return validateCmdlineTemplate(targetID, option.ID, option.Template)
+	case "":
+		return fmt.Errorf("%w: target %s option %s type is empty", ErrInvalidTarget, targetID, option.ID)
+	default:
+		return fmt.Errorf("%w: target %s option %s type %q is invalid", ErrInvalidTarget, targetID, option.ID, option.Type)
+	}
+}
+
+func validateOptionValues(targetID string, option TargetOption) error {
+	if len(option.Values) == 0 {
+		return fmt.Errorf("%w: target %s enum option %s has no values", ErrInvalidTarget, targetID, option.ID)
+	}
+	seen := make(map[string]struct{}, len(option.Values))
+	for _, value := range option.Values {
+		if strings.TrimSpace(value.Value) == "" {
+			return fmt.Errorf("%w: target %s enum option %s value is empty", ErrInvalidTarget, targetID, option.ID)
+		}
+		if strings.TrimSpace(value.Value) != value.Value || containsSpaceOrControl(value.Value) {
+			return fmt.Errorf("%w: target %s enum option %s value %q is invalid", ErrInvalidTarget, targetID, option.ID, value.Value)
+		}
+		if _, ok := seen[value.Value]; ok {
+			return fmt.Errorf("%w: target %s enum option %s value %q is duplicate", ErrInvalidTarget, targetID, option.ID, value.Value)
+		}
+		seen[value.Value] = struct{}{}
+		if strings.TrimSpace(value.Label) != value.Label {
+			return fmt.Errorf("%w: target %s enum option %s value %q label has surrounding whitespace", ErrInvalidTarget, targetID, option.ID, value.Value)
+		}
+		if err := validateCmdlineFragment(targetID, option.ID, value.Fragment, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCmdlineFragment(targetID string, optionID string, fragment string, required bool) error {
+	if fragment == "" {
+		if required {
+			return fmt.Errorf("%w: target %s option %s command-line fragment is empty", ErrInvalidTarget, targetID, optionID)
+		}
+		return nil
+	}
+	if strings.TrimSpace(fragment) != fragment {
+		return fmt.Errorf("%w: target %s option %s command-line fragment has surrounding whitespace", ErrInvalidTarget, targetID, optionID)
+	}
+	if strings.Contains(fragment, "{value}") {
+		return fmt.Errorf("%w: target %s option %s command-line fragment contains template syntax", ErrInvalidTarget, targetID, optionID)
+	}
+	if containsControl(fragment) {
+		return fmt.Errorf("%w: target %s option %s command-line fragment contains control characters", ErrInvalidTarget, targetID, optionID)
+	}
+	return nil
+}
+
+func validateCmdlineTemplate(targetID string, optionID string, template string) error {
+	if strings.TrimSpace(template) == "" {
+		return fmt.Errorf("%w: target %s option %s command-line template is empty", ErrInvalidTarget, targetID, optionID)
+	}
+	if strings.TrimSpace(template) != template {
+		return fmt.Errorf("%w: target %s option %s command-line template has surrounding whitespace", ErrInvalidTarget, targetID, optionID)
+	}
+	if strings.Count(template, "{value}") != 1 {
+		return fmt.Errorf("%w: target %s option %s command-line template must contain one {value}", ErrInvalidTarget, targetID, optionID)
+	}
+	if containsControl(template) {
+		return fmt.Errorf("%w: target %s option %s command-line template contains control characters", ErrInvalidTarget, targetID, optionID)
+	}
+	return nil
+}
+
+func validOptionID(id string) bool {
+	for index, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9' && index > 0:
+		case (r == '-' || r == '_' || r == '.') && index > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func containsSpaceOrControl(value string) bool {
+	return strings.ContainsFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r)
+	})
+}
+
+func containsControl(value string) bool {
+	return strings.ContainsFunc(value, unicode.IsControl)
+}
+
+func appendCmdline(base string, extra string) string {
+	base = strings.TrimSpace(base)
+	extra = strings.TrimSpace(extra)
+	switch {
+	case base == "":
+		return extra
+	case extra == "":
+		return base
+	default:
+		return base + " " + extra
+	}
 }

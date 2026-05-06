@@ -146,9 +146,11 @@ func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 		t.Fatalf("register providers: %v", err)
 	}
 
-	debianPlan, err := registry.Plan(context.Background(), provider.Target{
-		ID:         "debian-trixie-amd64-netboot",
-		ProviderID: "debian",
+	debianPlan, err := registry.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "debian-trixie-amd64-netboot",
+			ProviderID: "debian",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan Debian target: %v", err)
@@ -157,9 +159,11 @@ func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 		t.Fatalf("Debian kernel URL = %q", debianPlan.Kernel.URL)
 	}
 
-	ubuntuPlan, err := registry.Plan(context.Background(), provider.Target{
-		ID:         "ubuntu-2604-amd64-netboot",
-		ProviderID: "ubuntu",
+	ubuntuPlan, err := registry.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "ubuntu-2604-amd64-netboot",
+			ProviderID: "ubuntu",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan Ubuntu target: %v", err)
@@ -174,9 +178,11 @@ func TestRegisterProvidersAppliesRuntimeConfig(t *testing.T) {
 		t.Fatalf("Ubuntu initrd sha256 = %q", ubuntuPlan.Initrd.SHA256)
 	}
 
-	fedoraPlan, err := registry.Plan(context.Background(), provider.Target{
-		ID:         "fedora-44-amd64-server-netboot",
-		ProviderID: "fedora",
+	fedoraPlan, err := registry.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "fedora-44-amd64-server-netboot",
+			ProviderID: "fedora",
+		},
 	})
 	if err != nil {
 		t.Fatalf("plan Fedora target: %v", err)

@@ -51,7 +51,8 @@ func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
 }
 
 // Plan returns a Linux kexec boot plan for target.
-func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
+func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	target := input.Target
 	selected, err := p.selectedTarget(target)
 	if err != nil {
 		return provider.BootPlan{}, err
@@ -82,7 +83,7 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 			URL:  joinURLPath(baseURL, selected.Source.InitrdPath),
 		}
 	}
-	return plan, nil
+	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.

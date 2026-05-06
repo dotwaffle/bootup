@@ -135,6 +135,110 @@ func TestTextMenuRendersLifecycleDecoration(t *testing.T) {
 	}
 }
 
+func TestTextMenuRendersCatalogListMetadata(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	menu := ui.TextMenu{Width: 120}
+	targets := []provider.Target{{
+		ID:         "opensuse-leap-160-amd64-netboot",
+		ProviderID: "linux",
+		Name:       "openSUSE Leap 16.0 amd64 installer",
+		Action:     provider.BootActionLinuxKexec,
+		Catalog: provider.CatalogEntry{
+			Distribution: "opensuse",
+			Release:      "leap-16.0",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+	}}
+
+	if err := menu.RenderTargets(&out, targets); err != nil {
+		t.Fatalf("render targets: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"opensuse-leap-160-amd64-netboot",
+		"openSUSE Leap 16.0 amd64 installer",
+		"distribution=opensuse",
+		"release=leap-16.0",
+		"architecture=amd64",
+		"provider=linux",
+		"action=linux-kexec",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestTextMenuRendersTargetDetails(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	menu := ui.TextMenu{Width: 120}
+	target := provider.Target{
+		ID:         "opensuse-leap-160-amd64-netboot",
+		ProviderID: "linux",
+		Name:       "openSUSE Leap 16.0 amd64 installer",
+		Action:     provider.BootActionLinuxKexec,
+		Catalog: provider.CatalogEntry{
+			Distribution: "opensuse",
+			Release:      "leap-16.0",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Source: provider.SourceEntry{
+			BaseURL:    "https://download.example/opensuse",
+			KernelPath: "boot/x86_64/loader/linux",
+			InitrdPath: "boot/x86_64/loader/initrd",
+			Cmdline:    "install={base_url}",
+		},
+		Lifecycle: provider.LifecycleEntry{
+			Status: provider.LifecycleSupported,
+			Source: "catalog",
+		},
+		Options: []provider.TargetOption{
+			{
+				ID:       "text-install",
+				Label:    "Text install",
+				Type:     provider.TargetOptionBool,
+				Fragment: "textmode=1",
+			},
+			{
+				ID:       "mirror-url",
+				Label:    "Installer mirror URL",
+				Type:     provider.TargetOptionString,
+				Template: "install={value}",
+			},
+		},
+	}
+
+	if err := menu.RenderTargetDetails(&out, target); err != nil {
+		t.Fatalf("render target details: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"id: opensuse-leap-160-amd64-netboot",
+		"name: openSUSE Leap 16.0 amd64 installer",
+		"provider: linux",
+		"action: linux-kexec",
+		"distribution: opensuse",
+		"base_url: https://download.example/opensuse",
+		"kernel_path: boot/x86_64/loader/linux",
+		"lifecycle: supported catalog",
+		"options:",
+		"text-install bool Text install fragment=textmode=1",
+		"mirror-url string Installer mirror URL template=install={value}",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestSelectTargetByID(t *testing.T) {
 	t.Parallel()
 

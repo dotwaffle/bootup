@@ -174,7 +174,8 @@ func cloneLifecycle(lifecycle map[string]provider.LifecycleEntry) map[string]pro
 }
 
 // Plan returns a boot plan for target.
-func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
+func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	target := input.Target
 	selected, err := p.selectedTarget(target)
 	if err != nil {
 		return provider.BootPlan{}, err
@@ -189,7 +190,7 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 		return provider.BootPlan{}, err
 	}
 
-	return provider.BootPlan{
+	plan := provider.BootPlan{
 		Target: selected,
 		Kernel: provider.Artifact{
 			Name:   kernelStageName,
@@ -206,7 +207,8 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 			ChecksumURL:  releaseURL + "/SHA256SUMS",
 			SignatureURL: releaseURL + "/SHA256SUMS.gpg",
 		},
-	}, nil
+	}
+	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
 func (p *Provider) selectedTarget(target provider.Target) (provider.Target, error) {

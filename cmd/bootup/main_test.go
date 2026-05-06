@@ -65,6 +65,26 @@ func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	}
 }
 
+func TestRunAppliesTargetOptionFlagsBeforeAppendCmdline(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "plan-target",
+		"--target", "opensuse-leap-160-amd64-netboot",
+		"--option", "mirror-url=https://mirror.example/opensuse",
+		"--option", "text-install=true",
+		"--append-cmdline", "console=ttyS1",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := "cmdline\tnetsetup=dhcp install=https://download.opensuse.org/distribution/leap/16.0/repo/oss console=ttyS0 textmode=1 install=https://mirror.example/opensuse console=ttyS1"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
 func TestParseDNSServers(t *testing.T) {
 	t.Parallel()
 

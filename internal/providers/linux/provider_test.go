@@ -20,7 +20,7 @@ func TestProviderPlanResolvesStaticLinuxTarget(t *testing.T) {
 	target := linuxTarget()
 	p := linux.NewProvider(linux.Config{Targets: []provider.Target{target}})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestProviderPlanAllowsKernelOnlyTarget(t *testing.T) {
 	target := memtestTarget()
 	p := linux.NewProvider(linux.Config{Targets: []provider.Target{target}})
 
-	plan, err := p.Plan(context.Background(), target)
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

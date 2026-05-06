@@ -43,7 +43,8 @@ func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
 }
 
 // Plan returns a local boot plan for target.
-func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.BootPlan, error) {
+func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	target := input.Target
 	selected, err := p.selectedTarget(target)
 	if err != nil {
 		return provider.BootPlan{}, err
@@ -51,10 +52,11 @@ func (p *Provider) Plan(_ context.Context, target provider.Target) (provider.Boo
 	if provider.ResolveBootAction(selected.Action) != provider.BootActionLocalBoot {
 		return provider.BootPlan{}, fmt.Errorf("unsupported local boot action %q for target %s", selected.Action, selected.ID)
 	}
-	return provider.BootPlan{
+	plan := provider.BootPlan{
 		Target: selected,
 		Action: provider.BootActionLocalBoot,
-	}, nil
+	}
+	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
 // Stage returns the local boot plan unchanged.

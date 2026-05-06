@@ -187,8 +187,8 @@ default catalog.
 - **WHEN** bootup starts with the default static catalog
 - **THEN** it SHALL expose a GParted Live amd64 target
 
-#### Scenario: MemTest86+ target is in default catalog
+#### Scenario: Non-kexec diagnostic target is excluded
 - **WHEN** bootup starts with the default static catalog
-- **THEN** it SHALL expose a MemTest86+ amd64 target that uses the Linux kexec
-  action without an initrd
-
+- **THEN** it SHALL NOT expose diagnostic utility targets that require
+  firmware, memdisk, Multiboot, COM32, or bootloader-specific handoff semantics
+  unless a compatible boot action exists

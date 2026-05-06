@@ -54,13 +54,13 @@ func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	var stdout bytes.Buffer
 	err := runWithIO(context.Background(), []string{
 		"--mode", "plan-target",
-		"--target", "memtest86plus-800-amd64",
+		"--target", "opensuse-leap-160-amd64-netboot",
 		"--append-cmdline", "console=ttyS1",
 	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "cmdline\tconsole=ttyS1") {
+	if !strings.Contains(stdout.String(), "console=ttyS0 console=ttyS1") {
 		t.Fatalf("stdout = %q, want appended cmdline", stdout.String())
 	}
 }

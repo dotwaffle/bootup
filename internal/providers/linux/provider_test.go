@@ -41,7 +41,7 @@ func TestProviderPlanResolvesStaticLinuxTarget(t *testing.T) {
 func TestProviderPlanAllowsKernelOnlyTarget(t *testing.T) {
 	t.Parallel()
 
-	target := memtestTarget()
+	target := diagnosticTarget()
 	p := linux.NewProvider(linux.Config{Targets: []provider.Target{target}})
 
 	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
@@ -51,7 +51,7 @@ func TestProviderPlanAllowsKernelOnlyTarget(t *testing.T) {
 	if plan.Initrd != (provider.Artifact{}) {
 		t.Fatalf("initrd = %#v, want none", plan.Initrd)
 	}
-	if plan.Kernel.Name != "mt86p_800_x86_64" {
+	if plan.Kernel.Name != "diagnostic-kernel" {
 		t.Fatalf("kernel name = %q", plan.Kernel.Name)
 	}
 }
@@ -61,14 +61,14 @@ func TestFetchAndStageArtifactsAllowsOptionalInitrd(t *testing.T) {
 
 	plan := provider.BootPlan{
 		Action: provider.BootActionLinuxKexec,
-		Target: provider.Target{ID: "memtest86plus-800-amd64", ProviderID: "linux"},
+		Target: provider.Target{ID: "diagnostic-kernel-amd64", ProviderID: "linux"},
 		Kernel: provider.Artifact{
-			Name: "mt86p_800_x86_64",
-			URL:  "https://boot.example/images/mt86plus/800/mt86p_800_x86_64",
+			Name: "diagnostic-kernel",
+			URL:  "https://boot.example/images/diagnostic-kernel",
 		},
 	}
 	client := &http.Client{Transport: responseMap{
-		"https://boot.example/images/mt86plus/800/mt86p_800_x86_64": []byte("kernel"),
+		"https://boot.example/images/diagnostic-kernel": []byte("kernel"),
 	}}
 
 	staged, err := linux.FetchAndStageArtifacts(context.Background(), linux.FetchConfig{
@@ -79,7 +79,7 @@ func TestFetchAndStageArtifactsAllowsOptionalInitrd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetch and stage: %v", err)
 	}
-	if filepath.Base(staged.Kernel.Path) != "mt86p_800_x86_64" {
+	if filepath.Base(staged.Kernel.Path) != "diagnostic-kernel" {
 		t.Fatalf("kernel path = %q", staged.Kernel.Path)
 	}
 	if staged.Initrd.Path != "" {
@@ -153,20 +153,20 @@ func linuxTarget() provider.Target {
 	}
 }
 
-func memtestTarget() provider.Target {
+func diagnosticTarget() provider.Target {
 	return provider.Target{
-		ID:         "memtest86plus-800-amd64",
+		ID:         "diagnostic-kernel-amd64",
 		ProviderID: "linux",
-		Name:       "MemTest86+ 8.00 amd64",
+		Name:       "Diagnostic kernel amd64",
 		Catalog: provider.CatalogEntry{
-			Distribution: "memtest86plus",
-			Release:      "8.00",
+			Distribution: "diagnostic",
+			Release:      "latest",
 			Architecture: "amd64",
 			Kind:         "tool",
 		},
 		Source: provider.SourceEntry{
 			BaseURL:    "https://boot.example",
-			KernelPath: "images/mt86plus/800/mt86p_800_x86_64",
+			KernelPath: "images/diagnostic-kernel",
 		},
 	}
 }

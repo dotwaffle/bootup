@@ -15,16 +15,6 @@ catalog targets that can be exercised by currently implemented boot actions.
 - **THEN** the live smoke path SHALL report that the target is unsupported
   rather than attempting to boot it
 
-### Requirement: Kernel-only live smoke coverage
-Bootup SHALL include live smoke coverage for at least one static catalog target
-that boots through Linux kexec without an initrd.
-
-#### Scenario: MemTest86+ target is smoke tested
-- **WHEN** live smoke validation is explicitly enabled for the MemTest86+
-  static catalog target
-- **THEN** bootup SHALL stage the target kernel and attempt the configured VM
-  boot path without requiring an initrd
-
 ### Requirement: Kernel and initrd live smoke coverage
 Bootup SHALL include live smoke coverage for at least one static catalog target
 that boots through Linux kexec with both kernel and initrd artifacts.

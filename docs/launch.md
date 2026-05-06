@@ -17,8 +17,8 @@ examples, see `docs/release.md`.
 Bootup embeds a default static catalog of concrete provider targets. The current
 default catalog lists Debian bullseye, bookworm, trixie, and forky amd64
 netboot, Fedora Server 43 and 44 amd64 netboot, openSUSE Leap, Arch Linux,
-GParted Live, MemTest86+, local disk boot, plus Ubuntu 24.04.4, 25.10, and
-26.04 amd64 netboot.
+GParted Live, local disk boot, plus Ubuntu 24.04.4, 25.10, and 26.04 amd64
+netboot.
 
 Use `--catalog` to replace that embedded catalog with a local JSON file:
 

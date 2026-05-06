@@ -95,12 +95,11 @@ from upstream mirrors:
 BOOTUP_LIVE_CATALOG_SMOKE=1 go test -count=1 ./test/live
 ```
 
-That opt-in path currently covers `memtest86plus-800-amd64` as a kernel-only
-Linux kexec target and `opensuse-leap-160-amd64-netboot` as a kernel+initrd
-target. It requires outbound HTTPS access, working DNS, enough temporary disk
-space for downloaded artifacts, and enough time for upstream mirrors to
-respond. Keep it out of the default suite because failures can reflect network
-or mirror state rather than bootup regressions.
+That opt-in path currently covers `opensuse-leap-160-amd64-netboot` as a
+kernel+initrd target. It requires outbound HTTPS access, working DNS, enough
+temporary disk space for downloaded artifacts, and enough time for upstream
+mirrors to respond. Keep it out of the default suite because failures can
+reflect network or mirror state rather than bootup regressions.
 
 QEMU VM smoke runs additionally require `qemu-system-x86_64`, a host kernel
 that can boot as the outer VM kernel, KVM or software emulation capacity, serial
@@ -111,7 +110,6 @@ helper scripts below so those requirements are visible at invocation time.
 To attempt a catalog target through the current QEMU helper by target ID:
 
 ```sh
-BOOTUP_LIVE_CATALOG_SMOKE=1 scripts/smoke-catalog-target.sh memtest86plus-800-amd64
 BOOTUP_LIVE_CATALOG_SMOKE=1 scripts/smoke-catalog-target.sh opensuse-leap-160-amd64-netboot
 ```
 

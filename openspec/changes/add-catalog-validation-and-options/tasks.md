@@ -22,7 +22,7 @@
 ## 4. Live Smoke Validation
 
 - [x] 4.1 Add tests or scripts for selecting live smoke targets by catalog target ID
-- [x] 4.2 Add kernel-only live smoke coverage for the MemTest86+ catalog target
+- [x] 4.2 Remove MemTest86+ live smoke coverage until a compatible handoff exists
 - [x] 4.3 Add kernel+initrd live smoke coverage for one generic Linux catalog target
 - [x] 4.4 Gate live smoke coverage behind explicit tags or environment variables
 - [x] 4.5 Document QEMU, network, and host-kernel requirements for live smoke runs

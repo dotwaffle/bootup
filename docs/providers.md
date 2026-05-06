@@ -40,7 +40,6 @@ Bootup embeds a default static catalog. The current default catalog includes:
 - `opensuse-leap-160-amd64-netboot`
 - `archlinux-latest-amd64-netboot`
 - `gparted-live-1813-amd64`
-- `memtest86plus-800-amd64`
 - `ubuntu-24044-amd64-netboot`
 - `ubuntu-2510-amd64-netboot`
 - `ubuntu-2604-amd64-netboot`
@@ -201,11 +200,15 @@ Server target, planning resolves `images/pxeboot/vmlinuz`,
 `images/pxeboot/initrd.img`, and an `inst.repo=` command line from the target
 source URL or an operator-supplied `release_url` override.
 
-The generic Linux provider currently handles openSUSE Leap, Arch Linux,
-GParted Live, and MemTest86+ catalog targets. These are Linux-shaped paths:
-kernel plus optional initrd plus command line, staged over HTTPS. MemTest86+
-8.00 is a kernel-only Linux bzImage target and therefore does not require
-memdisk or multiboot support.
+The generic Linux provider currently handles openSUSE Leap, Arch Linux, and
+GParted Live catalog targets. These are Linux-shaped paths: kernel plus
+optional initrd plus command line, staged over HTTPS.
+
+MemTest86+ 8.00 is intentionally not in the default catalog. Its x86_64 image
+boots when a firmware or bootloader enters the Linux boot protocol directly,
+but it does not satisfy the currently implemented Linux kexec handoff paths.
+It should be reintroduced only with a dedicated bootloader-style handoff, a
+known kexec-compatible image, or a proven real-mode `kexec_load` loader.
 
 Discovery is timeout-bound and explicit. Providers accept optional
 `discovery_url`, `discovery_timeout`, and lifecycle decoration in
@@ -240,7 +243,10 @@ stable concrete target lists.
 BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
 chainload flows are intentionally deferred. The salstar BSD and several tool
 paths depend on bootloader semantics that are not the same as Linux
-kernel/initrd kexec. They should be added only after bootup has a dedicated
+kernel/initrd kexec. u-root's Multiboot support helps only for payloads that
+are actually Multiboot-compatible; stock FreeBSD 15.0 release artifacts still
+need a FreeBSD loader, EFI chainload, disk/ISO chainload, or another dedicated
+handoff. These targets should be added only after bootup has a dedicated
 executor family for those handoff types.
 
 ## Future mode: dynamic policy

@@ -12,8 +12,7 @@ selected kernel and initrd, and hands off with kexec.
 - Build-time Go providers.
 - Debian bullseye, bookworm, trixie, and forky amd64 netboot targets.
 - Fedora Server 43 and 44 amd64 netboot targets.
-- Linux-shaped static targets for openSUSE Leap, Arch Linux, GParted Live, and
-  MemTest86+.
+- Linux-shaped static targets for openSUSE Leap, Arch Linux, and GParted Live.
 - Local disk boot through u-root's local boot path.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
 - Generated embedded static provider catalog with local JSON replacement.

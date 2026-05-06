@@ -31,9 +31,10 @@ dedicated executor design exists.
 
    Live tests will remain behind explicit tags or environment variables because
    they require QEMU, host kernel support, network access, and time. The first
-   coverage should exercise one kernel-only target, MemTest86+, and one
-   kernel+initrd generic Linux target. This gives useful executor coverage
-   without pretending every catalog URL is continuously validated by default.
+   coverage should exercise one kernel+initrd generic Linux target. MemTest86+
+   8.00 was removed from the default catalog after smoke validation showed that
+   the image boots through firmware-style Linux boot protocol entry but not
+   through bootup's current kexec paths.
 
 2. Options are catalog data, not provider-specific code.
 

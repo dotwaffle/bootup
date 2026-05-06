@@ -22,14 +22,6 @@ var errUnsupportedCatalogSmokeTarget = errors.New("unsupported live smoke target
 func TestCatalogLiveSmokeSelectsTargetsByID(t *testing.T) {
 	t.Parallel()
 
-	memtest := catalogSmokeTarget(t, "memtest86plus-800-amd64")
-	if err := requireCatalogSmokeSupported(memtest); err != nil {
-		t.Fatalf("MemTest86+ support: %v", err)
-	}
-	if memtest.Source.InitrdPath != "" {
-		t.Fatalf("MemTest86+ initrd path = %q, want kernel-only target", memtest.Source.InitrdPath)
-	}
-
 	opensuse := catalogSmokeTarget(t, "opensuse-leap-160-amd64-netboot")
 	if err := requireCatalogSmokeSupported(opensuse); err != nil {
 		t.Fatalf("openSUSE support: %v", err)
@@ -46,21 +38,6 @@ func TestCatalogLiveSmokeReportsUnsupportedTargets(t *testing.T) {
 	err := requireCatalogSmokeSupported(target)
 	if !errors.Is(err, errUnsupportedCatalogSmokeTarget) {
 		t.Fatalf("support error = %v, want %v", err, errUnsupportedCatalogSmokeTarget)
-	}
-}
-
-func TestLiveCatalogStagesMemTest86PlusKernelOnly(t *testing.T) {
-	if os.Getenv(liveCatalogSmokeEnv) != "1" {
-		t.Skip(liveCatalogSmokeEnv + "=1 is required")
-	}
-
-	staged := stageLiveCatalogTarget(t, "memtest86plus-800-amd64")
-	if staged.Initrd != (provider.Artifact{}) {
-		t.Fatalf("initrd = %#v, want none", staged.Initrd)
-	}
-	assertNonEmptyArtifact(t, staged.Kernel.Path)
-	if filepath.Base(staged.Kernel.Path) != "mt86p_800_x86_64" {
-		t.Fatalf("kernel path = %q, want mt86p_800_x86_64", staged.Kernel.Path)
 	}
 }
 

@@ -166,22 +166,6 @@
             "status": "supported",
             "source": "catalog"
           }
-        },
-        {
-          "id": "memtest86plus-800-amd64",
-          "name": "MemTest86+ 8.00 amd64",
-          "distribution": "memtest86plus",
-          "release": "8.00",
-          "architecture": "amd64",
-          "kind": "tool",
-          "source": {
-            "base_url": "https://www.salstar.sk/boot",
-            "kernel_path": "images/mt86plus/800/mt86p_800_x86_64"
-          },
-          "lifecycle": {
-            "status": "supported",
-            "source": "catalog"
-          }
         }
       ]
     },

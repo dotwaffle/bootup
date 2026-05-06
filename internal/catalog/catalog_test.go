@@ -112,11 +112,13 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		"opensuse-leap-160-amd64-netboot",
 		"archlinux-latest-amd64-netboot",
 		"gparted-live-1813-amd64",
-		"memtest86plus-800-amd64",
 	} {
 		if !slices.Contains(ids, want) {
 			t.Fatalf("default catalog IDs = %v, want %s", ids, want)
 		}
+	}
+	if slices.Contains(ids, "memtest86plus-800-amd64") {
+		t.Fatalf("default catalog IDs = %v, want MemTest86+ excluded until it has a compatible handoff", ids)
 	}
 	ubuntuTargets := doc.Targets("ubuntu")
 	for _, target := range ubuntuTargets {

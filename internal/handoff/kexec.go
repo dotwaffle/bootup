@@ -3,6 +3,7 @@ package handoff
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/dotwaffle/bootup/internal/provider"
+	urootboot "github.com/u-root/u-root/pkg/boot"
 	"golang.org/x/sys/unix"
 )
 
@@ -22,8 +24,9 @@ type Loader interface {
 
 // KexecExecutor executes a staged boot plan through in-process kexec syscalls.
 type KexecExecutor struct {
-	Loader      Loader
-	LocalBooter LocalBooter
+	Loader            Loader
+	LoadSyscallLoader Loader
+	LocalBooter       LocalBooter
 }
 
 // Execute loads the plan into kexec and executes it.
@@ -65,12 +68,62 @@ func (e KexecExecutor) executeLinuxKexec(plan provider.BootPlan) error {
 		loader = LinuxKexecFileLoader{}
 	}
 	if err := loader.Load(kernel, initrd, plan.Cmdline); err != nil {
-		return fmt.Errorf("load kexec image: %w", err)
+		if !errors.Is(err, unix.ENOEXEC) {
+			return fmt.Errorf("load kexec image: %w", err)
+		}
+		if err := rewindBootFiles(kernel, initrd); err != nil {
+			return fmt.Errorf("prepare kexec_load fallback: %w", err)
+		}
+		fallbackLoader := e.LoadSyscallLoader
+		if fallbackLoader == nil {
+			fallbackLoader = LinuxKexecLoadLoader{}
+		}
+		if fallbackErr := fallbackLoader.Load(kernel, initrd, plan.Cmdline); fallbackErr != nil {
+			return fmt.Errorf("load kexec image with kexec_load fallback: %w", errors.Join(
+				fmt.Errorf("kexec_file_load: %w", err),
+				fmt.Errorf("kexec_load: %w", fallbackErr),
+			))
+		}
+		if fallbackErr := fallbackLoader.Execute(); fallbackErr != nil {
+			return fmt.Errorf("execute kexec image with kexec_load fallback: %w", fallbackErr)
+		}
+		return nil
 	}
 	if err := loader.Execute(); err != nil {
 		return fmt.Errorf("execute kexec image: %w", err)
 	}
 	return nil
+}
+
+func rewindBootFiles(files ...*os.File) error {
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("seek %s: %w", file.Name(), err)
+		}
+	}
+	return nil
+}
+
+// LinuxKexecLoadLoader uses u-root's kexec_load Linux loader.
+type LinuxKexecLoadLoader struct{}
+
+// Load loads the Linux kernel and initrd using kexec_load.
+func (LinuxKexecLoadLoader) Load(kernel *os.File, initrd *os.File, cmdline string) error {
+	image := &urootboot.LinuxImage{
+		Kernel:      kernel,
+		Initrd:      initrd,
+		Cmdline:     cmdline,
+		LoadSyscall: true,
+	}
+	return image.Load()
+}
+
+// Execute enters the previously loaded kexec image.
+func (LinuxKexecLoadLoader) Execute() error {
+	return urootboot.Execute()
 }
 
 func (e KexecExecutor) executeLocalBoot(ctx context.Context, plan provider.BootPlan) error {

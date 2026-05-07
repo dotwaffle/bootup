@@ -47,8 +47,14 @@ Linux hostfs.
   from Linux without requiring the Linux kernel to mount the ISO, normalize
   compressed `kernel` and `mfsroot` payload files when needed, verify a pinned
   FreeBSD base archive hash, extract `loader.kboot` and `loader.help.kboot`,
-  and prepare loader arguments containing `hostfs_root`, `bootdev=host:/`, and
-  serial console settings
+  and prepare loader arguments containing `hostfs_root`, `bootdev=host:/`,
+  serial console settings, `mfsbsd.autodhcp=YES`, and an mfsBSD hostname
+  setting
+
+#### Scenario: mfsBSD selected loader options survive staging
+- **WHEN** an operator selects a non-secret mfsBSD target option
+- **THEN** bootup SHALL preserve the selected option as a `loader.kboot`
+  argument after generated default loader arguments are prepared during staging
 
 ### Requirement: FreeBSD kboot artifacts are not vendored
 Bootup SHALL NOT commit generated `loader.kboot` binaries, downloaded FreeBSD

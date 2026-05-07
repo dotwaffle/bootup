@@ -221,8 +221,28 @@ ISO from Linux stage-1, normalizes `kernel.gz` and `mfsroot.gz`, and runs the
 loader with `hostfs_root`, `bootdev=host:/`, serial console settings, and no
 target-visible payload disk.
 
-The script treats the old `boot_params`/EFI memory-map panic as a distinct
-failure. It only exits successfully when a configured target marker appears
-after the FreeBSD kernel jump. Override
+Run the product-path mfsBSD smoke with:
+
+```sh
+BOOTUP_LIVE_MFSBSD_KBOOT_SMOKE=1 \
+scripts/smoke-mfsbsd-kboot-target.sh
+```
+
+That helper builds a normal bootup initramfs whose init command is
+`bootup --mode=boot-target --target=mfsbsd-142-amd64`, wraps it into a UEFI
+bootup ISO, runs QEMU with OVMF, and scans the serial log for the staged
+loader/archive/payload paths, EFI metadata, the FreeBSD kernel jump,
+`md0: Preloaded image </mfsroot>`, `Trying to mount root from ufs:/dev/md0`,
+and the `FreeBSD/amd64 (mfsbsd)` login prompt. It treats the old
+`boot_params`/EFI memory-map panic as a distinct failure and exits
+successfully only after the configured target marker appears. The default
+target marker is `login:`. Use `BOOTUP_MFSBSD_KBOOT_LOG` to keep the serial log
+at a stable path, or override `BOOTUP_MFSBSD_KBOOT_TARGET_PATTERN` if an
+environment needs a more specific serial marker.
+
+The `scripts/smoke-freebsd-kboot.sh` proof helper also treats the old
+`boot_params`/EFI memory-map panic as a distinct failure. It only exits
+successfully when a configured target marker appears after the FreeBSD kernel
+jump. Override
 `BOOTUP_FREEBSD_KBOOT_TARGET_PATTERN` if a specific FreeBSD installer or mfsBSD
 shell emits a better serial marker for the environment under test.

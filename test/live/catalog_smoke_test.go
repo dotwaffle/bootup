@@ -86,7 +86,7 @@ func stageLiveCatalogTarget(t *testing.T, targetID string) provider.BootPlan {
 func catalogSmokeTarget(t *testing.T, targetID string) provider.Target {
 	t.Helper()
 
-	targets := catalogSmokeTargets(t, "debian", "ubuntu", "fedora", "linux", "local")
+	targets := catalogSmokeTargets(t, "debian", "ubuntu", "fedora", "linux", "local", "mfsbsd")
 	target, err := ui.SelectTargetByID(targets, targetID)
 	if err != nil {
 		t.Fatalf("select catalog target %s: %v", targetID, err)

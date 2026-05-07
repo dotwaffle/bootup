@@ -245,8 +245,9 @@ scripts/smoke-mfsbsd-kboot-target.sh
 ```
 
 That helper builds a normal bootup initramfs whose init command is
-`bootup --mode=boot-target --target=mfsbsd-142-amd64`, wraps it into a UEFI
-bootup ISO, runs QEMU with OVMF, and scans the serial log for the staged
+`bootup --mode=boot-target --target=mfsbsd-142-amd64 --prepare-runtime`
+with the expected QEMU user-network resolver, wraps it into a UEFI bootup ISO,
+runs QEMU with OVMF, and scans the serial log for the staged
 loader/archive/payload paths, EFI metadata, the FreeBSD kernel jump,
 `md0: Preloaded image </mfsroot>`, `Trying to mount root from ufs:/dev/md0`,
 and the `FreeBSD/amd64 (mfsbsd)` login prompt. It treats the old

@@ -362,11 +362,11 @@ Expected local failure modes:
 - No network in the VM: bootup reports route, DNS, TLS, or fetch failures.
 - Kernel NIC driver is modular and unavailable: the smoke helper tries to
   include and load the host `e1000` module for QEMU user networking.
-- The host kernel used by the helper may not provide DNS/route state through
-  kernel autoconfiguration, because `CONFIG_IP_PNP` can be unset and QEMU NIC
-  drivers can be modules. The smoke helper therefore configures
-  `10.0.2.15/24` directly, then sets the expected `10.0.2.2` default route and
-  `10.0.2.3` resolver before starting bootup.
+- The host kernel used by a generic helper may not provide DNS/route state
+  through kernel autoconfiguration, because `CONFIG_IP_PNP` can be unset and
+  QEMU NIC drivers can be modules. The mfsBSD product smoke validates kernel
+  DHCP support, then passes the expected `10.0.2.3` QEMU resolver into bootup
+  before provider downloads.
 - Missing QEMU or kernel: the smoke script exits before or during VM launch.
 - kexec blocked by the platform: bootup renders a failure screen and leaves the
   stage-1 environment available for diagnosis.

@@ -21,6 +21,8 @@ func TestMFSBSDProductSmokeScriptDryRunShowsBootFlow(t *testing.T) {
 	got := string(output)
 	for _, want := range []string{
 		"bootup --mode=boot-target --target=mfsbsd-142-amd64 --staging-dir=/tmp/bootup --prepare-runtime",
+		"--net-iface=eth0",
+		"--net-dns=10.0.2.3",
 		"scripts/build-initramfs.sh",
 		"scripts/build-iso.sh",
 		"scripts/run-qemu-iso.sh",

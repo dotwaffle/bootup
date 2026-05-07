@@ -29,6 +29,8 @@ Environment:
                          OVMF CODE image, default /usr/share/OVMF/OVMF_CODE_4M.fd
   BOOTUP_MFSBSD_KBOOT_OVMF_VARS
                          OVMF VARS image, default CODE path with VARS
+  BOOTUP_NET_IFACE       stage-1 network interface, default eth0
+  BOOTUP_NET_DNS         stage-1 DNS resolver, default 10.0.2.3
 USAGE
 }
 
@@ -122,7 +124,7 @@ timeout_s="${BOOTUP_MFSBSD_KBOOT_TIMEOUT:-900}"
 ovmf_code="${BOOTUP_MFSBSD_KBOOT_OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}"
 ovmf_vars="${BOOTUP_MFSBSD_KBOOT_OVMF_VARS:-${ovmf_code/CODE/VARS}}"
 cmdline="${BOOTUP_MFSBSD_KBOOT_CMDLINE:-console=tty0 console=ttyS0,115200n8 earlyprintk=ttyS0,115200 panic=30 ip=::::::dhcp}"
-uinitcmd="bootup --mode=boot-target --target=${target_id} --staging-dir=/tmp/bootup --prepare-runtime"
+uinitcmd="bootup --mode=boot-target --target=${target_id} --staging-dir=/tmp/bootup --prepare-runtime --net-iface=${BOOTUP_NET_IFACE:-eth0} --net-dns=${BOOTUP_NET_DNS:-10.0.2.3}"
 target_pattern="${BOOTUP_MFSBSD_KBOOT_TARGET_PATTERN:-login:}"
 
 if [[ "${dry_run}" -eq 1 ]]; then

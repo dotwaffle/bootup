@@ -19,8 +19,8 @@ selected kernel and initrd, and hands off with kexec.
   opt-in default catalog composition.
 - File-backed secret input validation, provider plumbing, and redacted
   diagnostics for targets that declare provider-owned secret consumers.
-- Signed local dynamic policy decisions for data-only target, option, and
-  secret-reference selection.
+- Signed local or HTTPS dynamic policy decisions for data-only target, option,
+  and secret-reference selection, with authenticated cache fallback.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
@@ -147,12 +147,19 @@ include a distro target that consumes a secret input.
 Preview a signed dynamic policy decision without handoff:
 
 ```sh
+go run ./cmd/bootup-policy-sign --generate-key --private-key=/etc/bootup/policy.key --public-key=/etc/bootup/policy.pub
+go run ./cmd/bootup-policy-sign --policy=/etc/bootup/policy.json --private-key=/etc/bootup/policy.key --signature=/etc/bootup/policy.json.sig
+
 bootup --mode=policy-target --policy-file=/etc/bootup/policy.json --policy-signature=/etc/bootup/policy.json.sig --policy-public-key=/etc/bootup/policy.pub
 ```
 
 The same policy flags can be used with `plan-target`, `stage-target`, or
 `boot-target` to let the authenticated decision supply the target ID, selected
-non-secret options, and secret references.
+non-secret options, and secret references. Use `--policy-url` instead of
+`--policy-file` for an HTTPS policy source, with the same detached signature
+and public key plus optional `--policy-cache` and `--policy-cache-fallback`.
+Menu mode can try policy first and return to manual selection on failure with
+`--policy-fallback=manual`.
 
 Configure networking directly before provider operations when kernel DHCP is
 not available:
@@ -208,4 +215,10 @@ Attempt the matching Ubuntu 26.04 HTTPS netboot smoke:
 
 ```sh
 scripts/smoke-real-ubuntu.sh
+```
+
+Run the local signed policy smoke:
+
+```sh
+BOOTUP_POLICY_SMOKE=1 scripts/smoke-policy-target.sh
 ```

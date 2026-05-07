@@ -564,6 +564,123 @@ func TestRunPlansPolicySelectedTarget(t *testing.T) {
 	}
 }
 
+func TestRunPlansRemotePolicyFromAuthenticatedCacheFallback(t *testing.T) {
+	t.Parallel()
+
+	policyBytes, signaturePath, publicKeyPath := signedPolicyDecisionBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "remote-lab-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"options": {
+			"text-install": "true",
+			"mirror-url": "https://mirror.example/opensuse"
+		},
+		"expires_at": "2099-01-01T00:00:00Z"
+	}`)
+	cachePath := filepath.Join(t.TempDir(), "policy-cache.json")
+	if err := os.WriteFile(cachePath, policyBytes, 0o644); err != nil {
+		t.Fatalf("write policy cache: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "policy-target",
+		"--policy-url", "https://127.0.0.1:1/policy.json",
+		"--policy-signature", signaturePath,
+		"--policy-public-key", publicKeyPath,
+		"--policy-cache", cachePath,
+		"--policy-cache-fallback",
+		"--policy-timeout", "10ms",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{
+		"[planning] openSUSE Leap 16.0 amd64 installer",
+		"textmode=1",
+		"install=https://mirror.example/opensuse",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
+func TestRunRejectsLocalAndRemotePolicySources(t *testing.T) {
+	t.Parallel()
+
+	policyPath, signaturePath, publicKeyPath := writeSignedPolicyDecision(t, `{
+		"schema_version": 1,
+		"decision_id": "lab-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"expires_at": "2099-01-01T00:00:00Z"
+	}`)
+
+	err := runWithIO(context.Background(), []string{
+		"--mode", "policy-target",
+		"--policy-file", policyPath,
+		"--policy-url", "https://policy.example/policy.json",
+		"--policy-signature", signaturePath,
+		"--policy-public-key", publicKeyPath,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("run error = %v, want invalid policy", err)
+	}
+	if !strings.Contains(err.Error(), "policy-url") {
+		t.Fatalf("run error = %q, want policy-url context", err)
+	}
+}
+
+func TestRunRejectsUnsupportedPolicyFallback(t *testing.T) {
+	t.Parallel()
+
+	err := runWithIO(context.Background(), []string{
+		"--policy-fallback", "interactive",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("run error = %v, want invalid policy", err)
+	}
+	if !strings.Contains(err.Error(), "unsupported policy fallback") {
+		t.Fatalf("run error = %q, want fallback context", err)
+	}
+}
+
+func TestRunMenuPolicyFailureFallsBackToManualSelection(t *testing.T) {
+	t.Parallel()
+
+	policyPath, signaturePath, publicKeyPath := writeSignedPolicyDecision(t, `{
+		"schema_version": 1,
+		"decision_id": "expired-menu-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"expires_at": "2000-01-01T00:00:00Z"
+	}`)
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "menu",
+		"--ui", "plain",
+		"--policy-file", policyPath,
+		"--policy-signature", signaturePath,
+		"--policy-public-key", publicKeyPath,
+		"--policy-fallback", "manual",
+	}, strings.NewReader("missing-target\n"), &stdout, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("run succeeded, want manual selection error")
+	}
+	if errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("run error = %v, want manual selection error after fallback", err)
+	}
+	for _, want := range []string{
+		"policy failure; falling back to manual target selection",
+		"bootup targets",
+		"boot option \"missing-target\" not found",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+}
+
 func TestRunRejectsDynamicPolicyWithoutTrust(t *testing.T) {
 	t.Parallel()
 
@@ -622,7 +739,66 @@ func TestRunDiagnosticsRedactsPolicyPaths(t *testing.T) {
 	}
 }
 
+func TestRunDiagnosticsRedactsRemotePolicyURL(t *testing.T) {
+	t.Parallel()
+
+	policyBytes, signaturePath, publicKeyPath := signedPolicyDecisionBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "expired-remote-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"expires_at": "2000-01-01T00:00:00Z"
+	}`)
+	dir := t.TempDir()
+	cachePath := filepath.Join(dir, "policy-cache.json")
+	if err := os.WriteFile(cachePath, policyBytes, 0o644); err != nil {
+		t.Fatalf("write policy cache: %v", err)
+	}
+	diagnosticsRoot := filepath.Join(dir, "diagnostics")
+	secretURL := "https://127.0.0.1:1/policy.json?token=secret-token"
+
+	err := runWithIO(context.Background(), []string{
+		"--diagnostics-dir", diagnosticsRoot,
+		"--mode", "policy-target",
+		"--policy-url", secretURL,
+		"--policy-signature", signaturePath,
+		"--policy-public-key", publicKeyPath,
+		"--policy-cache", cachePath,
+		"--policy-cache-fallback",
+		"--policy-timeout", "10ms",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("run error = %v, want invalid policy", err)
+	}
+
+	bundleDir := onlyDiagnosticsBundleDir(t, diagnosticsRoot)
+	summaryPath := filepath.Join(bundleDir, "summary.json")
+	got := readDiagnosticsSummary(t, summaryPath)
+	if got.Policy.Source != "remote" || !got.Policy.RemoteURLSet || !got.Policy.CacheFallback {
+		t.Fatalf("policy posture = %#v, want remote cache fallback posture", got.Policy)
+	}
+	summaryBytes, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, secret := range []string{secretURL, "secret-token", signaturePath, publicKeyPath, cachePath} {
+		if strings.Contains(string(summaryBytes), secret) {
+			t.Fatalf("summary exposes policy secret %q: %s", secret, summaryBytes)
+		}
+	}
+}
+
 func writeSignedPolicyDecision(t *testing.T, body string) (string, string, string) {
+	t.Helper()
+
+	data, signaturePath, publicKeyPath := signedPolicyDecisionBytes(t, body)
+	policyPath := filepath.Join(t.TempDir(), "policy.json")
+	if err := os.WriteFile(policyPath, data, 0o644); err != nil {
+		t.Fatalf("write policy: %v", err)
+	}
+	return policyPath, signaturePath, publicKeyPath
+}
+
+func signedPolicyDecisionBytes(t *testing.T, body string) ([]byte, string, string) {
 	t.Helper()
 
 	publicKey, privateKey, err := ed25519.GenerateKey(nil)
@@ -630,11 +806,7 @@ func writeSignedPolicyDecision(t *testing.T, body string) (string, string, strin
 		t.Fatalf("generate key: %v", err)
 	}
 	dir := t.TempDir()
-	policyPath := filepath.Join(dir, "policy.json")
 	data := []byte(body)
-	if err := os.WriteFile(policyPath, data, 0o644); err != nil {
-		t.Fatalf("write policy: %v", err)
-	}
 	signaturePath := filepath.Join(dir, "policy.json.sig")
 	if err := os.WriteFile(signaturePath, ed25519.Sign(privateKey, data), 0o644); err != nil {
 		t.Fatalf("write signature: %v", err)
@@ -643,7 +815,7 @@ func writeSignedPolicyDecision(t *testing.T, body string) (string, string, strin
 	if err := os.WriteFile(publicKeyPath, publicKey, 0o644); err != nil {
 		t.Fatalf("write public key: %v", err)
 	}
-	return policyPath, signaturePath, publicKeyPath
+	return data, signaturePath, publicKeyPath
 }
 
 func TestRunWritesDiagnosticsOnFailure(t *testing.T) {

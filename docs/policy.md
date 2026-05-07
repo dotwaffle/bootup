@@ -47,9 +47,9 @@ secret input.
 
 ## Dynamic Policy
 
-Bootup supports an initial signed local dynamic policy mode. A policy decision
-is JSON data, authenticated with a detached Ed25519 signature over the raw
-policy bytes:
+Bootup supports signed local and HTTPS dynamic policy sources. A policy
+decision is JSON data, authenticated with a detached Ed25519 signature over the
+raw policy bytes:
 
 ```json
 {
@@ -67,13 +67,41 @@ policy bytes:
 }
 ```
 
-Use `policy-target` to resolve and print the selected boot plan:
+Generate policy signing material and a detached signature with the helper:
+
+```sh
+go run ./cmd/bootup-policy-sign \
+  --generate-key \
+  --private-key=/etc/bootup/policy.key \
+  --public-key=/etc/bootup/policy.pub
+
+go run ./cmd/bootup-policy-sign \
+  --policy=/etc/bootup/policy.json \
+  --private-key=/etc/bootup/policy.key \
+  --signature=/etc/bootup/policy.json.sig
+```
+
+Use `policy-target` to resolve and print the selected boot plan from a local
+file:
 
 ```sh
 bootup --mode=policy-target \
   --policy-file=/etc/bootup/policy.json \
   --policy-signature=/etc/bootup/policy.json.sig \
   --policy-public-key=/etc/bootup/policy.pub
+```
+
+Use `--policy-url` instead of `--policy-file` to fetch signed policy bytes from
+HTTPS. The detached signature and public key remain required:
+
+```sh
+bootup --mode=policy-target \
+  --policy-url=https://boot.example/policy/site-a.json \
+  --policy-signature=/etc/bootup/policy.json.sig \
+  --policy-public-key=/etc/bootup/policy.pub \
+  --policy-timeout=5s \
+  --policy-cache=/var/cache/bootup/policy.json \
+  --policy-cache-fallback
 ```
 
 The policy flags can also be used with `plan-target`, `stage-target`, or
@@ -88,10 +116,25 @@ references an unknown target, invalid option, undeclared secret, or missing
 required secret. `expires_at` is accepted as a freshness bound; `published_at`
 is required when `--policy-max-age` is used. `--policy-cache` updates a local
 cache after a fresh source decision authenticates, and
-`--policy-cache-fallback` can use that cache after source read failure. Cached
-bytes go through the same signature and freshness checks.
+`--policy-cache-fallback` can use that cache after source read or fetch
+failure. Cached bytes go through the same signature and freshness checks.
+
+Menu mode can try policy first. Failure still fails closed unless manual
+fallback is explicitly selected:
+
+```sh
+bootup --mode=menu --ui=plain \
+  --policy-file=/etc/bootup/policy.json \
+  --policy-signature=/etc/bootup/policy.json.sig \
+  --policy-public-key=/etc/bootup/policy.pub \
+  --policy-fallback=manual
+```
+
+Run `BOOTUP_POLICY_SMOKE=1 scripts/smoke-policy-target.sh` to exercise local
+policy signing, signed target selection, option validation, and redacted
+diagnostics.
 
 Policy is data only. It cannot define targets, providers, boot actions,
 command-line fragments, trust roots, artifact hash pins, plugins, scripts,
-Rego, WebAssembly, shell commands, or remote provider code. Remote policy URLs
-and interactive manual fallback remain deferred.
+Rego, WebAssembly, shell commands, or remote provider code. Executable policy
+engines and provider-defined runtime code remain deferred.

@@ -3,11 +3,14 @@ package policy
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -50,6 +53,19 @@ type LoadOptions struct {
 	MaxBytes      int64
 	Now           func() time.Time
 	MaxAge        time.Duration
+	CachePath     string
+	CacheFallback bool
+}
+
+// RemoteOptions configures signed remote policy loading.
+type RemoteOptions struct {
+	URL           string
+	HTTPClient    *http.Client
+	Trust         Trust
+	MaxBytes      int64
+	Now           func() time.Time
+	MaxAge        time.Duration
+	Timeout       time.Duration
 	CachePath     string
 	CacheFallback bool
 }
@@ -97,6 +113,39 @@ func LoadFile(options LoadOptions) (Decision, error) {
 	return decision, nil
 }
 
+// LoadURL fetches, authenticates, parses, and freshness-checks a remote policy.
+func LoadURL(ctx context.Context, options RemoteOptions) (Decision, error) {
+	if !options.Trust.configured() {
+		return Decision{}, fmt.Errorf("%w: policy trust configuration is required", ErrInvalidPolicy)
+	}
+	if options.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, options.Timeout)
+		defer cancel()
+	}
+	data, err := fetchPolicyURL(ctx, options)
+	if err != nil {
+		if options.CacheFallback && options.CachePath != "" && !errors.Is(err, ErrInvalidPolicy) {
+			decision, cacheErr := loadPolicyCache(options.loadOptions())
+			if cacheErr != nil {
+				return Decision{}, fmt.Errorf("load policy cache after fetch failure: %w", cacheErr)
+			}
+			return decision, nil
+		}
+		return Decision{}, err
+	}
+	decision, err := parseTrustedDecision(data, options.loadOptions())
+	if err != nil {
+		return Decision{}, err
+	}
+	if options.CachePath != "" {
+		if err := writePolicyCache(options.CachePath, data); err != nil {
+			return Decision{}, err
+		}
+	}
+	return decision, nil
+}
+
 // Validate checks a policy decision against the current target inventory.
 func Validate(input ValidateInput) (Selection, error) {
 	target, ok := targetByID(input.Targets, input.Decision.TargetID)
@@ -131,6 +180,33 @@ func parseTrustedDecision(data []byte, options LoadOptions) (Decision, error) {
 		return Decision{}, err
 	}
 	return decision, nil
+}
+
+func fetchPolicyURL(ctx context.Context, options RemoteOptions) ([]byte, error) {
+	parsedURL, err := url.Parse(options.URL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: parse policy URL: %w", ErrInvalidPolicy, err)
+	}
+	if parsedURL.Scheme != "https" {
+		return nil, fmt.Errorf("%w: policy URL must use https", ErrInvalidPolicy)
+	}
+	client := options.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, options.URL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new policy request: %w", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("fetch policy %s: %w", options.URL, err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("GET %s: %s", options.URL, http.StatusText(response.StatusCode))
+	}
+	return readPolicyBytes(response.Body, options.MaxBytes)
 }
 
 func parseDecision(data []byte) (Decision, error) {
@@ -205,6 +281,17 @@ func readPolicyBytes(reader io.Reader, maxBytes int64) ([]byte, error) {
 		return nil, fmt.Errorf("%w: policy decision is too large", ErrInvalidPolicy)
 	}
 	return data, nil
+}
+
+func (options RemoteOptions) loadOptions() LoadOptions {
+	return LoadOptions{
+		Trust:         options.Trust,
+		MaxBytes:      options.MaxBytes,
+		Now:           options.Now,
+		MaxAge:        options.MaxAge,
+		CachePath:     options.CachePath,
+		CacheFallback: options.CacheFallback,
+	}
 }
 
 func loadPolicyCache(options LoadOptions) (Decision, error) {

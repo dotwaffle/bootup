@@ -61,12 +61,14 @@ provider artifact hashes, or provider-owned signature verification. Hosted
 catalog freshness metadata is also a catalog acceptance policy, not an artifact
 authenticity signal.
 
-Signed local dynamic policy decisions are authenticated before parsing. Bootup
-requires a detached Ed25519 signature and public key for `--policy-file`; the
-signature covers the raw policy document bytes. A valid policy can only select
-an existing target, validated non-secret option values, and secret references
-handled by the secret input path. It cannot define executable behavior,
-providers, trust roots, artifact pins, or new command-line fragments.
+Signed dynamic policy decisions are authenticated before parsing. Bootup
+requires a detached Ed25519 signature and public key for `--policy-file` or
+`--policy-url`; the signature covers the raw policy document bytes. HTTPS is
+required for remote policy URLs, but transport security does not replace local
+signature trust. A valid policy can only select an existing target, validated
+non-secret option values, and secret references handled by the secret input
+path. It cannot define executable behavior, providers, trust roots, artifact
+pins, or new command-line fragments.
 
 Policy freshness is fail-closed. A decision must carry `expires_at`, or must
 carry `published_at` when `--policy-max-age` is used. Expired decisions,

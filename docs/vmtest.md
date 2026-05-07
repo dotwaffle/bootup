@@ -101,6 +101,15 @@ temporary disk space for downloaded artifacts, and enough time for upstream
 mirrors to respond. Keep it out of the default suite because failures can
 reflect network or mirror state rather than bootup regressions.
 
+The signed policy smoke is local and does not contact mirrors. It generates a
+temporary Ed25519 key pair, signs a policy selecting
+`opensuse-leap-160-amd64-netboot`, verifies option validation through
+`policy-target`, and forces one diagnostics failure to check redaction:
+
+```sh
+BOOTUP_POLICY_SMOKE=1 scripts/smoke-policy-target.sh
+```
+
 Use the offline catalog matrix to see which helper explicitly covers each target
 before choosing a smoke path:
 

@@ -46,12 +46,14 @@ type ProviderConfigPosture struct {
 type PolicyPosture struct {
 	Source         string `json:"source,omitzero"`
 	LocalPathSet   bool   `json:"local_path_set,omitzero"`
+	RemoteURLSet   bool   `json:"remote_url_set,omitzero"`
 	Ed25519        bool   `json:"ed25519,omitzero"`
 	SignatureFiles bool   `json:"signature_files,omitzero"`
 	Freshness      bool   `json:"freshness,omitzero"`
 	Cache          bool   `json:"cache,omitzero"`
 	CacheFallback  bool   `json:"cache_fallback,omitzero"`
 	MaxBytes       bool   `json:"max_bytes,omitzero"`
+	Fallback       string `json:"fallback,omitzero"`
 	DecisionID     string `json:"decision_id,omitzero"`
 	TargetID       string `json:"target_id,omitzero"`
 	PublishedAt    string `json:"published_at,omitzero"`

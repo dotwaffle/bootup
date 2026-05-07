@@ -155,8 +155,22 @@ material, hashes, signatures, and runtime configuration.
 
 ## Dynamic policy
 
-Bootup can resolve a signed local dynamic policy decision before non-interactive
-target planning:
+Bootup can resolve a signed dynamic policy decision before target planning.
+Generate a raw Ed25519 key pair and detached signature with the helper:
+
+```sh
+go run ./cmd/bootup-policy-sign \
+  --generate-key \
+  --private-key=/etc/bootup/policy.key \
+  --public-key=/etc/bootup/policy.pub
+
+go run ./cmd/bootup-policy-sign \
+  --policy=/etc/bootup/policy.json \
+  --private-key=/etc/bootup/policy.key \
+  --signature=/etc/bootup/policy.json.sig
+```
+
+Use a signed local policy file for non-interactive target planning:
 
 ```sh
 bootup --mode=policy-target \
@@ -170,6 +184,20 @@ bootup --mode=policy-target \
 supply the target ID, non-secret target options, and secret references for that
 mode. Policy cannot be combined with `--target`, `--option`, or
 `--discovery-family`.
+
+Use `--policy-url` to fetch signed policy bytes from HTTPS. HTTPS transport is
+required, but the detached signature and public key are still required local
+trust material:
+
+```sh
+bootup --mode=policy-target \
+  --policy-url=https://boot.example/policy/site-a.json \
+  --policy-signature=/etc/bootup/policy.json.sig \
+  --policy-public-key=/etc/bootup/policy.pub \
+  --policy-timeout=5s \
+  --policy-cache=/var/cache/bootup/policy.json \
+  --policy-cache-fallback
+```
 
 Policy documents use schema version 1 and are authenticated before parsing:
 
@@ -187,8 +215,23 @@ Policy documents use schema version 1 and are authenticated before parsing:
 Use `--policy-max-age=10m` with `published_at` to limit staleness further.
 `--policy-cache` updates a local cache after successful authentication and
 freshness checks. `--policy-cache-fallback` can use that cache after a source
-read failure, but cached bytes are verified again with the configured signature
-and public key.
+read or fetch failure, but cached bytes are verified again with the configured
+signature, public key, and freshness policy.
+
+Menu mode can try policy first and fall back to manual selection only when
+explicitly configured:
+
+```sh
+bootup --mode=menu --ui=plain \
+  --policy-url=https://boot.example/policy/site-a.json \
+  --policy-signature=/etc/bootup/policy.json.sig \
+  --policy-public-key=/etc/bootup/policy.pub \
+  --policy-fallback=manual
+```
+
+Run `BOOTUP_POLICY_SMOKE=1 scripts/smoke-policy-target.sh` to exercise the
+local signing helper, signed policy target selection, option validation, and
+redacted diagnostics path.
 
 ## Provider runtime config
 

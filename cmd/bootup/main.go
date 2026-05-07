@@ -61,12 +61,15 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	catalogMaxBytes := flags.Int64("catalog-max-bytes", 0, "maximum hosted catalog size in bytes")
 	catalogIncludeDefault := flags.Bool("catalog-include-default", false, "include embedded default catalog with selected catalog")
 	policyFilePath := flags.String("policy-file", "", "signed local dynamic policy decision JSON path")
+	policyURL := flags.String("policy-url", "", "signed remote dynamic policy decision URL")
 	policySignaturePath := flags.String("policy-signature", "", "detached Ed25519 signature path for policy decision bytes")
 	policyPublicKeyPath := flags.String("policy-public-key", "", "Ed25519 public key path for policy decision signature")
 	policyMaxAge := flags.Duration("policy-max-age", 0, "maximum age for policy published_at metadata")
+	policyTimeout := flags.Duration("policy-timeout", 30*time.Second, "remote policy request timeout")
 	policyCachePath := flags.String("policy-cache", "", "dynamic policy cache file path")
 	policyCacheFallback := flags.Bool("policy-cache-fallback", false, "fall back to authenticated policy cache on source read failure")
 	policyMaxBytes := flags.Int64("policy-max-bytes", 0, "maximum policy decision size in bytes")
+	policyFallback := flags.String("policy-fallback", string(policyFallbackNone), "policy failure fallback: none, manual")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	diagnosticsDir := flags.String("diagnostics-dir", "", "directory for opt-in failure diagnostics bundles")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
@@ -104,12 +107,15 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	}
 	policySource := policySource{
 		Path:          *policyFilePath,
+		URL:           *policyURL,
 		SignaturePath: *policySignaturePath,
 		PublicKeyPath: *policyPublicKeyPath,
 		MaxAge:        *policyMaxAge,
+		Timeout:       *policyTimeout,
 		CachePath:     *policyCachePath,
 		CacheFallback: *policyCacheFallback,
 		MaxBytes:      *policyMaxBytes,
+		Fallback:      policyFallbackMode(*policyFallback),
 	}
 	var capture *diagnostics.Capture
 	if strings.TrimSpace(*diagnosticsDir) != "" {
@@ -125,6 +131,10 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	policyPosture := diagnosticsPolicyPosture(policySource)
 
 	runErr := func() error {
+		if err := validatePolicyFallback(policySource.Fallback); err != nil {
+			return err
+		}
+
 		var providerConfig providerconfig.Config
 		if *providerConfigPath != "" {
 			config, err := providerconfig.LoadFile(*providerConfigPath)
@@ -175,13 +185,21 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 				Secrets:           secretStore,
 			})
 			if err != nil {
-				return fmt.Errorf("resolve policy: %w", err)
+				if policySource.manualFallback(effectiveMode, err) {
+					policyPosture = policyPostureWithFallback(policyPosture, string(policyFallbackManual))
+					if _, writeErr := fmt.Fprintln(stdout, "policy failure; falling back to manual target selection"); writeErr != nil {
+						return fmt.Errorf("write policy fallback notice: %w", writeErr)
+					}
+				} else {
+					return fmt.Errorf("resolve policy: %w", err)
+				}
+			} else {
+				effectiveMode = selectedMode
+				effectiveTargetID = selection.Target.ID
+				effectiveTargetOptions = selection.Options
+				effectiveSecretRefs = selection.SecretRefs
+				policyPosture = policyPostureWithDecision(policyPosture, decision)
 			}
-			effectiveMode = selectedMode
-			effectiveTargetID = selection.Target.ID
-			effectiveTargetOptions = selection.Options
-			effectiveSecretRefs = selection.SecretRefs
-			policyPosture = policyPostureWithDecision(policyPosture, decision)
 		}
 
 		runner := app.New(app.Config{
@@ -421,24 +439,46 @@ func hasNetworkConfig(config runtime.NetworkConfig) bool {
 
 const modePolicyTarget app.Mode = "policy-target"
 
+type policyFallbackMode string
+
+const (
+	policyFallbackNone   policyFallbackMode = "none"
+	policyFallbackManual policyFallbackMode = "manual"
+)
+
 type policySource struct {
 	Path          string
+	URL           string
 	SignaturePath string
 	PublicKeyPath string
 	MaxAge        time.Duration
+	Timeout       time.Duration
 	CachePath     string
 	CacheFallback bool
 	MaxBytes      int64
+	Fallback      policyFallbackMode
 }
 
 func (s policySource) configured() bool {
 	return s.Path != "" ||
+		s.URL != "" ||
 		s.SignaturePath != "" ||
 		s.PublicKeyPath != "" ||
 		s.MaxAge > 0 ||
 		s.CachePath != "" ||
 		s.CacheFallback ||
 		s.MaxBytes > 0
+}
+
+func (s policySource) manualFallback(mode app.Mode, err error) bool {
+	return mode == app.ModeMenu && s.Fallback == policyFallbackManual && errors.Is(err, policy.ErrInvalidPolicy)
+}
+
+func validatePolicyFallback(fallback policyFallbackMode) error {
+	if fallback == "" || fallback == policyFallbackNone || fallback == policyFallbackManual {
+		return nil
+	}
+	return fmt.Errorf("%w: unsupported policy fallback %q", policy.ErrInvalidPolicy, fallback)
 }
 
 type policySelectionInput struct {
@@ -454,6 +494,12 @@ func resolvePolicySelection(ctx context.Context, registry *provider.Registry, so
 	if err != nil {
 		return policy.Selection{}, policy.Decision{}, "", err
 	}
+	if source.Path != "" && source.URL != "" {
+		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: cannot use --policy-file with --policy-url", policy.ErrInvalidPolicy)
+	}
+	if source.Fallback == policyFallbackManual && input.Mode != app.ModeMenu {
+		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: --policy-fallback=manual requires --mode=menu", policy.ErrInvalidPolicy)
+	}
 	if input.TargetID != "" {
 		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: cannot combine --target with dynamic policy", policy.ErrInvalidPolicy)
 	}
@@ -467,14 +513,7 @@ func resolvePolicySelection(ctx context.Context, registry *provider.Registry, so
 	if err != nil {
 		return policy.Selection{}, policy.Decision{}, "", err
 	}
-	decision, err := policy.LoadFile(policy.LoadOptions{
-		Path:          source.Path,
-		Trust:         trust,
-		MaxAge:        source.MaxAge,
-		CachePath:     source.CachePath,
-		CacheFallback: source.CacheFallback,
-		MaxBytes:      source.MaxBytes,
-	})
+	decision, err := loadPolicyDecision(ctx, source, trust)
 	if err != nil {
 		return policy.Selection{}, policy.Decision{}, "", err
 	}
@@ -493,6 +532,28 @@ func resolvePolicySelection(ctx context.Context, registry *provider.Registry, so
 	return selection, decision, selectedMode, nil
 }
 
+func loadPolicyDecision(ctx context.Context, source policySource, trust policy.Trust) (policy.Decision, error) {
+	if source.URL != "" {
+		return policy.LoadURL(ctx, policy.RemoteOptions{
+			URL:           source.URL,
+			Trust:         trust,
+			MaxAge:        source.MaxAge,
+			Timeout:       source.Timeout,
+			CachePath:     source.CachePath,
+			CacheFallback: source.CacheFallback,
+			MaxBytes:      source.MaxBytes,
+		})
+	}
+	return policy.LoadFile(policy.LoadOptions{
+		Path:          source.Path,
+		Trust:         trust,
+		MaxAge:        source.MaxAge,
+		CachePath:     source.CachePath,
+		CacheFallback: source.CacheFallback,
+		MaxBytes:      source.MaxBytes,
+	})
+}
+
 func policyAppMode(mode app.Mode, source policySource) (app.Mode, error) {
 	if mode == modePolicyTarget {
 		if !source.configured() {
@@ -504,10 +565,12 @@ func policyAppMode(mode app.Mode, source policySource) (app.Mode, error) {
 		return mode, nil
 	}
 	switch mode {
+	case app.ModeMenu:
+		return app.ModeBootTarget, nil
 	case app.ModePlanTarget, app.ModeStageTarget, app.ModeBootTarget:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("%w: dynamic policy requires policy-target, plan-target, stage-target, or boot-target mode", policy.ErrInvalidPolicy)
+		return "", fmt.Errorf("%w: dynamic policy requires policy-target, menu, plan-target, stage-target, or boot-target mode", policy.ErrInvalidPolicy)
 	}
 }
 
@@ -532,6 +595,7 @@ func policyTrust(source policySource) (policy.Trust, error) {
 func diagnosticsPolicyPosture(source policySource) diagnostics.PolicyPosture {
 	posture := diagnostics.PolicyPosture{
 		LocalPathSet:   source.Path != "",
+		RemoteURLSet:   source.URL != "",
 		Ed25519:        source.SignaturePath != "" || source.PublicKeyPath != "",
 		SignatureFiles: source.SignaturePath != "" || source.PublicKeyPath != "",
 		Freshness:      source.configured(),
@@ -539,9 +603,22 @@ func diagnosticsPolicyPosture(source policySource) diagnostics.PolicyPosture {
 		CacheFallback:  source.CacheFallback,
 		MaxBytes:       source.MaxBytes > 0,
 	}
-	if source.Path != "" {
+	if source.Fallback != "" && source.Fallback != policyFallbackNone {
+		posture.Fallback = string(source.Fallback)
+	}
+	switch {
+	case source.Path != "" && source.URL != "":
+		posture.Source = "multiple"
+	case source.URL != "":
+		posture.Source = "remote"
+	case source.Path != "":
 		posture.Source = "local"
 	}
+	return posture
+}
+
+func policyPostureWithFallback(posture diagnostics.PolicyPosture, fallback string) diagnostics.PolicyPosture {
+	posture.Fallback = fallback
 	return posture
 }
 
@@ -560,6 +637,7 @@ func policyPostureWithDecision(posture diagnostics.PolicyPosture, decision polic
 func diagnosticsPolicyRedactValues(source policySource) []string {
 	values := []string{
 		source.Path,
+		source.URL,
 		source.SignaturePath,
 		source.PublicKeyPath,
 		source.CachePath,

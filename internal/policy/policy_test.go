@@ -1,7 +1,11 @@
 package policy_test
 
 import (
+	"bytes"
+	"context"
 	"crypto/ed25519"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -204,6 +208,182 @@ func TestLoadFileFallsBackToAuthenticatedCache(t *testing.T) {
 	}
 }
 
+func TestLoadURLFetchesAuthenticatesAndParsesHTTPSPolicy(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	data, signature, publicKey := signedPolicyBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "remote-site-a-node-03",
+		"target_id": "ubuntu-2604-amd64-netboot",
+		"expires_at": "2026-05-07T10:10:00Z"
+	}`)
+	client := &http.Client{Transport: policyResponseMap{
+		"https://policy.example/bootup/policy.json": policyResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	decision, err := policy.LoadURL(context.Background(), policy.RemoteOptions{
+		URL:        "https://policy.example/bootup/policy.json",
+		HTTPClient: client,
+		Trust: policy.Trust{
+			Ed25519Signature: signature,
+			Ed25519PublicKey: publicKey,
+		},
+		Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("load remote policy: %v", err)
+	}
+	if decision.DecisionID != "remote-site-a-node-03" {
+		t.Fatalf("decision ID = %q, want remote decision", decision.DecisionID)
+	}
+}
+
+func TestLoadURLRejectsUnsupportedScheme(t *testing.T) {
+	t.Parallel()
+
+	_, signature, publicKey := signedPolicyBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "remote-site-a-node-03",
+		"target_id": "ubuntu-2604-amd64-netboot",
+		"expires_at": "2026-05-07T10:10:00Z"
+	}`)
+
+	_, err := policy.LoadURL(context.Background(), policy.RemoteOptions{
+		URL: "http://policy.example/bootup/policy.json",
+		Trust: policy.Trust{
+			Ed25519Signature: signature,
+			Ed25519PublicKey: publicKey,
+		},
+	})
+	if !strings.Contains(err.Error(), "https") {
+		t.Fatalf("load remote error = %q, want HTTPS context", err)
+	}
+}
+
+func TestLoadURLWritesAuthenticatedCache(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	data, signature, publicKey := signedPolicyBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "remote-cache-write",
+		"target_id": "ubuntu-2604-amd64-netboot",
+		"expires_at": "2026-05-07T10:10:00Z"
+	}`)
+	cachePath := filepath.Join(t.TempDir(), "policy-cache.json")
+	client := &http.Client{Transport: policyResponseMap{
+		"https://policy.example/bootup/policy.json": policyResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	_, err := policy.LoadURL(context.Background(), policy.RemoteOptions{
+		URL:        "https://policy.example/bootup/policy.json",
+		HTTPClient: client,
+		Trust: policy.Trust{
+			Ed25519Signature: signature,
+			Ed25519PublicKey: publicKey,
+		},
+		Now:       func() time.Time { return now },
+		CachePath: cachePath,
+	})
+	if err != nil {
+		t.Fatalf("load remote policy: %v", err)
+	}
+	cached, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cache: %v", err)
+	}
+	if !bytes.Equal(cached, data) {
+		t.Fatalf("cache bytes = %q, want remote policy body", cached)
+	}
+}
+
+func TestLoadURLFallsBackToAuthenticatedCache(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	data, signature, publicKey := signedPolicyBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "remote-cache-fallback",
+		"target_id": "ubuntu-2604-amd64-netboot",
+		"expires_at": "2026-05-07T10:10:00Z"
+	}`)
+	cachePath := filepath.Join(t.TempDir(), "policy-cache.json")
+	if err := os.WriteFile(cachePath, data, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+	client := &http.Client{Transport: policyResponseMap{
+		"https://policy.example/bootup/policy.json": policyResponse{
+			statusCode: http.StatusInternalServerError,
+			body:       []byte("error"),
+		},
+	}}
+
+	decision, err := policy.LoadURL(context.Background(), policy.RemoteOptions{
+		URL:        "https://policy.example/bootup/policy.json",
+		HTTPClient: client,
+		Trust: policy.Trust{
+			Ed25519Signature: signature,
+			Ed25519PublicKey: publicKey,
+		},
+		Now:           func() time.Time { return now },
+		CachePath:     cachePath,
+		CacheFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("load remote policy from cache: %v", err)
+	}
+	if decision.DecisionID != "remote-cache-fallback" {
+		t.Fatalf("decision ID = %q, want cached remote decision", decision.DecisionID)
+	}
+}
+
+func TestLoadURLRejectsUnauthenticatedCacheFallback(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	data, signature, publicKey := signedPolicyBytes(t, `{
+		"schema_version": 1,
+		"decision_id": "remote-cache-fallback",
+		"target_id": "ubuntu-2604-amd64-netboot",
+		"expires_at": "2026-05-07T10:10:00Z"
+	}`)
+	cachePath := filepath.Join(t.TempDir(), "policy-cache.json")
+	if err := os.WriteFile(cachePath, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+	client := &http.Client{Transport: policyResponseMap{
+		"https://policy.example/bootup/policy.json": policyResponse{
+			statusCode: http.StatusInternalServerError,
+			body:       []byte("error"),
+		},
+	}}
+
+	_, err := policy.LoadURL(context.Background(), policy.RemoteOptions{
+		URL:        "https://policy.example/bootup/policy.json",
+		HTTPClient: client,
+		Trust: policy.Trust{
+			Ed25519Signature: signature,
+			Ed25519PublicKey: publicKey,
+		},
+		Now:           func() time.Time { return now },
+		CachePath:     cachePath,
+		CacheFallback: true,
+	})
+	if err == nil {
+		t.Fatal("load remote policy succeeded, want cache trust error")
+	}
+	if !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("load remote error = %q, want signature context", err)
+	}
+}
+
 func TestValidateDecisionAgainstInventory(t *testing.T) {
 	t.Parallel()
 
@@ -295,22 +475,28 @@ func TestValidateDecisionRejectsUnsupportedOutput(t *testing.T) {
 func writeSignedPolicy(t *testing.T, body string) (string, string, ed25519.PublicKey) {
 	t.Helper()
 
-	publicKey, privateKey, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		t.Fatalf("generate key: %v", err)
-	}
+	data, signature, publicKey := signedPolicyBytes(t, body)
 	dir := t.TempDir()
 	policyPath := filepath.Join(dir, "policy.json")
-	data := []byte(body)
 	if err := os.WriteFile(policyPath, data, 0o644); err != nil {
 		t.Fatalf("write policy: %v", err)
 	}
-	signature := ed25519.Sign(privateKey, data)
 	signaturePath := filepath.Join(dir, "policy.json.sig")
 	if err := os.WriteFile(signaturePath, signature, 0o644); err != nil {
 		t.Fatalf("write signature: %v", err)
 	}
 	return policyPath, signaturePath, publicKey
+}
+
+func signedPolicyBytes(t *testing.T, body string) ([]byte, []byte, ed25519.PublicKey) {
+	t.Helper()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	data := []byte(body)
+	return data, ed25519.Sign(privateKey, data), publicKey
 }
 
 func policyTarget() provider.Target {
@@ -358,4 +544,25 @@ func (s staticSecretStore) Has(id string) bool {
 
 func (s staticSecretStore) StageFile(string, string, string) (string, error) {
 	return "", nil
+}
+
+type policyResponse struct {
+	statusCode int
+	body       []byte
+}
+
+type policyResponseMap map[string]policyResponse
+
+func (m policyResponseMap) RoundTrip(request *http.Request) (*http.Response, error) {
+	item, ok := m[request.URL.String()]
+	if !ok {
+		item = policyResponse{statusCode: http.StatusNotFound, body: []byte("not found")}
+	}
+	return &http.Response{
+		StatusCode: item.statusCode,
+		Status:     http.StatusText(item.statusCode),
+		Body:       io.NopCloser(bytes.NewReader(item.body)),
+		Header:     make(http.Header),
+		Request:    request,
+	}, nil
 }

@@ -152,9 +152,10 @@ scripts/build-kernel.sh
 
 The FreeBSD kboot path depends on Linux metadata interfaces that are not needed
 by normal Linux kexec targets. The bootup kernel validator requires
-`CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y`, and `CONFIG_PROC_KCORE=y` so
-FreeBSD `loader.kboot` can recover Linux `boot_params` and EFI memory-map
-state before handing off to the FreeBSD kernel.
+`CONFIG_DEBUG_KERNEL=y`, `CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y`, and
+`CONFIG_PROC_KCORE=y` so FreeBSD `loader.kboot` can recover Linux
+`boot_params` and EFI memory-map state before handing off to the FreeBSD
+kernel.
 
 Then run the opt-in smoke helper with the generated kernel and config:
 

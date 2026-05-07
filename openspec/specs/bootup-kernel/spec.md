@@ -47,8 +47,9 @@ metadata from a Linux/u-root stage-1 environment.
 
 #### Scenario: Kboot metadata options are required
 - **WHEN** an operator validates a bootup-oriented amd64 kernel config
-- **THEN** the validator SHALL require `CONFIG_KALLSYMS`,
-  `CONFIG_KALLSYMS_ALL`, and `CONFIG_PROC_KCORE` to be built in
+- **THEN** the validator SHALL require `CONFIG_DEBUG_KERNEL`,
+  `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, and `CONFIG_PROC_KCORE` to be
+  built in
 
 #### Scenario: Missing kboot metadata options are reported
 - **WHEN** a kernel config omits a FreeBSD kboot metadata prerequisite or sets

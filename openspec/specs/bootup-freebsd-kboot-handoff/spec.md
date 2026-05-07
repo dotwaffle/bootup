@@ -48,7 +48,8 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
 #### Scenario: Smoke includes kernel prerequisite evidence
 - **WHEN** the FreeBSD kboot smoke is run
 - **THEN** it SHALL verify or document that the bootup kernel exposes
-  `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, and `CONFIG_PROC_KCORE`
+  `CONFIG_DEBUG_KERNEL`, `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, and
+  `CONFIG_PROC_KCORE`
 
 #### Scenario: Smoke uses non-vendored FreeBSD artifacts
 - **WHEN** the FreeBSD kboot smoke stages `loader.kboot` and a FreeBSD or

@@ -14,6 +14,7 @@ CONFIG_BLOCK=y
 CONFIG_EPOLL=y
 CONFIG_FUTEX=y
 CONFIG_PRINTK=y
+CONFIG_DEBUG_KERNEL=y
 CONFIG_TTY=y
 
 # Provide useful defaults even when a stage-0 loader supplies no command line.

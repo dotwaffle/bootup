@@ -64,6 +64,12 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
   `/proc` metadata reads resolve to the running Linux kernel while `/boot`
   reads resolve to the target payload
 
+#### Scenario: Smoke preserves stock FreeBSD root media
+- **WHEN** the FreeBSD kboot smoke uses a stock FreeBSD bootonly ISO
+- **THEN** it SHALL expose the ISO as target-visible block media after the
+  kernel jump, because the stock installer mounts `/` from its `cd9660` label
+  and Linux-only hostfs or loop mounts do not survive as FreeBSD root devices
+
 #### Scenario: Smoke forces target serial console output
 - **WHEN** the FreeBSD kboot smoke runs `loader.kboot` from Linux stage-1
 - **THEN** it SHALL pass FreeBSD kernel boot flags that enable serial and

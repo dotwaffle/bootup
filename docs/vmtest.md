@@ -179,6 +179,11 @@ jumps into the target kernel. Provide
 `BOOTUP_FREEBSD_KBOOT_LOADER`, `BOOTUP_FREEBSD_KBOOT_HELP`, and
 `BOOTUP_FREEBSD_KBOOT_ISO` to reuse already downloaded artifacts.
 
+The block device is intentional. The stock bootonly ISO mounts `/` from its
+`cd9660` label after the FreeBSD kernel starts, so a Linux-only hostfs or loop
+mount can let `loader.kboot` load the kernel but will still stop at
+`mountroot` unless the target kernel can see equivalent root media.
+
 The script treats the old `boot_params`/EFI memory-map panic as a distinct
 failure. It only exits successfully when a configured target marker appears
 after the FreeBSD kernel jump. Override

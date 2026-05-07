@@ -48,11 +48,24 @@ metadata from a Linux/u-root stage-1 environment.
 #### Scenario: Kboot metadata options are required
 - **WHEN** an operator validates a bootup-oriented amd64 kernel config
 - **THEN** the validator SHALL require `CONFIG_DEBUG_KERNEL`,
-  `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, `CONFIG_PROC_KCORE`, and
-  `CONFIG_ISO9660_FS` to be built in
+  `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, and `CONFIG_PROC_KCORE` to be
+  built in
 
 #### Scenario: Missing kboot metadata options are reported
 - **WHEN** a kernel config omits a FreeBSD kboot metadata prerequisite or sets
   it as a module
 - **THEN** the validator SHALL report the missing or modular symbol as
   unsuitable for early-stage FreeBSD kboot handoff testing
+
+#### Scenario: ISO mount options are required only for mount-based smokes
+- **WHEN** an operator validates a bootup-oriented amd64 kernel config for a
+  FreeBSD kboot smoke that mounts ISO media from Linux stage-1
+- **THEN** the validator SHALL require `CONFIG_ISO9660_FS` and
+  `CONFIG_BLK_DEV_LOOP` to be built in
+
+#### Scenario: ISO mount options can be skipped for direct extraction
+- **WHEN** an operator validates a bootup-oriented amd64 kernel config for a
+  FreeBSD kboot smoke that extracts payloads without mounting ISO media
+- **THEN** the validator SHALL allow `CONFIG_ISO9660_FS` and
+  `CONFIG_BLK_DEV_LOOP` to be omitted while still enforcing the kboot metadata
+  prerequisites

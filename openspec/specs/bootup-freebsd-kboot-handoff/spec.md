@@ -44,10 +44,11 @@ Linux hostfs.
 #### Scenario: mfsBSD target stages loader and memory-root payload
 - **WHEN** bootup stages an mfsBSD `freebsd-kboot` target
 - **THEN** it SHALL verify a pinned mfsBSD ISO hash, extract the ISO contents
-  from Linux, normalize compressed `kernel` and `mfsroot` payload files when
-  needed, verify a pinned FreeBSD base archive hash, extract `loader.kboot` and
-  `loader.help.kboot`, and prepare loader arguments containing `hostfs_root`,
-  `bootdev=host:/`, and serial console settings
+  from Linux without requiring the Linux kernel to mount the ISO, normalize
+  compressed `kernel` and `mfsroot` payload files when needed, verify a pinned
+  FreeBSD base archive hash, extract `loader.kboot` and `loader.help.kboot`,
+  and prepare loader arguments containing `hostfs_root`, `bootdev=host:/`, and
+  serial console settings
 
 ### Requirement: FreeBSD kboot artifacts are not vendored
 Bootup SHALL NOT commit generated `loader.kboot` binaries, downloaded FreeBSD
@@ -69,7 +70,9 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
 - **WHEN** the FreeBSD kboot smoke is run
 - **THEN** it SHALL verify or document that the bootup kernel exposes
   `CONFIG_DEBUG_KERNEL`, `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, and
-  `CONFIG_PROC_KCORE`, and `CONFIG_ISO9660_FS`
+  `CONFIG_PROC_KCORE`, and SHALL require `CONFIG_ISO9660_FS` and
+  `CONFIG_BLK_DEV_LOOP` only for smoke paths that mount ISO payloads from
+  Linux stage-1
 
 #### Scenario: Smoke uses non-vendored FreeBSD artifacts
 - **WHEN** the FreeBSD kboot smoke stages `loader.kboot` and a FreeBSD or
@@ -79,8 +82,8 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
 
 #### Scenario: Smoke exposes payload through Linux hostfs
 - **WHEN** the FreeBSD kboot smoke runs `loader.kboot` from Linux stage-1
-- **THEN** it SHALL mount the FreeBSD or mfsBSD payload from Linux and run
-  `loader.kboot` with `hostfs_root` and `bootdev=host:/` so unqualified
+- **THEN** it SHALL present the FreeBSD or mfsBSD payload tree from Linux and
+  run `loader.kboot` with `hostfs_root` and `bootdev=host:/` so unqualified
   `/proc` metadata reads resolve to the running Linux kernel while `/boot`
   reads resolve to the target payload
 

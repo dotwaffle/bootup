@@ -9,12 +9,17 @@ Bootup SHALL source concrete static provider targets from a versioned static
 catalog document.
 
 #### Scenario: Embedded catalog is used by default
-- **WHEN** bootup starts without a catalog path
+- **WHEN** bootup starts without a catalog path or hosted catalog URL
 - **THEN** bootup SHALL use its embedded static catalog document as the provider
   target source
 
 #### Scenario: Local catalog replaces embedded catalog
 - **WHEN** bootup starts with a local catalog path
+- **THEN** bootup SHALL load that catalog document instead of the embedded
+  static catalog document
+
+#### Scenario: Hosted catalog replaces embedded catalog
+- **WHEN** bootup starts with an authenticated hosted catalog URL
 - **THEN** bootup SHALL load that catalog document instead of the embedded
   static catalog document
 
@@ -93,25 +98,26 @@ provider target set.
   static targets
 
 ### Requirement: Hosted and dynamic catalogs are deferred
-Bootup SHALL keep runtime URL-hosted catalogs and dynamic distro discovery out
-of the implemented static catalog source.
+Bootup SHALL support authenticated URL-hosted static catalog documents while
+keeping dynamic discovery and executable policy out of the static catalog
+source.
 
-#### Scenario: Catalog URL is not supported
+#### Scenario: Catalog URL requires trust configuration
 - **WHEN** an operator needs a URL-hosted static catalog
-- **THEN** bootup SHALL require a future catalog authenticity and freshness
-  design before adding URL loading behavior
+- **THEN** bootup SHALL require catalog authenticity and freshness configuration
+  before adding URL-loaded targets to the provider registry
 
 #### Scenario: Hosted catalog design is documented
 - **WHEN** an operator needs a URL-hosted static catalog
-- **THEN** bootup SHALL document that catalog authenticity, freshness, cache
-  behavior, offline fallback, and operator trust configuration must be designed
-  before runtime URL catalog loading is implemented
+- **THEN** bootup SHALL document catalog authenticity, freshness, cache
+  behavior, offline fallback, and operator trust configuration for runtime URL
+  catalog loading
 
 #### Scenario: Hosted catalog trust model is explicit
-- **WHEN** a future bootup version adds URL-hosted static catalog loading
-- **THEN** it SHALL define catalog authenticity, freshness, cache behavior,
-  offline fallback, and operator trust configuration before loading hosted
-  catalog content at runtime
+- **WHEN** bootup loads URL-hosted static catalog content at runtime
+- **THEN** it SHALL define and enforce catalog authenticity, freshness, cache
+  behavior, offline fallback, and operator trust configuration before loading
+  that hosted catalog content
 
 #### Scenario: Static catalog does not perform dynamic discovery
 - **WHEN** bootup lists targets from a static catalog document
@@ -217,3 +223,17 @@ Bootup SHALL treat catalog option definitions as validated data only.
   run scripts, or perform dynamic discovery
 - **THEN** bootup SHALL reject or ignore that behavior because static catalog
   options MUST NOT be executable policy
+
+### Requirement: Static catalog document freshness metadata
+Bootup SHALL allow static catalog documents to carry optional publication and
+expiry metadata for hosted catalog freshness validation.
+
+#### Scenario: Catalog document includes freshness metadata
+- **WHEN** a static catalog document includes publication or expiry timestamps
+- **THEN** bootup SHALL parse those timestamps as catalog document metadata and
+  preserve normal target validation behavior
+
+#### Scenario: Catalog document freshness metadata is malformed
+- **WHEN** a static catalog document includes malformed publication or expiry
+  timestamps
+- **THEN** bootup SHALL reject the catalog before registering provider targets

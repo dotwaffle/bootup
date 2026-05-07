@@ -20,7 +20,8 @@ targets provided by compiled-in providers.
   the operator
 
 #### Scenario: Catalog document supplies provider targets
-- **WHEN** bootup starts with an embedded or local static catalog document
+- **WHEN** bootup starts with an embedded, local, or authenticated hosted static
+  catalog document
 - **THEN** compiled-in providers SHALL expose their static targets from that
   validated catalog source
 
@@ -30,7 +31,7 @@ targets provided by compiled-in providers.
 
 #### Scenario: Dynamic modes are not required
 - **WHEN** bootup lists static provider catalog targets
-- **THEN** it SHALL NOT require runtime provider plugins, remote catalog
+- **THEN** it SHALL NOT require runtime provider plugins, remote provider code
   discovery, or script-driven boot policy evaluation
 
 ### Requirement: Target boot action metadata

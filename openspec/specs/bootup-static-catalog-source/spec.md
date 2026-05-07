@@ -2,7 +2,9 @@
 
 ## Purpose
 Define bootup's static catalog document sources for concrete provider targets,
-including the embedded default catalog and local replacement catalogs.
+including the embedded default catalog, local replacement catalogs,
+authenticated hosted replacement catalogs, and opt-in composition with embedded
+defaults.
 ## Requirements
 ### Requirement: Static catalog document source
 Bootup SHALL source concrete static provider targets from a versioned static
@@ -110,7 +112,7 @@ provider target set.
 - **THEN** it SHALL expose Fedora Server amd64 netboot targets as selectable
   static targets
 
-### Requirement: Hosted and dynamic catalogs are deferred
+### Requirement: Static catalog source boundaries
 Bootup SHALL support authenticated URL-hosted static catalog documents while
 keeping dynamic discovery and executable policy out of the static catalog
 source.
@@ -119,12 +121,6 @@ source.
 - **WHEN** an operator needs a URL-hosted static catalog
 - **THEN** bootup SHALL require catalog authenticity and freshness configuration
   before adding URL-loaded targets to the provider registry
-
-#### Scenario: Hosted catalog design is documented
-- **WHEN** an operator needs a URL-hosted static catalog
-- **THEN** bootup SHALL document catalog authenticity, freshness, cache
-  behavior, offline fallback, and operator trust configuration for runtime URL
-  catalog loading
 
 #### Scenario: Hosted catalog trust model is explicit
 - **WHEN** bootup loads URL-hosted static catalog content at runtime

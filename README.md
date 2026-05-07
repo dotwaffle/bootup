@@ -27,8 +27,9 @@ Bootup does not commit or package distribution archive keyrings. Callers must
 supply trust material to verification hooks when verifying signed distribution
 metadata.
 
-See `docs/providers.md` for the static provider catalog, hosted catalog
-loading, implemented provider discovery, and deferred policy modes.
+See `docs/providers.md` for the static provider catalog, local and hosted
+catalog sources, catalog composition, implemented provider discovery, and
+policy boundaries.
 
 ```go
 err := verify.Artifact(verify.ArtifactInput{

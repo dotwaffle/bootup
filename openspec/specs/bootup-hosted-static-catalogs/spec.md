@@ -1,7 +1,9 @@
 # bootup-hosted-static-catalogs Specification
 
 ## Purpose
-TBD - created by archiving change add-hosted-static-catalogs. Update Purpose after archive.
+Define authenticated URL-hosted static catalog loading, including explicit
+operator selection, catalog byte authentication, freshness checks, cache
+fallback, and the boundary between catalog trust and provider artifact trust.
 ## Requirements
 ### Requirement: Hosted catalog URL loading
 Bootup SHALL load URL-hosted static catalog documents only when the operator

@@ -25,8 +25,10 @@ be selected while provider code decides how to resolve, verify, and stage it.
 ## Implemented mode: static concrete targets
 
 This mode is intentionally simple. Choosing a target such as Debian trixie amd64
-netboot always selects that concrete target. New releases or architectures do
-not appear until bootup itself or future static catalog content is updated.
+netboot always selects that concrete target. In static mode, new releases or
+architectures do not appear until the embedded default catalog or a selected
+static catalog is updated. Provider discovery families are the separate runtime
+path for finding supported releases.
 
 Bootup embeds a default static catalog. The current default catalog includes:
 

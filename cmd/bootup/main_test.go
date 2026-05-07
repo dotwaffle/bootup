@@ -262,6 +262,83 @@ func TestRunCatalogMatrixReportsHashPinnedLocalCatalog(t *testing.T) {
 	}
 }
 
+func TestRunCatalogIncludeDefaultComposesLocalCatalog(t *testing.T) {
+	t.Parallel()
+
+	catalogPath := writeLinuxCatalog(t, "opensuse-lab-amd64-netboot")
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "list-targets",
+		"--catalog", catalogPath,
+		"--catalog-include-default",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "opensuse-lab-amd64-netboot") {
+		t.Fatalf("stdout = %q, want local catalog target", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "debian-trixie-amd64-netboot") {
+		t.Fatalf("stdout = %q, want embedded default target", stdout.String())
+	}
+}
+
+func TestRunLocalCatalogStillReplacesDefaultByDefault(t *testing.T) {
+	t.Parallel()
+
+	catalogPath := writeLinuxCatalog(t, "opensuse-lab-amd64-netboot")
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "list-targets",
+		"--catalog", catalogPath,
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "opensuse-lab-amd64-netboot") {
+		t.Fatalf("stdout = %q, want local catalog target", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "debian-trixie-amd64-netboot") {
+		t.Fatalf("stdout = %q, did not want embedded default target", stdout.String())
+	}
+}
+
+func TestRunCatalogIncludeDefaultRejectsDuplicateTargetID(t *testing.T) {
+	t.Parallel()
+
+	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(catalogPath, []byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Duplicate Debian trixie",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+
+	err := runWithIO(context.Background(), []string{
+		"--mode", "list-targets",
+		"--catalog", catalogPath,
+		"--catalog-include-default",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("run succeeded, want duplicate target error")
+	}
+	if !strings.Contains(err.Error(), "duplicate target ID") {
+		t.Fatalf("run error = %q, want duplicate target context", err)
+	}
+}
+
 func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	t.Parallel()
 
@@ -277,6 +354,34 @@ func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	if !strings.Contains(stdout.String(), "console=ttyS0 console=ttyS1") {
 		t.Fatalf("stdout = %q, want appended cmdline", stdout.String())
 	}
+}
+
+func writeLinuxCatalog(t *testing.T, targetID string) string {
+	t.Helper()
+
+	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(catalogPath, []byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "`+targetID+`",
+			"provider_id": "linux",
+			"name": "openSUSE lab amd64 netboot",
+			"catalog": {
+				"distribution": "opensuse",
+				"release": "lab",
+				"architecture": "amd64",
+				"kind": "installer"
+			},
+			"source": {
+				"base_url": "https://download.example/opensuse",
+				"kernel_path": "boot/x86_64/loader/linux",
+				"kernel_sha256": "`+strings.Repeat("a", 64)+`"
+			}
+		}]
+	}`), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	return catalogPath
 }
 
 func TestRunAppliesTargetOptionFlagsBeforeAppendCmdline(t *testing.T) {

@@ -15,8 +15,8 @@ selected kernel and initrd, and hands off with kexec.
 - Linux-shaped static targets for openSUSE Leap, Arch Linux, and GParted Live.
 - Local disk boot through u-root's local boot path.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
-- Generated embedded static provider catalog with local JSON replacement and
-  authenticated hosted catalog loading.
+- Generated embedded static provider catalog with local/hosted replacement and
+  opt-in default catalog composition.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.

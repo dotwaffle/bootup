@@ -80,16 +80,19 @@ The file must be a schema version 1 static catalog:
 }
 ```
 
-The catalog is a replacement, not a merge. If the file contains only the
-entries above, bootup exposes only those targets even though other providers may
-be compiled into the binary. Invalid catalogs fail startup before provider
-target discovery. `source.base_url` is an optional HTTP(S) source root for that
-target; `source.iso_name` is an optional pathless installer ISO filename used by
+The catalog is a replacement by default. If the file contains only the entries
+above, bootup exposes only those targets even though other providers may be
+compiled into the binary. Add `--catalog-include-default` to compose the
+embedded default catalog with the selected local catalog. Composition is
+additive only; duplicate target IDs across the two catalogs are rejected rather
+than treated as overrides. Invalid catalogs fail startup before provider target
+discovery. `source.base_url` is an optional HTTP(S) source root for that target;
+`source.iso_name` is an optional pathless installer ISO filename used by
 providers such as Ubuntu. Generic Linux catalog targets also use
-`source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`.
-They may include `source.kernel_sha256` and `source.initrd_sha256` to pin
-generic Linux artifacts; when an initrd path is present and either hash is set,
-both hashes are required.
+`source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`. They
+may include `source.kernel_sha256` and `source.initrd_sha256` to pin generic
+Linux artifacts; when an initrd path is present and either hash is set, both
+hashes are required.
 Targets may also declare `options`; each option is validated catalog data that
 can append a kernel command-line fragment when selected with `--option`.
 The `localboot` action does not download artifacts and hands off to u-root's
@@ -108,13 +111,15 @@ bootup \
   --mode=menu
 ```
 
-Hosted catalogs use the same schema as local catalogs and keep the same
+Hosted catalogs use the same schema as local catalogs and keep the same default
 replacement semantics: the hosted document becomes the complete static target
-list. Bootup requires explicit catalog trust configuration before fetching
-hosted content. Use `--catalog-sha256` for immutable digest-pinned catalogs, or
-use `--catalog-signature` with `--catalog-public-key` for a detached Ed25519
-signature over the raw catalog bytes. Signature and public-key files may contain
-raw bytes or hex-encoded bytes.
+list. `--catalog-include-default` can also compose an authenticated hosted
+catalog with embedded defaults. Bootup requires explicit catalog trust
+configuration before fetching hosted content. Use `--catalog-sha256` for
+immutable digest-pinned catalogs, or use `--catalog-signature` with
+`--catalog-public-key` for a detached Ed25519 signature over the raw catalog
+bytes. Signature and public-key files may contain raw bytes or hex-encoded
+bytes.
 
 Hosted catalog documents may include top-level RFC3339 freshness metadata:
 

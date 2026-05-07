@@ -56,11 +56,14 @@ Repository tests fail when the generated file is stale.
 
 Operators can replace the embedded catalog with a local JSON file using
 `--catalog`, or with an authenticated hosted JSON file using `--catalog-url`.
-Replacement is all-or-nothing: a supplied local or hosted catalog becomes the
-complete static target list for compiled-in providers. Bootup validates the
-catalog before provider registration and rejects malformed JSON, unsupported
-schema versions, duplicate target IDs, incomplete target metadata, and provider
-IDs that are not compiled into the binary.
+Replacement is the default: a supplied local or hosted catalog becomes the
+complete static target list for compiled-in providers. Add
+`--catalog-include-default` to compose the embedded default catalog with the
+selected local or hosted catalog. Composition is additive only, and duplicate
+target IDs across sources are rejected. Bootup validates the catalog before
+provider registration and rejects malformed JSON, unsupported schema versions,
+duplicate target IDs, incomplete target metadata, and provider IDs that are not
+compiled into the binary.
 
 Catalog documents use schema version 1:
 

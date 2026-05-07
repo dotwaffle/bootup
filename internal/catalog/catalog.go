@@ -104,6 +104,26 @@ func LoadFile(path string, providerIDs []string) (Document, error) {
 	return doc, nil
 }
 
+// Compose appends targets from validated catalog documents and rejects
+// duplicate target IDs across sources.
+func Compose(documents ...Document) (Document, error) {
+	result := Document{SchemaVersion: schemaVersion}
+	seenTargets := make(map[string]struct{})
+	for _, doc := range documents {
+		if doc.SchemaVersion != schemaVersion {
+			return Document{}, fmt.Errorf("%w: unsupported schema version %d", ErrInvalidCatalog, doc.SchemaVersion)
+		}
+		for _, target := range doc.Entries {
+			if _, ok := seenTargets[target.ID]; ok {
+				return Document{}, fmt.Errorf("%w: duplicate target ID %q", ErrInvalidCatalog, target.ID)
+			}
+			seenTargets[target.ID] = struct{}{}
+			result.Entries = append(result.Entries, target)
+		}
+	}
+	return result, nil
+}
+
 // Parse decodes and validates a static catalog document.
 func Parse(data []byte, providerIDs []string) (Document, error) {
 	var doc Document

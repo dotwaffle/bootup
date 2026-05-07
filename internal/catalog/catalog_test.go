@@ -591,6 +591,96 @@ func TestLoadFileLoadsLocalCatalog(t *testing.T) {
 	}
 }
 
+func TestComposeAppendsCatalogTargets(t *testing.T) {
+	t.Parallel()
+
+	base := parseTestCatalog(t, `{
+		"schema_version": 1,
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Debian trixie amd64 netboot",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`, []string{"debian", "linux"})
+	extra := parseTestCatalog(t, `{
+		"schema_version": 1,
+		"targets": [{
+			"id": "opensuse-lab-amd64-netboot",
+			"provider_id": "linux",
+			"name": "openSUSE lab amd64 netboot",
+			"catalog": {
+				"distribution": "opensuse",
+				"release": "lab",
+				"architecture": "amd64",
+				"kind": "installer"
+			},
+			"source": {
+				"base_url": "https://download.example/opensuse",
+				"kernel_path": "boot/x86_64/loader/linux",
+				"kernel_sha256": "`+strings.Repeat("a", 64)+`"
+			}
+		}]
+	}`, []string{"debian", "linux"})
+
+	doc, err := catalog.Compose(base, extra)
+	if err != nil {
+		t.Fatalf("compose catalogs: %v", err)
+	}
+	if len(doc.Entries) != 2 {
+		t.Fatalf("entries length = %d, want 2", len(doc.Entries))
+	}
+	if doc.Entries[0].ID != "debian-trixie-amd64-netboot" || doc.Entries[1].ID != "opensuse-lab-amd64-netboot" {
+		t.Fatalf("entries = %#v, want base target then extra target", doc.Entries)
+	}
+}
+
+func TestComposeRejectsDuplicateTargetID(t *testing.T) {
+	t.Parallel()
+
+	first := parseTestCatalog(t, `{
+		"schema_version": 1,
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Debian trixie amd64 netboot",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`, []string{"debian"})
+	second := parseTestCatalog(t, `{
+		"schema_version": 1,
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Duplicate Debian trixie",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`, []string{"debian"})
+
+	_, err := catalog.Compose(first, second)
+	if err == nil {
+		t.Fatal("compose succeeded, want duplicate target error")
+	}
+	if !strings.Contains(err.Error(), "duplicate target ID") {
+		t.Fatalf("compose error = %q, want duplicate target context", err)
+	}
+}
+
 func TestParseCatalogFreshnessMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -619,6 +709,16 @@ func TestParseCatalogFreshnessMetadata(t *testing.T) {
 	if doc.ExpiresAt == nil || !doc.ExpiresAt.Equal(time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC)) {
 		t.Fatalf("expires_at = %v, want 2026-05-08T08:00:00Z", doc.ExpiresAt)
 	}
+}
+
+func parseTestCatalog(t *testing.T, data string, providerIDs []string) catalog.Document {
+	t.Helper()
+
+	doc, err := catalog.Parse([]byte(data), providerIDs)
+	if err != nil {
+		t.Fatalf("parse catalog: %v", err)
+	}
+	return doc
 }
 
 func TestVerifyHostedTrustAcceptsSHA256Pin(t *testing.T) {

@@ -57,6 +57,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	catalogCachePath := flags.String("catalog-cache", "", "hosted catalog cache file path")
 	catalogCacheFallback := flags.Bool("catalog-cache-fallback", false, "fall back to authenticated hosted catalog cache on fetch failure")
 	catalogMaxBytes := flags.Int64("catalog-max-bytes", 0, "maximum hosted catalog size in bytes")
+	catalogIncludeDefault := flags.Bool("catalog-include-default", false, "include embedded default catalog with selected catalog")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	diagnosticsDir := flags.String("diagnostics-dir", "", "directory for opt-in failure diagnostics bundles")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
@@ -87,6 +88,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		CachePath:         *catalogCachePath,
 		CacheFallback:     *catalogCacheFallback,
 		MaxBytes:          *catalogMaxBytes,
+		IncludeDefault:    *catalogIncludeDefault,
 		CompiledProviders: compiledProviderIDs(),
 	}
 	var capture *diagnostics.Capture
@@ -305,6 +307,7 @@ type catalogSource struct {
 	CachePath         string
 	CacheFallback     bool
 	MaxBytes          int64
+	IncludeDefault    bool
 	CompiledProviders []string
 }
 
@@ -316,10 +319,25 @@ func loadCatalog(ctx context.Context, source catalogSource) (catalog.Document, e
 	if providerIDs == nil {
 		providerIDs = compiledProviderIDs()
 	}
+	if source.Path == "" && source.URL == "" {
+		return catalog.LoadDefault(providerIDs)
+	}
+	selected, err := loadSelectedCatalog(ctx, source, providerIDs)
+	if err != nil {
+		return catalog.Document{}, err
+	}
+	if !source.IncludeDefault {
+		return selected, nil
+	}
+	defaultDoc, err := catalog.LoadDefault(providerIDs)
+	if err != nil {
+		return catalog.Document{}, err
+	}
+	return catalog.Compose(defaultDoc, selected)
+}
+
+func loadSelectedCatalog(ctx context.Context, source catalogSource, providerIDs []string) (catalog.Document, error) {
 	if source.URL == "" {
-		if source.Path == "" {
-			return catalog.LoadDefault(providerIDs)
-		}
 		return catalog.LoadFile(source.Path, providerIDs)
 	}
 	trust, err := hostedTrust(source)

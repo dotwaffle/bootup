@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,6 +35,74 @@ func TestRunRejectsMissingCatalog(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "load catalog") {
 		t.Fatalf("run error = %q, want catalog context", err)
+	}
+}
+
+func TestRunRejectsLocalAndHostedCatalogSources(t *testing.T) {
+	t.Parallel()
+
+	err := run(context.Background(), []string{
+		"--catalog", filepath.Join(t.TempDir(), "catalog.json"),
+		"--catalog-url", "https://catalog.example/bootup/catalog.json",
+	})
+	if err == nil {
+		t.Fatal("run succeeded, want catalog source error")
+	}
+	if !strings.Contains(err.Error(), "catalog") || !strings.Contains(err.Error(), "catalog-url") {
+		t.Fatalf("run error = %q, want catalog source context", err)
+	}
+}
+
+func TestRunRejectsHostedCatalogWithoutTrust(t *testing.T) {
+	t.Parallel()
+
+	err := run(context.Background(), []string{
+		"--catalog-url", "https://catalog.example/bootup/catalog.json",
+	})
+	if err == nil {
+		t.Fatal("run succeeded, want hosted trust error")
+	}
+	if !strings.Contains(err.Error(), "trust") {
+		t.Fatalf("run error = %q, want trust context", err)
+	}
+}
+
+func TestRunLoadsHostedCatalogFromCacheFallback(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Debian trixie amd64 netboot",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`)
+	cachePath := filepath.Join(t.TempDir(), "catalog-cache.json")
+	if err := os.WriteFile(cachePath, data, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+	sum := sha256.Sum256(data)
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "list-targets",
+		"--catalog-url", "https://127.0.0.1:1/catalog.json",
+		"--catalog-sha256", hex.EncodeToString(sum[:]),
+		"--catalog-cache", cachePath,
+		"--catalog-cache-fallback",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "debian-trixie-amd64-netboot") {
+		t.Fatalf("stdout = %q, want hosted cache target", stdout.String())
 	}
 }
 

@@ -95,6 +95,51 @@ local disk boot path.
 The embedded catalog is generated from `internal/catalog/source.json`. Run
 `go generate ./internal/catalog` after editing the source.
 
+Bootup can also replace the embedded catalog with an authenticated hosted
+catalog:
+
+```sh
+bootup \
+  --catalog-url=https://boot.example/catalogs/site-a.json \
+  --catalog-sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+  --mode=menu
+```
+
+Hosted catalogs use the same schema as local catalogs and keep the same
+replacement semantics: the hosted document becomes the complete static target
+list. Bootup requires explicit catalog trust configuration before fetching
+hosted content. Use `--catalog-sha256` for immutable digest-pinned catalogs, or
+use `--catalog-signature` with `--catalog-public-key` for a detached Ed25519
+signature over the raw catalog bytes. Signature and public-key files may contain
+raw bytes or hex-encoded bytes.
+
+Hosted catalog documents may include top-level RFC3339 freshness metadata:
+
+```json
+{
+  "schema_version": 1,
+  "published_at": "2026-05-07T08:00:00Z",
+  "expires_at": "2026-05-14T08:00:00Z",
+  "targets": []
+}
+```
+
+Use `--catalog-require-freshness` to require either `published_at` or
+`expires_at`, and use `--catalog-max-age=24h` to reject catalogs whose
+`published_at` timestamp is too old. If `expires_at` is present and has passed,
+bootup rejects the hosted catalog before provider registration.
+
+Use `--catalog-cache=/var/cache/bootup/catalog.json` to update a local cache
+after a hosted catalog has been fetched, authenticated, freshness-checked, and
+validated. Add `--catalog-cache-fallback` to allow that cache to be used when
+fetching the hosted URL fails. Cached bytes are authenticated and
+freshness-checked again before use.
+
+Catalog authenticity is separate from provider artifact verification. A trusted
+hosted catalog only decides which concrete targets compiled-in providers expose;
+providers still verify downloaded boot artifacts using provider-owned trust
+material, hashes, signatures, and runtime configuration.
+
 ## Provider runtime config
 
 Use `--provider-config` to point bootup at a JSON file that configures

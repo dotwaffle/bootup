@@ -15,7 +15,8 @@ selected kernel and initrd, and hands off with kexec.
 - Linux-shaped static targets for openSUSE Leap, Arch Linux, and GParted Live.
 - Local disk boot through u-root's local boot path.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
-- Generated embedded static provider catalog with local JSON replacement.
+- Generated embedded static provider catalog with local JSON replacement and
+  authenticated hosted catalog loading.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
@@ -26,8 +27,8 @@ Bootup does not commit or package distribution archive keyrings. Callers must
 supply trust material to verification hooks when verifying signed distribution
 metadata.
 
-See `docs/providers.md` for the static provider catalog, implemented provider
-discovery, and deferred hosted catalog and policy modes.
+See `docs/providers.md` for the static provider catalog, hosted catalog
+loading, implemented provider discovery, and deferred policy modes.
 
 ```go
 err := verify.Artifact(verify.ArtifactInput{

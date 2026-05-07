@@ -51,6 +51,15 @@ decoration as provider data. Lifecycle fields such as `supported`, `obsolete`,
 checksums, keyrings, transport policy, or authenticity signals for downloaded
 boot artifacts.
 
+Hosted static catalogs are authenticated before parsing. Operators must pin the
+raw catalog bytes with `--catalog-sha256` or provide a detached Ed25519
+signature and public key with `--catalog-signature` and
+`--catalog-public-key`. Catalog signatures and digest pins only authenticate the
+catalog document itself; they do not replace distribution archive keyrings,
+provider artifact hashes, or provider-owned signature verification. Hosted
+catalog freshness metadata is also a catalog acceptance policy, not an artifact
+authenticity signal.
+
 The Debian provider fails closed unless Debian archive trust material is
 provided through configuration. The Fedora provider can stage Fedora Server
 netboot kernel and initrd artifacts over HTTPS by default; callers that need

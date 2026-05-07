@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 )
@@ -27,6 +28,8 @@ var ErrInvalidCatalog = errors.New("invalid catalog")
 // Document is a versioned static catalog of concrete provider targets.
 type Document struct {
 	SchemaVersion int               `json:"schema_version"`
+	PublishedAt   *time.Time        `json:"published_at,omitzero"`
+	ExpiresAt     *time.Time        `json:"expires_at,omitzero"`
 	Entries       []provider.Target `json:"targets"`
 }
 

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/app"
 	"github.com/dotwaffle/bootup/internal/catalog"
@@ -42,6 +45,15 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	discoveryFamilyID := flags.String("discovery-family", "", "discovery family ID for discover-targets mode")
 	stagingDir := flags.String("staging-dir", "/tmp/bootup", "directory for verified boot artifacts")
 	catalogPath := flags.String("catalog", "", "static provider catalog JSON path")
+	catalogURL := flags.String("catalog-url", "", "hosted static provider catalog URL")
+	catalogSHA256 := flags.String("catalog-sha256", "", "SHA-256 hex digest for hosted catalog bytes")
+	catalogSignaturePath := flags.String("catalog-signature", "", "detached Ed25519 signature path for hosted catalog bytes")
+	catalogPublicKeyPath := flags.String("catalog-public-key", "", "Ed25519 public key path for hosted catalog signature")
+	catalogMaxAge := flags.Duration("catalog-max-age", 0, "maximum age for hosted catalog published_at metadata")
+	catalogRequireFreshness := flags.Bool("catalog-require-freshness", false, "require hosted catalog published_at or expires_at metadata")
+	catalogCachePath := flags.String("catalog-cache", "", "hosted catalog cache file path")
+	catalogCacheFallback := flags.Bool("catalog-cache-fallback", false, "fall back to authenticated hosted catalog cache on fetch failure")
+	catalogMaxBytes := flags.Int64("catalog-max-bytes", 0, "maximum hosted catalog size in bytes")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
 	var targetOptions optionFlags
@@ -65,7 +77,19 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		providerConfig = config
 	}
 
-	catalogDoc, err := loadCatalog(*catalogPath)
+	catalogDoc, err := loadCatalog(ctx, catalogSource{
+		Path:              *catalogPath,
+		URL:               *catalogURL,
+		SHA256:            *catalogSHA256,
+		SignaturePath:     *catalogSignaturePath,
+		PublicKeyPath:     *catalogPublicKeyPath,
+		MaxAge:            *catalogMaxAge,
+		RequireFreshness:  *catalogRequireFreshness,
+		CachePath:         *catalogCachePath,
+		CacheFallback:     *catalogCacheFallback,
+		MaxBytes:          *catalogMaxBytes,
+		CompiledProviders: compiledProviderIDs(),
+	})
 	if err != nil {
 		return fmt.Errorf("load catalog: %w", err)
 	}
@@ -161,9 +185,83 @@ func hasNetworkConfig(config runtime.NetworkConfig) bool {
 	return config.Interface != "" || config.AddressCIDR != "" || config.Gateway != "" || len(config.DNSServers) > 0
 }
 
-func loadCatalog(path string) (catalog.Document, error) {
-	if path == "" {
-		return catalog.LoadDefault(compiledProviderIDs())
+type catalogSource struct {
+	Path              string
+	URL               string
+	SHA256            string
+	SignaturePath     string
+	PublicKeyPath     string
+	MaxAge            time.Duration
+	RequireFreshness  bool
+	CachePath         string
+	CacheFallback     bool
+	MaxBytes          int64
+	CompiledProviders []string
+}
+
+func loadCatalog(ctx context.Context, source catalogSource) (catalog.Document, error) {
+	if source.Path != "" && source.URL != "" {
+		return catalog.Document{}, errors.New("cannot use --catalog with --catalog-url")
 	}
-	return catalog.LoadFile(path, compiledProviderIDs())
+	providerIDs := source.CompiledProviders
+	if providerIDs == nil {
+		providerIDs = compiledProviderIDs()
+	}
+	if source.URL == "" {
+		if source.Path == "" {
+			return catalog.LoadDefault(providerIDs)
+		}
+		return catalog.LoadFile(source.Path, providerIDs)
+	}
+	trust, err := hostedTrust(source)
+	if err != nil {
+		return catalog.Document{}, err
+	}
+	return catalog.LoadHosted(ctx, catalog.HostedOptions{
+		URL:              source.URL,
+		Trust:            trust,
+		ProviderIDs:      providerIDs,
+		MaxAge:           source.MaxAge,
+		RequireFreshness: source.RequireFreshness,
+		CachePath:        source.CachePath,
+		CacheFallback:    source.CacheFallback,
+		MaxBytes:         source.MaxBytes,
+	})
+}
+
+func hostedTrust(source catalogSource) (catalog.HostedTrust, error) {
+	trust := catalog.HostedTrust{SHA256: strings.TrimSpace(source.SHA256)}
+	if source.SignaturePath == "" && source.PublicKeyPath == "" {
+		if trust.SHA256 == "" {
+			return catalog.HostedTrust{}, errors.New("hosted catalog trust configuration is required")
+		}
+		return trust, nil
+	}
+	if source.SignaturePath == "" || source.PublicKeyPath == "" {
+		return catalog.HostedTrust{}, errors.New("hosted catalog Ed25519 signature and public key paths are both required")
+	}
+	signature, err := readHexOrRawFile(source.SignaturePath)
+	if err != nil {
+		return catalog.HostedTrust{}, fmt.Errorf("read hosted catalog signature: %w", err)
+	}
+	publicKey, err := readHexOrRawFile(source.PublicKeyPath)
+	if err != nil {
+		return catalog.HostedTrust{}, fmt.Errorf("read hosted catalog public key: %w", err)
+	}
+	trust.Ed25519Signature = signature
+	trust.Ed25519PublicKey = publicKey
+	return trust, nil
+}
+
+func readHexOrRawFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	trimmed := bytes.TrimSpace(data)
+	decoded, err := hex.DecodeString(string(trimmed))
+	if err == nil && len(decoded) > 0 {
+		return decoded, nil
+	}
+	return data, nil
 }

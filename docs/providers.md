@@ -55,7 +55,8 @@ go generate ./internal/catalog
 Repository tests fail when the generated file is stale.
 
 Operators can replace the embedded catalog with a local JSON file using
-`--catalog`. Replacement is all-or-nothing: a supplied catalog becomes the
+`--catalog`, or with an authenticated hosted JSON file using `--catalog-url`.
+Replacement is all-or-nothing: a supplied local or hosted catalog becomes the
 complete static target list for compiled-in providers. Bootup validates the
 catalog before provider registration and rejects malformed JSON, unsupported
 schema versions, duplicate target IDs, incomplete target metadata, and provider
@@ -139,6 +140,34 @@ Catalog documents use schema version 1:
   ]
 }
 ```
+
+Hosted catalog documents use the same schema and can optionally carry top-level
+freshness metadata:
+
+```json
+{
+  "schema_version": 1,
+  "published_at": "2026-05-07T08:00:00Z",
+  "expires_at": "2026-05-14T08:00:00Z",
+  "targets": []
+}
+```
+
+Bootup authenticates hosted catalog bytes before parsing them. Operators must
+provide either `--catalog-sha256` with the expected SHA-256 digest, or
+`--catalog-signature` plus `--catalog-public-key` for a detached Ed25519
+signature over the raw catalog bytes. When both digest and signature trust are
+configured, both checks must pass. Signature and public-key files may contain
+raw bytes or hex-encoded bytes.
+
+Hosted catalog freshness is operator-controlled. `expires_at` is always
+enforced when present. `--catalog-require-freshness` requires either
+`published_at` or `expires_at`, and `--catalog-max-age` rejects documents whose
+`published_at` timestamp is older than the configured duration. The optional
+`--catalog-cache` path is updated only after hosted bytes pass authentication,
+freshness checks, parsing, and provider validation. `--catalog-cache-fallback`
+allows that cache to be used after a fetch failure, but cached bytes go through
+the same checks again before provider registration.
 
 The document is data only. It selects concrete targets for provider code that is
 already compiled into bootup; it cannot load provider plugins or executable
@@ -249,18 +278,6 @@ Discovery results can carry lifecycle decoration such as `supported`,
 `obsolete`, `eol`, or `unknown`. That metadata is displayed to operators as
 information only. Providers must not treat lifecycle metadata as signature,
 checksum, keyring, transport, or other trust material.
-
-## Future mode: hosted static catalogs
-
-A hosted catalog can use the same static target model, but bootup does not fetch
-catalogs from URLs yet. URL loading needs a separate authenticity and freshness
-design covering signatures or pinned digests, cache behavior, offline fallback,
-and operator trust configuration. Catalog authenticity is separate from
-distribution artifact verification; operators still configure provider trust
-material for downloaded boot artifacts.
-
-Until then, operators that want hosted content should fetch or generate the
-catalog outside bootup and pass the resulting local file with `--catalog`.
 
 ## Future mode: broader distro discovery
 

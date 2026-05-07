@@ -2,11 +2,18 @@ package catalog_test
 
 import (
 	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/catalog"
 )
@@ -468,6 +475,429 @@ func TestLoadFileLoadsLocalCatalog(t *testing.T) {
 	}
 }
 
+func TestParseCatalogFreshnessMetadata(t *testing.T) {
+	t.Parallel()
+
+	doc, err := catalog.Parse([]byte(`{
+		"schema_version": 1,
+		"published_at": "2026-05-07T08:00:00Z",
+		"expires_at": "2026-05-08T08:00:00Z",
+		"targets": [{
+			"id": "debian-trixie-amd64-netboot",
+			"provider_id": "debian",
+			"name": "Debian trixie amd64 netboot",
+			"catalog": {
+				"distribution": "debian",
+				"release": "trixie",
+				"architecture": "amd64",
+				"kind": "installer"
+			}
+		}]
+	}`), []string{"debian"})
+	if err != nil {
+		t.Fatalf("parse catalog: %v", err)
+	}
+	if doc.PublishedAt == nil || !doc.PublishedAt.Equal(time.Date(2026, 5, 7, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("published_at = %v, want 2026-05-07T08:00:00Z", doc.PublishedAt)
+	}
+	if doc.ExpiresAt == nil || !doc.ExpiresAt.Equal(time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expires_at = %v, want 2026-05-08T08:00:00Z", doc.ExpiresAt)
+	}
+}
+
+func TestVerifyHostedTrustAcceptsSHA256Pin(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"schema_version":1,"targets":[]}`)
+	sum := sha256.Sum256(data)
+	if err := catalog.VerifyHostedTrust(data, catalog.HostedTrust{
+		SHA256: hex.EncodeToString(sum[:]),
+	}); err != nil {
+		t.Fatalf("verify trust: %v", err)
+	}
+}
+
+func TestVerifyHostedTrustRejectsSHA256Mismatch(t *testing.T) {
+	t.Parallel()
+
+	err := catalog.VerifyHostedTrust([]byte(`{"schema_version":1,"targets":[]}`), catalog.HostedTrust{
+		SHA256: strings.Repeat("0", sha256.Size*2),
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("verify trust error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("verify trust error = %q, want SHA-256 context", err)
+	}
+}
+
+func TestVerifyHostedTrustAcceptsEd25519Signature(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"schema_version":1,"targets":[]}`)
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signature := ed25519.Sign(privateKey, data)
+
+	if err := catalog.VerifyHostedTrust(data, catalog.HostedTrust{
+		Ed25519Signature: signature,
+		Ed25519PublicKey: publicKey,
+	}); err != nil {
+		t.Fatalf("verify trust: %v", err)
+	}
+}
+
+func TestVerifyHostedTrustRejectsEd25519Mismatch(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"schema_version":1,"targets":[]}`)
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	signature := ed25519.Sign(privateKey, []byte("different"))
+
+	err = catalog.VerifyHostedTrust(data, catalog.HostedTrust{
+		Ed25519Signature: signature,
+		Ed25519PublicKey: publicKey,
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("verify trust error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "Ed25519") {
+		t.Fatalf("verify trust error = %q, want Ed25519 context", err)
+	}
+}
+
+func TestVerifyHostedTrustRequiresTrustConfiguration(t *testing.T) {
+	t.Parallel()
+
+	err := catalog.VerifyHostedTrust([]byte(`{"schema_version":1,"targets":[]}`), catalog.HostedTrust{})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("verify trust error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "trust") {
+		t.Fatalf("verify trust error = %q, want trust context", err)
+	}
+}
+
+func TestLoadHostedCatalogFetchesAuthenticatesAndParsesHTTPSCatalog(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(validHostedCatalogJSON)
+	sum := sha256.Sum256(data)
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	doc, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "https://catalog.example/bootup/catalog.json",
+		HTTPClient:  client,
+		ProviderIDs: []string{"debian"},
+		Trust: catalog.HostedTrust{
+			SHA256: hex.EncodeToString(sum[:]),
+		},
+	})
+	if err != nil {
+		t.Fatalf("load hosted catalog: %v", err)
+	}
+	if got := doc.Targets("debian")[0].ID; got != "debian-trixie-amd64-netboot" {
+		t.Fatalf("hosted target = %q, want Debian trixie", got)
+	}
+}
+
+func TestLoadHostedCatalogRejectsUnsupportedScheme(t *testing.T) {
+	t.Parallel()
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "http://catalog.example/bootup/catalog.json",
+		ProviderIDs: []string{"debian"},
+		Trust: catalog.HostedTrust{
+			SHA256: strings.Repeat("0", sha256.Size*2),
+		},
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("load hosted error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "https") {
+		t.Fatalf("load hosted error = %q, want HTTPS context", err)
+	}
+}
+
+func TestLoadHostedCatalogRejectsHTTPError(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusInternalServerError,
+			body:       []byte("error"),
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "https://catalog.example/bootup/catalog.json",
+		HTTPClient:  client,
+		ProviderIDs: []string{"debian"},
+		Trust: catalog.HostedTrust{
+			SHA256: strings.Repeat("0", sha256.Size*2),
+		},
+	})
+	if err == nil {
+		t.Fatal("load hosted succeeded, want HTTP status error")
+	}
+	if !strings.Contains(err.Error(), "Internal Server Error") {
+		t.Fatalf("load hosted error = %q, want status text", err)
+	}
+}
+
+func TestLoadHostedCatalogRejectsOversizedResponse(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusOK,
+			body:       []byte(validHostedCatalogJSON),
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "https://catalog.example/bootup/catalog.json",
+		HTTPClient:  client,
+		ProviderIDs: []string{"debian"},
+		MaxBytes:    16,
+		Trust: catalog.HostedTrust{
+			SHA256: strings.Repeat("0", sha256.Size*2),
+		},
+	})
+	if err == nil {
+		t.Fatal("load hosted succeeded, want oversized response error")
+	}
+	if !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("load hosted error = %q, want size context", err)
+	}
+}
+
+func TestLoadHostedCatalogRejectsExpiredCatalog(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"schema_version": 1,
+		"expires_at": "2026-05-07T08:00:00Z",
+		"targets": []
+	}`)
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "https://catalog.example/bootup/catalog.json",
+		HTTPClient:  client,
+		ProviderIDs: []string{"debian"},
+		Trust:       digestTrust(data),
+		Now:         fixedNow(2026, 5, 7, 9, 0),
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("load hosted error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("load hosted error = %q, want expiry context", err)
+	}
+}
+
+func TestLoadHostedCatalogRejectsCatalogPastMaximumAge(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"schema_version": 1,
+		"published_at": "2026-05-07T08:00:00Z",
+		"targets": []
+	}`)
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "https://catalog.example/bootup/catalog.json",
+		HTTPClient:  client,
+		ProviderIDs: []string{"debian"},
+		Trust:       digestTrust(data),
+		Now:         fixedNow(2026, 5, 7, 10, 0),
+		MaxAge:      time.Hour,
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("load hosted error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "maximum age") {
+		t.Fatalf("load hosted error = %q, want maximum age context", err)
+	}
+}
+
+func TestLoadHostedCatalogRejectsMissingRequiredFreshness(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{"schema_version": 1, "targets": []}`)
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:              "https://catalog.example/bootup/catalog.json",
+		HTTPClient:       client,
+		ProviderIDs:      []string{"debian"},
+		Trust:            digestTrust(data),
+		RequireFreshness: true,
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("load hosted error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "freshness") {
+		t.Fatalf("load hosted error = %q, want freshness context", err)
+	}
+}
+
+func TestLoadHostedCatalogWritesAuthenticatedCache(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(validHostedCatalogJSON)
+	cachePath := t.TempDir() + "/catalog-cache.json"
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusOK,
+			body:       data,
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:         "https://catalog.example/bootup/catalog.json",
+		HTTPClient:  client,
+		ProviderIDs: []string{"debian"},
+		Trust:       digestTrust(data),
+		CachePath:   cachePath,
+	})
+	if err != nil {
+		t.Fatalf("load hosted catalog: %v", err)
+	}
+	cached, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cache: %v", err)
+	}
+	if !bytes.Equal(cached, data) {
+		t.Fatalf("cache bytes = %q, want hosted catalog", cached)
+	}
+}
+
+func TestLoadHostedCatalogFallsBackToAuthenticatedCache(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(validHostedCatalogJSON)
+	cachePath := t.TempDir() + "/catalog-cache.json"
+	if err := os.WriteFile(cachePath, data, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusInternalServerError,
+			body:       []byte("error"),
+		},
+	}}
+
+	doc, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:           "https://catalog.example/bootup/catalog.json",
+		HTTPClient:    client,
+		ProviderIDs:   []string{"debian"},
+		Trust:         digestTrust(data),
+		CachePath:     cachePath,
+		CacheFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("load hosted catalog: %v", err)
+	}
+	if got := doc.Targets("debian")[0].ID; got != "debian-trixie-amd64-netboot" {
+		t.Fatalf("cached hosted target = %q, want Debian trixie", got)
+	}
+}
+
+func TestLoadHostedCatalogRejectsStaleCacheFallback(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"schema_version": 1,
+		"expires_at": "2026-05-07T08:00:00Z",
+		"targets": []
+	}`)
+	cachePath := t.TempDir() + "/catalog-cache.json"
+	if err := os.WriteFile(cachePath, data, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusInternalServerError,
+			body:       []byte("error"),
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:           "https://catalog.example/bootup/catalog.json",
+		HTTPClient:    client,
+		ProviderIDs:   []string{"debian"},
+		Trust:         digestTrust(data),
+		CachePath:     cachePath,
+		CacheFallback: true,
+		Now:           fixedNow(2026, 5, 7, 9, 0),
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("load hosted error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("load hosted error = %q, want expiry context", err)
+	}
+}
+
+func TestLoadHostedCatalogRejectsUnauthenticatedCacheFallback(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(validHostedCatalogJSON)
+	cachePath := t.TempDir() + "/catalog-cache.json"
+	if err := os.WriteFile(cachePath, data, 0o644); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+	client := &http.Client{Transport: catalogResponseMap{
+		"https://catalog.example/bootup/catalog.json": catalogResponse{
+			statusCode: http.StatusInternalServerError,
+			body:       []byte("error"),
+		},
+	}}
+
+	_, err := catalog.LoadHosted(context.Background(), catalog.HostedOptions{
+		URL:           "https://catalog.example/bootup/catalog.json",
+		HTTPClient:    client,
+		ProviderIDs:   []string{"debian"},
+		Trust:         catalog.HostedTrust{SHA256: strings.Repeat("0", sha256.Size*2)},
+		CachePath:     cachePath,
+		CacheFallback: true,
+	})
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("load hosted error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("load hosted error = %q, want SHA-256 context", err)
+	}
+}
+
 func TestParseRejectsInvalidCatalogs(t *testing.T) {
 	t.Parallel()
 
@@ -532,6 +962,14 @@ func TestParseRejectsInvalidCatalogs(t *testing.T) {
 			name: "malformed json",
 			data: `{"schema_version": 1,`,
 		},
+		{
+			name: "malformed published timestamp",
+			data: `{"schema_version": 1, "published_at": "not a timestamp", "targets": []}`,
+		},
+		{
+			name: "malformed expiry timestamp",
+			data: `{"schema_version": 1, "expires_at": "not a timestamp", "targets": []}`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -546,5 +984,52 @@ func TestParseRejectsInvalidCatalogs(t *testing.T) {
 				t.Fatalf("parse error = %q, want catalog context", err)
 			}
 		})
+	}
+}
+
+const validHostedCatalogJSON = `{
+	"schema_version": 1,
+	"targets": [{
+		"id": "debian-trixie-amd64-netboot",
+		"provider_id": "debian",
+		"name": "Debian trixie amd64 netboot",
+		"catalog": {
+			"distribution": "debian",
+			"release": "trixie",
+			"architecture": "amd64",
+			"kind": "installer"
+		}
+	}]
+}`
+
+type catalogResponse struct {
+	statusCode int
+	body       []byte
+}
+
+type catalogResponseMap map[string]catalogResponse
+
+func (m catalogResponseMap) RoundTrip(request *http.Request) (*http.Response, error) {
+	item, ok := m[request.URL.String()]
+	if !ok {
+		item = catalogResponse{statusCode: http.StatusNotFound, body: []byte("not found")}
+	}
+	return &http.Response{
+		StatusCode: item.statusCode,
+		Status:     http.StatusText(item.statusCode),
+		Body:       io.NopCloser(bytes.NewReader(item.body)),
+		Header:     make(http.Header),
+		Request:    request,
+	}, nil
+}
+
+func digestTrust(data []byte) catalog.HostedTrust {
+	sum := sha256.Sum256(data)
+	return catalog.HostedTrust{SHA256: hex.EncodeToString(sum[:])}
+}
+
+func fixedNow(year int, month time.Month, day int, hour int, minute int) func() time.Time {
+	return func() time.Time {
+		return time.Date(year, month, day, hour, minute, 0, 0, time.UTC)
 	}
 }

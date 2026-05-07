@@ -12,13 +12,15 @@ currently configured provider registry.
 #### Scenario: Operator renders catalog matrix
 - **WHEN** an operator selects the catalog matrix mode
 - **THEN** bootup SHALL render each registered target with target ID, provider,
-  resolved boot action, plan status, artifact trust classification, and smoke
-  coverage classification
+  distribution, release, architecture, kind, lifecycle status, resolved boot
+  action, plan status, artifact trust classification, and smoke coverage
+  classification
 
 #### Scenario: Catalog matrix is hermetic
 - **WHEN** bootup renders the catalog matrix
-- **THEN** it SHALL NOT download boot artifacts, stage artifacts, contact
-  upstream mirrors, or launch QEMU
+- **THEN** it SHALL request offline provider planning and SHALL NOT download
+  boot artifacts, stage artifacts, contact upstream mirrors, fetch remote
+  metadata, or launch QEMU
 
 #### Scenario: Target plan succeeds
 - **WHEN** a registered target can be planned by its provider

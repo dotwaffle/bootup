@@ -128,6 +128,11 @@ compiled-in providers, not as executable or remote dynamic policy.
 - **THEN** bootup SHALL reject the configuration before provider registration,
   target discovery, planning, staging, or handoff
 
+#### Scenario: Dynamic policy uses separate configuration
+- **WHEN** an operator needs dynamic policy target selection
+- **THEN** bootup SHALL configure and evaluate that policy through a dedicated
+  policy resolver capability rather than provider runtime configuration fields
+
 #### Scenario: Declarative provider config remains supported
 - **WHEN** provider runtime configuration contains only supported typed provider
   source, discovery, lifecycle, and verification fields

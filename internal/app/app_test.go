@@ -25,6 +25,7 @@ type providerStub struct {
 	stageConfig    *provider.StageConfig
 	stageInputPlan bool
 	applyOptions   bool
+	planErr        error
 }
 
 func (p providerStub) ID() string {
@@ -41,6 +42,9 @@ func (p providerStub) Targets(context.Context) ([]provider.Target, error) {
 func (p providerStub) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
 	if p.planned != nil {
 		*p.planned = input
+	}
+	if p.planErr != nil {
+		return provider.BootPlan{}, p.planErr
 	}
 	if p.applyOptions {
 		return provider.ApplySelectedOptions(p.plan, input.Options)
@@ -203,6 +207,85 @@ func TestRunShowsSelectedTargetDetails(t *testing.T) {
 		"base_url: https://mirror.example/debian",
 		"lifecycle: supported catalog",
 		"text-install bool Text install fragment=textmode=1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestRunRendersCatalogMatrix(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget()
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		plan: provider.BootPlan{
+			Target: target,
+			Kernel: provider.Artifact{URL: "https://mirror.example/linux"},
+			Initrd: provider.Artifact{URL: "https://mirror.example/initrd.gz"},
+		},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeCatalogMatrix,
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"bootup catalog matrix",
+		"target\tprovider\taction\tplan\ttrust\tsmoke\terror",
+		"debian-trixie-amd64-netboot\tdebian\tlinux-kexec\tok\thttps-only\tdebian-qemu\t",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestRunCatalogMatrixReportsPlanErrors(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget()
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		planErr: errors.New("provider cannot plan target"),
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModeCatalogMatrix,
+	})
+
+	err := runner.Run(context.Background())
+	if err == nil {
+		t.Fatal("run app succeeded, want catalog matrix error")
+	}
+	if !strings.Contains(err.Error(), "catalog matrix has 1 planning error") {
+		t.Fatalf("run error = %v, want planning error count", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"debian-trixie-amd64-netboot\tdebian\tlinux-kexec\terror\tunknown\tdebian-qemu\t",
+		"provider cannot plan target",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout = %q, want %q", got, want)

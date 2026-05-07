@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dotwaffle/bootup/internal/catalog"
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/ui"
 	"golang.org/x/term"
@@ -28,6 +29,9 @@ const (
 	// ModeListTargets prints targets and exits. It is useful for tests and
 	// non-interactive diagnostics.
 	ModeListTargets Mode = "list-targets"
+
+	// ModeCatalogMatrix prints catalog conformance and smoke coverage.
+	ModeCatalogMatrix Mode = "catalog-matrix"
 
 	// ModeDiscoverTargets discovers concrete targets for one provider family
 	// and exits. It is useful for non-interactive diagnostics.
@@ -164,6 +168,8 @@ func (a *App) runMode(ctx context.Context) error {
 		return a.menu(ctx)
 	case "", ModeListTargets:
 		return a.listTargets(ctx)
+	case ModeCatalogMatrix:
+		return a.catalogMatrix(ctx)
 	case ModeDiscoverTargets:
 		return a.discoverTargets(ctx)
 	case ModeShowTarget:
@@ -193,6 +199,58 @@ func (a *App) listTargets(ctx context.Context) error {
 		return fmt.Errorf("render targets: %w", err)
 	}
 	return nil
+}
+
+func (a *App) catalogMatrix(ctx context.Context) error {
+	report, err := catalog.BuildConformanceReport(ctx, a.config.Registry)
+	if err != nil {
+		return fmt.Errorf("build catalog matrix: %w", err)
+	}
+	if err := writeCatalogMatrix(a.config.Stdout, report); err != nil {
+		return fmt.Errorf("render catalog matrix: %w", err)
+	}
+	if count := report.PlanErrorCount(); count > 0 {
+		return fmt.Errorf("catalog matrix has %d planning error%s", count, plural(count))
+	}
+	return nil
+}
+
+func writeCatalogMatrix(w io.Writer, report catalog.ConformanceReport) error {
+	if _, err := fmt.Fprintln(w, "bootup catalog matrix"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "target\tprovider\taction\tplan\ttrust\tsmoke\terror"); err != nil {
+		return err
+	}
+	for _, entry := range report.Entries {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			entry.Target.ID,
+			entry.Target.ProviderID,
+			entry.Action,
+			entry.PlanStatus,
+			entry.ArtifactTrust,
+			smokeCoverageLabel(entry.SmokeCoverage),
+			entry.PlanError,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func smokeCoverageLabel(coverage []catalog.SmokeCoverage) string {
+	labels := make([]string, 0, len(coverage))
+	for _, item := range coverage {
+		labels = append(labels, string(item))
+	}
+	return strings.Join(labels, ",")
+}
+
+func plural(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (a *App) showTarget(ctx context.Context) error {

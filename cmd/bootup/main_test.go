@@ -119,6 +119,26 @@ func TestRunAcceptsDiscoverTargetsModeFlag(t *testing.T) {
 	}
 }
 
+func TestRunAcceptsCatalogMatrixModeFlag(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{"--mode", "catalog-matrix"}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"bootup catalog matrix",
+		"target\tprovider\taction\tplan\ttrust\tsmoke\terror",
+		"opensuse-leap-160-amd64-netboot",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	t.Parallel()
 

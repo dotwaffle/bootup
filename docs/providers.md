@@ -141,6 +141,43 @@ Catalog documents use schema version 1:
 }
 ```
 
+Run the catalog matrix to audit the configured catalog after local or hosted
+catalog selection and provider registration:
+
+```sh
+bootup --mode=catalog-matrix
+```
+
+The matrix is tab-separated and includes target ID, provider, resolved boot
+action, dry-run plan status, artifact trust posture, smoke coverage, and any
+planning error. It calls provider planning only; it does not download artifacts,
+stage files, contact upstream mirrors, or launch QEMU. Planning errors are
+rendered in the matrix and make the command exit nonzero.
+
+Artifact trust labels describe the dry-run boot plan:
+
+- `hash-pinned`: every downloadable artifact has a SHA-256 pin.
+- `signed-metadata`: artifact verification uses signed metadata.
+- `release-metadata`: artifact verification uses release metadata and
+  checksums.
+- `https-only`: downloads use HTTPS without stronger planned artifact trust.
+- `partial-hashes`: only some planned artifacts have SHA-256 pins.
+- `not-applicable`: the plan does not download boot artifacts.
+- `unverified`: planned downloads are not hash-pinned, metadata-backed, or
+  HTTPS-only.
+
+Smoke coverage labels identify explicit helper support:
+
+- `live-stage`: `BOOTUP_LIVE_CATALOG_SMOKE=1 go test ./test/live` can stage the
+  target outside a VM.
+- `catalog-qemu`: `scripts/smoke-catalog-target.sh` can attempt the target
+  through the generic catalog QEMU helper.
+- `debian-qemu`: the dedicated Debian QEMU smoke helper covers the target.
+- `ubuntu-qemu`: the dedicated Ubuntu QEMU smoke helper covers the target.
+- `mfsbsd-kboot-qemu`: the dedicated mfsBSD kboot QEMU smoke helper covers the
+  target.
+- `metadata-only`: no live or QEMU smoke helper explicitly covers the target.
+
 Hosted catalog documents use the same schema and can optionally carry top-level
 freshness metadata:
 

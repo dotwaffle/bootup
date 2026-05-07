@@ -101,6 +101,19 @@ temporary disk space for downloaded artifacts, and enough time for upstream
 mirrors to respond. Keep it out of the default suite because failures can
 reflect network or mirror state rather than bootup regressions.
 
+Use the catalog matrix to see which helper explicitly covers each target before
+choosing a smoke path:
+
+```sh
+bootup --mode=catalog-matrix
+```
+
+`live-stage` maps to the opt-in live catalog staging test, `catalog-qemu` maps
+to `scripts/smoke-catalog-target.sh`, and the distro-specific labels map to the
+dedicated Debian, Ubuntu, and mfsBSD QEMU smoke helpers below. `metadata-only`
+means the target is covered by catalog validation and dry-run planning but has
+no explicit live or QEMU helper.
+
 QEMU VM smoke runs additionally require `qemu-system-x86_64`, a host kernel
 that can boot as the outer VM kernel, KVM or software emulation capacity, serial
 console output, and network configuration inside the VM when the selected target

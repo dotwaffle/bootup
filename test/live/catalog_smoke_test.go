@@ -109,13 +109,7 @@ func catalogSmokeTargets(t *testing.T, providerIDs ...string) []provider.Target 
 }
 
 func requireCatalogSmokeSupported(target provider.Target) error {
-	if provider.ResolveBootAction(target.Action) != provider.BootActionLinuxKexec {
-		return errUnsupportedCatalogSmokeTarget
-	}
-	if target.ProviderID != "linux" {
-		return errUnsupportedCatalogSmokeTarget
-	}
-	if target.Source.BaseURL == "" || target.Source.KernelPath == "" {
+	if !catalog.LiveCatalogSmokeSupported(target) {
 		return errUnsupportedCatalogSmokeTarget
 	}
 	return nil

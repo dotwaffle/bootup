@@ -107,6 +107,13 @@ requirements can be configured through a provider runtime config file:
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
 ```
 
+Render the current catalog conformance and smoke coverage matrix without
+staging artifacts or contacting mirrors:
+
+```sh
+bootup --mode=catalog-matrix
+```
+
 The mfsBSD catalog target uses the FreeBSD `loader.kboot` path. It downloads a
 pinned mfsBSD ISO and a pinned FreeBSD `base.txz`, extracts the ISO in stage-1,
 and hands off with the memory root exposed through `hostfs_root`:

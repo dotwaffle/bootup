@@ -285,6 +285,7 @@ staging artifacts:
 ```sh
 bootup --mode=discover-targets --discovery-family=debian
 bootup --mode=discover-targets --discovery-family=ubuntu
+bootup --mode=discover-targets --discovery-family=fedora
 ```
 
 The Debian provider discovers amd64 netboot installers from the configured
@@ -298,10 +299,14 @@ for a live-server amd64 ISO, probes the `netboot/amd64/linux` and
 `netboot/amd64/initrd` paths, and returns concrete targets that the normal
 Ubuntu planner can stage.
 
-The Fedora provider currently uses static catalog targets. For each Fedora
-Server target, planning resolves `images/pxeboot/vmlinuz`,
-`images/pxeboot/initrd.img`, and an `inst.repo=` command line from the target
-source URL or an operator-supplied `release_url` override.
+The Fedora provider discovers amd64 Server netboot installers from the
+configured releases index. It filters numeric release directories, probes each
+candidate for `Server/x86_64/os/images/pxeboot/vmlinuz` and
+`Server/x86_64/os/images/pxeboot/initrd.img`, and returns concrete targets
+that the normal Fedora planner can stage. Static Fedora targets continue to
+resolve `images/pxeboot/vmlinuz`, `images/pxeboot/initrd.img`, and an
+`inst.repo=` command line from the target source URL or an operator-supplied
+`release_url` override.
 
 The generic Linux provider currently handles openSUSE Leap, Arch Linux, and
 GParted Live catalog targets. These are Linux-shaped paths: kernel plus
@@ -325,11 +330,11 @@ checksum, keyring, transport, or other trust material.
 
 ## Future mode: broader distro discovery
 
-Provider discovery can expand beyond the current Debian and Ubuntu amd64 netboot
-targets to additional distributions, architectures, variants, install options,
-and optional lifecycle data sources. Fedora is static-only for now. That logic
-remains outside the static catalog contract so static catalog documents stay
-stable concrete target lists.
+Provider discovery can expand beyond the current Debian, Fedora, and Ubuntu
+amd64 netboot targets to additional distributions, architectures, variants,
+install options, and optional lifecycle data sources. That logic remains
+outside the static catalog contract so static catalog documents stay stable
+concrete target lists.
 
 Stock BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
 chainload flows remain intentionally deferred unless they fit an implemented

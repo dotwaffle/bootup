@@ -183,6 +183,8 @@ trust material without embedding distro keyrings in the default bootup binary:
     },
     "fedora": {
       "release_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os",
+      "discovery_url": "https://download.fedoraproject.org/pub/fedora/linux/releases",
+      "discovery_timeout": "5s",
       "kernel_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
       "initrd_sha256": "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
     }
@@ -256,6 +258,7 @@ compiled-in discovery family:
 ```sh
 bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
 bootup --mode=discover-targets --discovery-family=ubuntu --provider-config=/etc/bootup/providers.json
+bootup --mode=discover-targets --discovery-family=fedora --provider-config=/etc/bootup/providers.json
 ```
 
 Select catalog-declared target options with repeatable `--option id=value`

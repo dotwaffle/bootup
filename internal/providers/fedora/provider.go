@@ -10,7 +10,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providerhttp"
@@ -18,7 +21,9 @@ import (
 )
 
 const (
-	defaultReleaseURL = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+	defaultReleaseURL       = "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+	defaultDiscoveryURL     = "https://download.fedoraproject.org/pub/fedora/linux/releases"
+	defaultDiscoveryTimeout = 5 * time.Second
 
 	targetID        = "fedora-44-amd64-server-netboot"
 	providerID      = "fedora"
@@ -26,22 +31,31 @@ const (
 	initrdStageName = "initrd.img"
 )
 
+var (
+	hrefPattern       = regexp.MustCompile(`(?i)href\s*=\s*["']?([^"'\s>]+)`)
+	releaseDirPattern = regexp.MustCompile(`^\d+$`)
+)
+
 // Config configures the Fedora provider.
 type Config struct {
-	ReleaseURL   string
-	Client       *http.Client
-	KernelSHA256 string
-	InitrdSHA256 string
-	Targets      []provider.Target
+	ReleaseURL       string
+	DiscoveryURL     string
+	Client           *http.Client
+	KernelSHA256     string
+	InitrdSHA256     string
+	Targets          []provider.Target
+	DiscoveryTimeout time.Duration
 }
 
 // Provider exposes Fedora Server netboot targets.
 type Provider struct {
 	releaseURL           string
+	discoveryURL         string
 	client               *http.Client
 	kernelSHA256         string
 	initrdSHA256         string
 	targets              []provider.Target
+	discoveryTimeout     time.Duration
 	releaseURLConfigured bool
 }
 
@@ -51,16 +65,26 @@ func NewProvider(config Config) *Provider {
 	if releaseURL == "" {
 		releaseURL = defaultReleaseURL
 	}
+	discoveryURL := strings.TrimRight(config.DiscoveryURL, "/")
+	if discoveryURL == "" {
+		discoveryURL = defaultDiscoveryURL
+	}
 	targets := cloneTargets(config.Targets)
 	if config.Targets == nil {
 		targets = defaultTargets()
 	}
+	discoveryTimeout := config.DiscoveryTimeout
+	if discoveryTimeout <= 0 {
+		discoveryTimeout = defaultDiscoveryTimeout
+	}
 	return &Provider{
 		releaseURL:           releaseURL,
+		discoveryURL:         discoveryURL,
 		client:               config.Client,
 		kernelSHA256:         config.KernelSHA256,
 		initrdSHA256:         config.InitrdSHA256,
 		targets:              targets,
+		discoveryTimeout:     discoveryTimeout,
 		releaseURLConfigured: strings.TrimSpace(config.ReleaseURL) != "",
 	}
 }
@@ -73,6 +97,61 @@ func (*Provider) ID() string {
 // Targets returns supported Fedora targets.
 func (p *Provider) Targets(context.Context) ([]provider.Target, error) {
 	return cloneTargets(p.targets), nil
+}
+
+// DiscoveryFamily returns the Fedora dynamic discovery family.
+func (*Provider) DiscoveryFamily() provider.DiscoveryFamily {
+	return provider.DiscoveryFamily{
+		ID:          providerID,
+		ProviderID:  providerID,
+		Name:        "Fedora",
+		Description: "Discover Fedora Server amd64 netboot installers from the configured releases index.",
+	}
+}
+
+// DiscoverTargets discovers Fedora Server amd64 netboot targets from the
+// configured releases index.
+func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, error) {
+	if p.discoveryTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.discoveryTimeout)
+		defer cancel()
+	}
+
+	client := p.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	indexURL := providerhttp.EnsureTrailingSlash(p.discoveryURL)
+	body, status, err := providerhttp.FetchStatus(ctx, client, indexURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch Fedora releases index: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("fetch Fedora releases index: GET %s: %s", indexURL, http.StatusText(status))
+	}
+
+	releases := parseReleasesIndex(body)
+	targets := make([]provider.Target, 0, len(releases))
+	for _, release := range releases {
+		baseURL := indexURL + release + "/Server/x86_64/os"
+		kernelOK, err := providerhttp.Probe(ctx, client, baseURL+"/images/pxeboot/vmlinuz")
+		if err != nil {
+			return nil, fmt.Errorf("probe Fedora %s kernel: %w", release, err)
+		}
+		if !kernelOK {
+			continue
+		}
+		initrdOK, err := providerhttp.Probe(ctx, client, baseURL+"/images/pxeboot/initrd.img")
+		if err != nil {
+			return nil, fmt.Errorf("probe Fedora %s initrd: %w", release, err)
+		}
+		if !initrdOK {
+			continue
+		}
+		targets = append(targets, discoveredTarget(release, baseURL))
+	}
+	return targets, nil
 }
 
 func defaultTargets() []provider.Target {
@@ -98,6 +177,43 @@ func defaultTargets() []provider.Target {
 
 func cloneTargets(targets []provider.Target) []provider.Target {
 	return append([]provider.Target(nil), targets...)
+}
+
+func parseReleasesIndex(data []byte) []string {
+	seen := make(map[string]struct{})
+	for _, match := range hrefPattern.FindAllSubmatch(data, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		release := strings.TrimSuffix(string(match[1]), "/")
+		release = providerhttp.PathBase(release)
+		if releaseDirPattern.MatchString(release) {
+			seen[release] = struct{}{}
+		}
+	}
+	releases := make([]string, 0, len(seen))
+	for release := range seen {
+		releases = append(releases, release)
+	}
+	sort.Strings(releases)
+	return releases
+}
+
+func discoveredTarget(release string, baseURL string) provider.Target {
+	return provider.Target{
+		ID:         "fedora-" + release + "-amd64-server-netboot",
+		ProviderID: providerID,
+		Name:       "Fedora Server " + release + " amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Architecture: "amd64",
+			Distribution: providerID,
+			Release:      release,
+			Kind:         "installer",
+		},
+		Source: provider.SourceEntry{
+			BaseURL: baseURL,
+		},
+	}
 }
 
 // Plan returns a boot plan for target.

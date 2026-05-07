@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -116,6 +118,47 @@ func TestRunAcceptsDiscoverTargetsModeFlag(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "discovery family is required") {
 		t.Fatalf("run error = %v, want discovery family requirement", err)
+	}
+}
+
+func TestRunDiscoversFedoraTargets(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<a href="44/">44/</a>`))
+		case "/44/Server/x86_64/os/images/pxeboot/vmlinuz",
+			"/44/Server/x86_64/os/images/pxeboot/initrd.img":
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	configPath := filepath.Join(t.TempDir(), "providers.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"providers": {
+			"fedora": {
+				"discovery_url": "`+server.URL+`"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "discover-targets",
+		"--discovery-family", "fedora",
+		"--provider-config", configPath,
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "fedora-44-amd64-server-netboot") {
+		t.Fatalf("stdout = %q, want Fedora discovered target", stdout.String())
 	}
 }
 

@@ -51,6 +51,8 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 			},
 			"fedora": {
 				"release_url": "https://download.example/fedora/releases/44/Server/x86_64/os",
+				"discovery_url": "https://download.example/fedora/releases/",
+				"discovery_timeout": "3s",
 				"kernel_sha256": "`+strings.Repeat("c", 64)+`",
 				"initrd_sha256": "`+strings.Repeat("d", 64)+`"
 			}
@@ -101,6 +103,12 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	if config.Fedora.ReleaseURL != "https://download.example/fedora/releases/44/Server/x86_64/os" {
 		t.Fatalf("Fedora release URL = %q", config.Fedora.ReleaseURL)
 	}
+	if config.Fedora.DiscoveryURL != "https://download.example/fedora/releases" {
+		t.Fatalf("Fedora discovery URL = %q", config.Fedora.DiscoveryURL)
+	}
+	if config.Fedora.DiscoveryTimeout != 3*time.Second {
+		t.Fatalf("Fedora discovery timeout = %s, want 3s", config.Fedora.DiscoveryTimeout)
+	}
 	if config.Fedora.KernelSHA256 != strings.Repeat("c", 64) {
 		t.Fatalf("Fedora kernel sha256 = %q", config.Fedora.KernelSHA256)
 	}
@@ -143,6 +151,14 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		{
 			name: "invalid Fedora hash",
 			json: `{"providers":{"fedora":{"kernel_sha256":"abc","initrd_sha256":"` + strings.Repeat("d", 64) + `"}}}`,
+		},
+		{
+			name: "invalid Fedora discovery url",
+			json: `{"providers":{"fedora":{"discovery_url":"file:///srv/fedora"}}}`,
+		},
+		{
+			name: "invalid Fedora discovery timeout",
+			json: `{"providers":{"fedora":{"discovery_timeout":"zero"}}}`,
 		},
 		{
 			name: "unreadable keyring",

@@ -66,7 +66,7 @@ func TestRegisterProvidersIncludesDiscoveryFamilies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list discovery families: %v", err)
 	}
-	for _, want := range []string{"debian", "ubuntu"} {
+	for _, want := range []string{"debian", "fedora", "ubuntu"} {
 		if !hasFamily(families, want) {
 			t.Fatalf("discovery families = %#v, want %s", families, want)
 		}

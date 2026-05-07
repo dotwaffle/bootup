@@ -87,6 +87,54 @@ func TestProviderPlanUsesTargetSourceBaseURL(t *testing.T) {
 	}
 }
 
+func TestProviderDiscoveryFamily(t *testing.T) {
+	t.Parallel()
+
+	family := fedora.NewProvider(fedora.Config{}).DiscoveryFamily()
+	if family.ID != "fedora" || family.ProviderID != "fedora" {
+		t.Fatalf("family IDs = %q/%q, want fedora/fedora", family.ID, family.ProviderID)
+	}
+	if family.Name != "Fedora" {
+		t.Fatalf("family name = %q, want Fedora", family.Name)
+	}
+}
+
+func TestProviderDiscoversServerNetbootTargets(t *testing.T) {
+	t.Parallel()
+
+	p := fedora.NewProvider(fedora.Config{
+		DiscoveryURL: "https://mirror.example/fedora/releases",
+		Client: &http.Client{Transport: responseMap{
+			"https://mirror.example/fedora/releases/": []byte(`
+				<a href="44/">44/</a>
+				<a href="45/">45/</a>
+				<a href="rawhide/">rawhide/</a>
+			`),
+			"https://mirror.example/fedora/releases/44/Server/x86_64/os/images/pxeboot/vmlinuz":    []byte("kernel"),
+			"https://mirror.example/fedora/releases/44/Server/x86_64/os/images/pxeboot/initrd.img": []byte("initrd"),
+			"https://mirror.example/fedora/releases/45/Server/x86_64/os/images/pxeboot/vmlinuz":    []byte("kernel"),
+		}},
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets = %#v, want one complete Fedora release", targets)
+	}
+	target := targets[0]
+	if target.ID != "fedora-44-amd64-server-netboot" {
+		t.Fatalf("target ID = %q, want Fedora 44", target.ID)
+	}
+	if target.Source.BaseURL != "https://mirror.example/fedora/releases/44/Server/x86_64/os" {
+		t.Fatalf("source base URL = %q, want Fedora 44 install tree", target.Source.BaseURL)
+	}
+	if target.Catalog.Release != "44" || target.Catalog.Architecture != "amd64" || target.Catalog.Kind != "installer" {
+		t.Fatalf("catalog = %#v, want Fedora 44 amd64 installer", target.Catalog)
+	}
+}
+
 func TestFetchAndStageArtifactsAllowsHTTPSOnlyNetboot(t *testing.T) {
 	t.Parallel()
 

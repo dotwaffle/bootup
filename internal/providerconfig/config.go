@@ -46,9 +46,11 @@ type UbuntuConfig struct {
 
 // FedoraConfig contains runtime configuration for the Fedora provider.
 type FedoraConfig struct {
-	ReleaseURL   string
-	KernelSHA256 string
-	InitrdSHA256 string
+	ReleaseURL       string
+	DiscoveryURL     string
+	DiscoveryTimeout time.Duration
+	KernelSHA256     string
+	InitrdSHA256     string
 }
 
 type fileConfig struct {
@@ -74,9 +76,11 @@ type ubuntuFileConfig struct {
 }
 
 type fedoraFileConfig struct {
-	ReleaseURL   string `json:"release_url"`
-	KernelSHA256 string `json:"kernel_sha256"`
-	InitrdSHA256 string `json:"initrd_sha256"`
+	ReleaseURL       string `json:"release_url"`
+	DiscoveryURL     string `json:"discovery_url"`
+	DiscoveryTimeout string `json:"discovery_timeout"`
+	KernelSHA256     string `json:"kernel_sha256"`
+	InitrdSHA256     string `json:"initrd_sha256"`
 }
 
 // LoadFile reads and validates provider runtime configuration from path.
@@ -130,13 +134,22 @@ func loadFedora(raw json.RawMessage) (FedoraConfig, error) {
 	if err := validateHTTPURL("release_url", file.ReleaseURL); err != nil {
 		return FedoraConfig{}, err
 	}
+	if err := validateHTTPURL("discovery_url", file.DiscoveryURL); err != nil {
+		return FedoraConfig{}, err
+	}
+	discoveryTimeout, err := parseDuration("discovery_timeout", file.DiscoveryTimeout)
+	if err != nil {
+		return FedoraConfig{}, err
+	}
 	if err := validateSHA256Pins(file.KernelSHA256, file.InitrdSHA256); err != nil {
 		return FedoraConfig{}, err
 	}
 	return FedoraConfig{
-		ReleaseURL:   strings.TrimRight(file.ReleaseURL, "/"),
-		KernelSHA256: strings.ToLower(file.KernelSHA256),
-		InitrdSHA256: strings.ToLower(file.InitrdSHA256),
+		ReleaseURL:       strings.TrimRight(file.ReleaseURL, "/"),
+		DiscoveryURL:     strings.TrimRight(file.DiscoveryURL, "/"),
+		DiscoveryTimeout: discoveryTimeout,
+		KernelSHA256:     strings.ToLower(file.KernelSHA256),
+		InitrdSHA256:     strings.ToLower(file.InitrdSHA256),
 	}, nil
 }
 

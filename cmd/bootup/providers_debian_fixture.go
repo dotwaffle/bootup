@@ -20,7 +20,7 @@ func compiledProviderIDs() []string {
 	return []string{"debian", "fedora", "linux", "local", "mfsbsd", "ubuntu"}
 }
 
-func registerProviders(registry *provider.Registry, _ providerconfig.Config, catalogDoc catalog.Document) error {
+func registerProviders(registry *provider.Registry, config providerconfig.Config, catalogDoc catalog.Document) error {
 	p, err := debianfixture.NewProvider(catalogDoc.Targets("debian"))
 	if err != nil {
 		return fmt.Errorf("create Debian fixture provider: %w", err)
@@ -34,7 +34,12 @@ func registerProviders(registry *provider.Registry, _ providerconfig.Config, cat
 		return fmt.Errorf("register Ubuntu provider: %w", err)
 	}
 	if err := registry.Register(fedora.NewProvider(fedora.Config{
-		Targets: catalogDoc.Targets("fedora"),
+		ReleaseURL:       config.Fedora.ReleaseURL,
+		DiscoveryURL:     config.Fedora.DiscoveryURL,
+		KernelSHA256:     config.Fedora.KernelSHA256,
+		InitrdSHA256:     config.Fedora.InitrdSHA256,
+		Targets:          catalogDoc.Targets("fedora"),
+		DiscoveryTimeout: config.Fedora.DiscoveryTimeout,
 	})); err != nil {
 		return fmt.Errorf("register Fedora provider: %w", err)
 	}

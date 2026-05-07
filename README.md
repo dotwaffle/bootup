@@ -142,8 +142,8 @@ source without staging artifacts:
 bootup --mode=discover-targets --discovery-family=debian --provider-config=/etc/bootup/providers.json
 ```
 
-Use `--discovery-family=ubuntu` to run the matching Ubuntu release-index
-discovery path.
+Use `--discovery-family=ubuntu` or `--discovery-family=fedora` to run the
+matching release-index discovery path.
 
 Fedora and Ubuntu netboot targets can be staged from their official HTTPS
 release URLs by default. Operators can additionally provide Fedora release URL

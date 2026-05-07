@@ -14,6 +14,7 @@ Environment:
   BOOTUP_FREEBSD_VERSION              FreeBSD release, default 15.0-RELEASE
   BOOTUP_FREEBSD_ARCH                 FreeBSD architecture, default amd64
   BOOTUP_FREEBSD_BASE_URL             Override release directory URL
+  BOOTUP_FREEBSD_ISO_BASE_URL         Override ISO-IMAGES release directory URL
   BOOTUP_FREEBSD_KBOOT_LOADER         Existing loader.kboot path
   BOOTUP_FREEBSD_KBOOT_HELP           Existing loader.help.kboot path
   BOOTUP_FREEBSD_KBOOT_ISO            Existing uncompressed bootonly ISO path
@@ -68,15 +69,38 @@ normalize_mfsbsd_root() {
 	normalize_mfsbsd_file "${root}/mfsroot"
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+print_artifact_urls=0
+case "${1:-}" in
+"")
+	;;
+"-h" | "--help")
 	usage
 	exit 0
-fi
+	;;
+"--print-artifact-urls")
+	print_artifact_urls=1
+	;;
+*)
+	usage
+	exit 2
+	;;
+esac
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 version="${BOOTUP_FREEBSD_VERSION:-15.0-RELEASE}"
 arch="${BOOTUP_FREEBSD_ARCH:-amd64}"
 base_url="${BOOTUP_FREEBSD_BASE_URL:-https://download.freebsd.org/releases/${arch}/${arch}/${version}}"
+iso_version="${version%%-*}"
+iso_base_url="${BOOTUP_FREEBSD_ISO_BASE_URL:-https://download.freebsd.org/releases/${arch}/${arch}/ISO-IMAGES/${iso_version}}"
+iso_name="FreeBSD-${version}-${arch}-bootonly.iso"
+iso_xz_name="${iso_name}.xz"
+
+if [[ "${print_artifact_urls}" -eq 1 ]]; then
+	printf 'base.txz %s/base.txz\n' "${base_url}"
+	printf 'bootonly.iso.xz %s/%s\n' "${iso_base_url}" "${iso_xz_name}"
+	exit 0
+fi
+
 workdir="${BOOTUP_FREEBSD_KBOOT_WORKDIR:-$(mktemp -d /tmp/bootup-freebsd-kboot-smoke.XXXXXX)}"
 mkdir -p "${workdir}"
 workdir="$(cd -- "${workdir}" && pwd)"
@@ -143,9 +167,9 @@ if [[ -z "${payload_root}" ]]; then
 		require_cmd curl
 		require_cmd xz
 
-		iso_xz="${workdir}/FreeBSD-${version}-${arch}-bootonly.iso.xz"
-		freebsd_iso="${workdir}/FreeBSD-${version}-${arch}-bootonly.iso"
-		curl -fsSL -o "${iso_xz}" "${base_url}/FreeBSD-${version}-${arch}-bootonly.iso.xz"
+		iso_xz="${workdir}/${iso_xz_name}"
+		freebsd_iso="${workdir}/${iso_name}"
+		curl -fsSL -o "${iso_xz}" "${iso_base_url}/${iso_xz_name}"
 		xz -dkf "${iso_xz}"
 	fi
 	if [[ ! -r "${freebsd_iso}" ]]; then

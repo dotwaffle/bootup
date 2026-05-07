@@ -169,16 +169,19 @@ BOOTUP_FREEBSD_KBOOT_KERNEL_CONFIG="${CONFIG}" \
 scripts/smoke-freebsd-kboot.sh
 ```
 
-By default the helper downloads FreeBSD 15.0-RELEASE `base.txz` and the
-uncompressed bootonly ISO into a `/tmp/bootup-freebsd-kboot-smoke.*` work
-directory, extracts `loader.kboot`, builds a temporary bootup initramfs and
-hybrid ISO, attaches the FreeBSD ISO as a read-only virtio block device,
-mounts it from Linux, and runs the loader with `hostfs_root=/mnt/freebsd` and
-`bootdev=host:/`. It also passes `boot_serial=YES` and `boot_multicons=YES`
-so the FreeBSD kernel and installer emit serial output after `loader.kboot`
-jumps into the target kernel. Provide
-`BOOTUP_FREEBSD_KBOOT_LOADER`, `BOOTUP_FREEBSD_KBOOT_HELP`, and
-`BOOTUP_FREEBSD_KBOOT_ISO` to reuse already downloaded artifacts.
+By default the helper downloads FreeBSD 15.0-RELEASE `base.txz` from the
+release directory and the bootonly ISO from the matching `ISO-IMAGES/15.0`
+directory into a `/tmp/bootup-freebsd-kboot-smoke.*` work directory, extracts
+`loader.kboot`, builds a temporary bootup initramfs and hybrid ISO, attaches
+the FreeBSD ISO as a read-only virtio block device, mounts it from Linux, and
+runs the loader with `hostfs_root=/mnt/freebsd` and `bootdev=host:/`. It also
+passes `boot_serial=YES` and `boot_multicons=YES` so the FreeBSD kernel and
+installer emit serial output after `loader.kboot` jumps into the target
+kernel. Provide `BOOTUP_FREEBSD_KBOOT_LOADER`,
+`BOOTUP_FREEBSD_KBOOT_HELP`, and `BOOTUP_FREEBSD_KBOOT_ISO` to reuse already
+downloaded artifacts. Set `BOOTUP_FREEBSD_BASE_URL` and
+`BOOTUP_FREEBSD_ISO_BASE_URL` separately when using a mirror with a different
+layout.
 
 The block device is intentional. The stock bootonly ISO mounts `/` from its
 `cd9660` label after the FreeBSD kernel starts, so a Linux-only hostfs or loop

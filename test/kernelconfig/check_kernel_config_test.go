@@ -1,7 +1,10 @@
 package kernelconfig_test
 
 import (
+	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -56,5 +59,41 @@ func TestCheckKernelConfig(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCheckKernelConfigCanSkipISOMountRequirements(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile("testdata/pass.config")
+	if err != nil {
+		t.Fatalf("read pass fixture: %v", err)
+	}
+	data = bytes.ReplaceAll(data, []byte("CONFIG_ISO9660_FS=y"), []byte("# CONFIG_ISO9660_FS is not set"))
+	data = bytes.ReplaceAll(data, []byte("CONFIG_BLK_DEV_LOOP=y"), []byte("# CONFIG_BLK_DEV_LOOP is not set"))
+	config := filepath.Join(t.TempDir(), "no-iso-mount.config")
+	if err := os.WriteFile(config, data, 0o644); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cmd := exec.Command("bash", "../../scripts/check-kernel-config.sh", config)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("check config succeeded, want ISO mount requirement failure\n%s", output)
+	}
+	for _, want := range []string{
+		"CONFIG_ISO9660_FS is not set",
+		"CONFIG_BLK_DEV_LOOP is not set",
+	} {
+		if !strings.Contains(string(output), want) {
+			t.Fatalf("output = %q, want substring %q", output, want)
+		}
+	}
+
+	cmd = exec.Command("bash", "../../scripts/check-kernel-config.sh", config)
+	cmd.Env = append(os.Environ(), "BOOTUP_KERNEL_CONFIG_REQUIRE_ISO_MOUNT=0")
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("check config with ISO mount disabled: %v\n%s", err, output)
 	}
 }

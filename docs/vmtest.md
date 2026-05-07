@@ -155,8 +155,9 @@ by normal Linux kexec targets. The bootup kernel validator requires
 `CONFIG_DEBUG_KERNEL=y`, `CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y`, and
 `CONFIG_PROC_KCORE=y` so FreeBSD `loader.kboot` can recover Linux
 `boot_params` and EFI memory-map state before handing off to the FreeBSD
-kernel. It also requires `CONFIG_ISO9660_FS=y` so the Linux stage-1 can mount
-the FreeBSD bootonly ISO and expose it to `loader.kboot` through `host:`.
+kernel. The FreeBSD bootonly proof helper also requires `CONFIG_ISO9660_FS=y`
+and `CONFIG_BLK_DEV_LOOP=y` so the Linux stage-1 can mount the bootonly ISO and
+expose it to `loader.kboot` through `host:`.
 
 Then run the opt-in smoke helper with the generated kernel and config:
 
@@ -216,10 +217,10 @@ disk. The Linux stage-1 presents the extracted root through `hostfs_root`,
 
 The executable `mfsbsd-142-amd64` catalog target uses the same handoff shape:
 it verifies the full mfsBSD 14.2 amd64 ISO, verifies FreeBSD 15.0
-`base.txz`, extracts `loader.kboot` and `loader.help.kboot`, loop-extracts the
-ISO from Linux stage-1, normalizes `kernel.gz` and `mfsroot.gz`, and runs the
-loader with `hostfs_root`, `bootdev=host:/`, serial console settings, and no
-target-visible payload disk.
+`base.txz`, extracts `loader.kboot` and `loader.help.kboot`, extracts the ISO
+from Linux stage-1 without mounting it, normalizes `kernel.gz` and
+`mfsroot.gz`, and runs the loader with `hostfs_root`, `bootdev=host:/`, serial
+console settings, and no target-visible payload disk.
 
 Run the product-path mfsBSD smoke with:
 

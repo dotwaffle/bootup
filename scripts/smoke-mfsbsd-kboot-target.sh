@@ -158,7 +158,8 @@ if [[ ! -r "${kernel_config}" ]]; then
 	printf 'bootup kernel config is not readable: %s\n' "${kernel_config}" >&2
 	exit 2
 fi
-"${repo_root}/scripts/check-kernel-config.sh" "${kernel_config}"
+BOOTUP_KERNEL_CONFIG_REQUIRE_ISO_MOUNT=0 \
+	"${repo_root}/scripts/check-kernel-config.sh" "${kernel_config}"
 if [[ ! -r "${ovmf_code}" ]]; then
 	printf 'OVMF CODE image is not readable: %s\n' "${ovmf_code}" >&2
 	exit 2

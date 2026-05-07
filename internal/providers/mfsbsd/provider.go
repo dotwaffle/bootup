@@ -154,7 +154,7 @@ func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.B
 func (p *Provider) Stage(ctx context.Context, config provider.StageConfig) (provider.BootPlan, error) {
 	extractor := p.extractor
 	if extractor == nil {
-		extractor = LoopISOExtractor{}
+		extractor = FileISOExtractor{}
 	}
 	return FetchAndStageArtifacts(ctx, FetchConfig{
 		Plan:       config.Plan,
@@ -179,7 +179,7 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	}
 	extractor := config.Extractor
 	if extractor == nil {
-		extractor = LoopISOExtractor{}
+		extractor = FileISOExtractor{}
 	}
 
 	plan := config.Plan

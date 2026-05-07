@@ -64,6 +64,11 @@ Validate a candidate kernel config with:
 scripts/check-kernel-config.sh /path/to/.config
 ```
 
+Set `BOOTUP_KERNEL_CONFIG_REQUIRE_ISO_MOUNT=0` when validating a flow that does
+not need Linux to mount ISO9660 media during stage-1. The mfsBSD product kboot
+target uses direct ISO extraction and does not need `CONFIG_ISO9660_FS` or
+`CONFIG_BLK_DEV_LOOP`; the FreeBSD bootonly proof helper still does.
+
 For example, the current host kernel can be inspected with:
 
 ```sh

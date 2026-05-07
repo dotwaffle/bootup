@@ -414,3 +414,12 @@ catalog-supplied SHA-256 pins for source kernel and initrd artifacts.
 - **THEN** staging SHALL verify each downloaded artifact against its planned
   hash before writing the artifact into the staging directory
 
+### Requirement: Fedora provider discovery family
+Bootup SHALL include Fedora in the default provider set's runtime discovery
+families.
+
+#### Scenario: Fedora discovery family is registered
+- **WHEN** bootup starts with the default provider set
+- **THEN** the provider registry SHALL expose a Fedora discovery family in
+  addition to static Fedora catalog targets
+

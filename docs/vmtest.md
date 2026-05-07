@@ -251,7 +251,8 @@ The mfsBSD image uses the temporary rescue login `root` with password
 includes rescue tools such as `tmux`, `rsync`, `smartmontools`, and
 `zfsinstall`. Use `--option hostname=<name>` to set a non-secret hostname in
 the target environment. Password and SSH-key customization are intentionally not
-catalog options until bootup can avoid printing secret-bearing loader args.
+catalog options until bootup has a secret-safe delivery path with redacted
+diagnostics. See [policy.md](policy.md).
 
 Run the product-path mfsBSD smoke with:
 

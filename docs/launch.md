@@ -264,7 +264,9 @@ bootup --mode=discover-targets --discovery-family=fedora --provider-config=/etc/
 Select catalog-declared target options with repeatable `--option id=value`
 flags. Bootup validates the selected option IDs and values before planning. Any
 option command-line fragments are appended after provider defaults and before
-global `--append-cmdline` text:
+global `--append-cmdline` text. Target options are non-secret; selected values
+can appear in plan and stage diagnostics. See [policy.md](policy.md) for the
+reserved secret-option and dynamic-policy boundary.
 
 ```sh
 bootup --mode=plan-target \

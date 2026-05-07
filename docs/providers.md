@@ -230,7 +230,10 @@ selected as `true`. Enum options define allowed `values`, each with an optional
 fragment. String options expand exactly one `{value}` placeholder in
 `template`. Bootup rejects duplicate option IDs, unsupported types, invalid enum
 values, and fragments or templates with surrounding whitespace or control
-characters.
+characters. Options are non-secret because selected values are expanded into
+operator-visible command-line or loader-argument diagnostics. The `secret`
+marker is reserved and catalogs that set it are rejected until bootup has a
+separate secret-safe delivery path. See [policy.md](policy.md).
 
 Operators select options with repeatable `--option id=value` flags. Selected
 fragments are applied by boot action. Linux kexec targets append them after
@@ -362,4 +365,5 @@ with generated options.
 Bootup does not implement script execution, remote policy plugins, or a
 self-hosted catalog/policy server yet. Those pieces should be designed as
 separate capabilities so the static catalog remains predictable and usable in
-restricted stage-1 environments.
+restricted stage-1 environments. The current policy boundary is documented in
+[policy.md](policy.md).

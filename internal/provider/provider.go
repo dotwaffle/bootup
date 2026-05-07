@@ -128,6 +128,7 @@ type TargetOption struct {
 	Fragment string              `json:"fragment,omitzero"`
 	Values   []TargetOptionValue `json:"values,omitzero"`
 	Template string              `json:"template,omitzero"`
+	Secret   bool                `json:"secret,omitzero"`
 }
 
 // SelectedOption describes an operator-selected target option value.
@@ -610,6 +611,9 @@ func validateTargetOptions(targetID string, options []TargetOption) error {
 		seen[option.ID] = struct{}{}
 		if strings.TrimSpace(option.Label) == "" {
 			return fmt.Errorf("%w: target %s option %s label is empty", ErrInvalidTarget, targetID, option.ID)
+		}
+		if option.Secret {
+			return fmt.Errorf("%w: target %s option %s secret target options are not supported", ErrInvalidTarget, targetID, option.ID)
 		}
 		if err := validateTargetOptionBehavior(targetID, option); err != nil {
 			return err

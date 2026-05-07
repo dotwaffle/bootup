@@ -489,6 +489,39 @@ func TestGenerateRejectsInvalidTargetOptions(t *testing.T) {
 	}
 }
 
+func TestGenerateRejectsSecretTargetOptionWithExplicitError(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`{
+		"schema_version": 1,
+		"providers": [{
+			"id": "mfsbsd",
+			"targets": [{
+				"id": "mfsbsd-142-amd64",
+				"name": "mfsBSD 14.2 amd64",
+				"release": "14.2",
+				"architecture": "amd64",
+				"kind": "rescue",
+				"options": [{
+					"id": "root-password",
+					"label": "Root password",
+					"type": "string",
+					"template": "mfsbsd.root_password={value}",
+					"secret": true
+				}]
+			}]
+		}]
+	}`)
+
+	_, err := catalog.Generate(data)
+	if !errors.Is(err, catalog.ErrInvalidCatalog) {
+		t.Fatalf("generate error = %v, want %v", err, catalog.ErrInvalidCatalog)
+	}
+	if !strings.Contains(err.Error(), "secret target options are not supported") {
+		t.Fatalf("generate error = %q, want secret option boundary", err)
+	}
+}
+
 func TestGeneratedDefaultCatalogIsCurrent(t *testing.T) {
 	t.Parallel()
 

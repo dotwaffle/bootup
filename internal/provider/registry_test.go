@@ -273,6 +273,27 @@ func TestRegistryRejectsInvalidProviderTargets(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "secret option",
+			target: provider.Target{
+				ID:         "mfsbsd-142-amd64",
+				ProviderID: "mfsbsd",
+				Name:       "mfsBSD 14.2 amd64",
+				Catalog: provider.CatalogEntry{
+					Distribution: "mfsbsd",
+					Release:      "14.2",
+					Architecture: "amd64",
+					Kind:         "rescue",
+				},
+				Options: []provider.TargetOption{{
+					ID:       "root-password",
+					Label:    "Root password",
+					Type:     provider.TargetOptionString,
+					Template: "mfsbsd.root_password={value}",
+					Secret:   true,
+				}},
+			},
+		},
 	}
 
 	for _, tt := range tests {

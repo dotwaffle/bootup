@@ -169,6 +169,10 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 			json: `{"providers":{"debian":{"keyring_path":` + quote(keyringPath) + `,"release_url":"https://example.invalid"}}}`,
 		},
 		{
+			name: "dynamic policy field",
+			json: `{"providers":{"debian":{"policy_url":"https://policy.example/bootup"}}}`,
+		},
+		{
 			name: "invalid discovery url",
 			json: `{"providers":{"debian":{"discovery_url":"file:///srv/debian"}}}`,
 		},

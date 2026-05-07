@@ -155,7 +155,8 @@ by normal Linux kexec targets. The bootup kernel validator requires
 `CONFIG_DEBUG_KERNEL=y`, `CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y`, and
 `CONFIG_PROC_KCORE=y` so FreeBSD `loader.kboot` can recover Linux
 `boot_params` and EFI memory-map state before handing off to the FreeBSD
-kernel.
+kernel. It also requires `CONFIG_ISO9660_FS=y` so the Linux stage-1 can mount
+the FreeBSD bootonly ISO and expose it to `loader.kboot` through `host:`.
 
 Then run the opt-in smoke helper with the generated kernel and config:
 
@@ -170,8 +171,11 @@ scripts/smoke-freebsd-kboot.sh
 By default the helper downloads FreeBSD 15.0-RELEASE `base.txz` and the
 uncompressed bootonly ISO into a `/tmp/bootup-freebsd-kboot-smoke.*` work
 directory, extracts `loader.kboot`, builds a temporary bootup initramfs and
-hybrid ISO, attaches the FreeBSD ISO as a read-only virtio block device, and
-runs the loader with `bootdev=/dev/vda:`. Provide
+hybrid ISO, attaches the FreeBSD ISO as a read-only virtio block device,
+mounts it from Linux, and runs the loader with `hostfs_root=/mnt/freebsd` and
+`bootdev=host:/`. It also passes `boot_serial=YES` and `boot_multicons=YES`
+so the FreeBSD kernel and installer emit serial output after `loader.kboot`
+jumps into the target kernel. Provide
 `BOOTUP_FREEBSD_KBOOT_LOADER`, `BOOTUP_FREEBSD_KBOOT_HELP`, and
 `BOOTUP_FREEBSD_KBOOT_ISO` to reuse already downloaded artifacts.
 

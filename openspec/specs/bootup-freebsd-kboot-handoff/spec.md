@@ -49,13 +49,26 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
 - **WHEN** the FreeBSD kboot smoke is run
 - **THEN** it SHALL verify or document that the bootup kernel exposes
   `CONFIG_DEBUG_KERNEL`, `CONFIG_KALLSYMS`, `CONFIG_KALLSYMS_ALL`, and
-  `CONFIG_PROC_KCORE`
+  `CONFIG_PROC_KCORE`, and `CONFIG_ISO9660_FS`
 
 #### Scenario: Smoke uses non-vendored FreeBSD artifacts
 - **WHEN** the FreeBSD kboot smoke stages `loader.kboot` and a FreeBSD or
   mfsBSD payload
 - **THEN** those artifacts SHALL be downloaded or supplied by path outside the
   tracked repository and SHALL NOT be committed
+
+#### Scenario: Smoke exposes payload through Linux hostfs
+- **WHEN** the FreeBSD kboot smoke runs `loader.kboot` from Linux stage-1
+- **THEN** it SHALL mount the FreeBSD or mfsBSD payload from Linux and run
+  `loader.kboot` with `hostfs_root` and `bootdev=host:/` so unqualified
+  `/proc` metadata reads resolve to the running Linux kernel while `/boot`
+  reads resolve to the target payload
+
+#### Scenario: Smoke forces target serial console output
+- **WHEN** the FreeBSD kboot smoke runs `loader.kboot` from Linux stage-1
+- **THEN** it SHALL pass FreeBSD kernel boot flags that enable serial and
+  multiple consoles so installer or shell output is visible on the QEMU serial
+  log after the kernel jump
 
 #### Scenario: Smoke success signal reaches target environment
 - **WHEN** the FreeBSD kboot handoff is reported as viable

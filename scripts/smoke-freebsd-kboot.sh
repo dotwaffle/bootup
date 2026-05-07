@@ -6,8 +6,9 @@ usage() {
 usage: scripts/smoke-freebsd-kboot.sh
 
 Build a temporary bootup ISO containing FreeBSD loader.kboot, attach a
-FreeBSD bootonly ISO as a read-only virtio block device, and run a QEMU UEFI
-smoke. All downloaded and generated artifacts stay outside the repository.
+FreeBSD bootonly ISO as a read-only virtio block device, mount it from Linux
+stage-1, and run a QEMU UEFI smoke. All downloaded and generated artifacts
+stay outside the repository.
 
 Environment:
   BOOTUP_FREEBSD_VERSION              FreeBSD release, default 15.0-RELEASE
@@ -122,13 +123,23 @@ else
 fi
 
 extra_dir="${workdir}/extra"
-mkdir -p "${extra_dir}/bin" "${extra_dir}/boot"
+mkdir -p "${extra_dir}/bin" "${extra_dir}/boot" "${extra_dir}/mnt/freebsd"
 install -m 0555 "${loader}" "${extra_dir}/bin/loader.kboot"
 install -m 0444 "${loader_help}" "${extra_dir}/boot/loader.help.kboot"
 
 initramfs="${workdir}/bootup-freebsd-kboot-initramfs.cpio"
 initramfs_zst="${initramfs}.zst"
-uinitcmd="gosh -c 'echo bootup FreeBSD kboot smoke; echo running loader.kboot with bootdev=/dev/vda:; bootdev=/dev/vda: /bin/loader.kboot'"
+loader_args=(
+	hostfs_root=/mnt/freebsd
+	bootdev=host:/
+	boot_serial=YES
+	boot_multicons=YES
+	boot_verbose=YES
+	autoboot_delay=0
+	beastie_disable=YES
+)
+loader_cmd="/bin/loader.kboot ${loader_args[*]}"
+uinitcmd="gosh -c 'echo bootup FreeBSD kboot smoke; echo mounting FreeBSD ISO from /dev/vda; mount -t iso9660 -o ro /dev/vda /mnt/freebsd; echo running ${loader_cmd}; ${loader_cmd}'"
 
 BOOTUP_INITRAMFS_ZSTD="${initramfs_zst}" \
 	"${repo_root}/scripts/build-initramfs.sh" \

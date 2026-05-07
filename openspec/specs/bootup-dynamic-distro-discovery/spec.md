@@ -161,6 +161,18 @@ netboot targets from a configured Fedora releases index.
 - **THEN** bootup SHALL return a concrete Fedora target with source base URL,
   release, architecture, and target kind metadata
 
+#### Scenario: Fedora lifecycle map matches discovered release
+- **WHEN** Fedora discovery returns a release that appears in configured
+  lifecycle metadata
+- **THEN** bootup SHALL attach that lifecycle metadata to the discovered Fedora
+  target
+
+#### Scenario: Fedora lifecycle map is absent
+- **WHEN** Fedora discovery returns a release with no configured lifecycle
+  metadata
+- **THEN** bootup SHALL attach informational unknown lifecycle metadata without
+  blocking target selection
+
 #### Scenario: Fedora discovered target plans normally
 - **WHEN** the operator selects a Fedora discovered target
 - **THEN** the Fedora provider SHALL plan kernel, initrd, and install-tree URLs

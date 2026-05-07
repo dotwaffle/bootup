@@ -219,13 +219,18 @@ func writeCatalogMatrix(w io.Writer, report catalog.ConformanceReport) error {
 	if _, err := fmt.Fprintln(w, "bootup catalog matrix"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(w, "target\tprovider\taction\tplan\ttrust\tsmoke\terror"); err != nil {
+	if _, err := fmt.Fprintln(w, "target\tprovider\tdistribution\trelease\tarchitecture\tkind\tlifecycle\taction\tplan\ttrust\tsmoke\terror"); err != nil {
 		return err
 	}
 	for _, entry := range report.Entries {
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			entry.Target.ID,
 			entry.Target.ProviderID,
+			entry.Target.Catalog.Distribution,
+			entry.Target.Catalog.Release,
+			entry.Target.Catalog.Architecture,
+			entry.Target.Catalog.Kind,
+			entry.Target.Lifecycle.Status,
 			entry.Action,
 			entry.PlanStatus,
 			entry.ArtifactTrust,

@@ -133,7 +133,7 @@ func BuildConformanceReport(ctx context.Context, registry *provider.Registry) (C
 			ArtifactTrust: ArtifactTrustUnknown,
 			SmokeCoverage: SmokeCoverageForTarget(target),
 		}
-		plan, err := registry.Plan(ctx, provider.PlanInput{Target: target})
+		plan, err := registry.Plan(ctx, provider.PlanInput{Target: target, Offline: true})
 		if err != nil {
 			entry.PlanStatus = PlanStatusError
 			entry.PlanError = err.Error()

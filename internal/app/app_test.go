@@ -245,8 +245,8 @@ func TestRunRendersCatalogMatrix(t *testing.T) {
 	got := stdout.String()
 	for _, want := range []string{
 		"bootup catalog matrix",
-		"target\tprovider\taction\tplan\ttrust\tsmoke\terror",
-		"debian-trixie-amd64-netboot\tdebian\tlinux-kexec\tok\thttps-only\tdebian-qemu\t",
+		"target\tprovider\tdistribution\trelease\tarchitecture\tkind\tlifecycle\taction\tplan\ttrust\tsmoke\terror",
+		catalogMatrixTestRow("debian-trixie-amd64-netboot", "debian", "debian", "trixie", "amd64", "installer", "", "linux-kexec", "ok", "https-only", "debian-qemu", ""),
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout = %q, want %q", got, want)
@@ -284,13 +284,17 @@ func TestRunCatalogMatrixReportsPlanErrors(t *testing.T) {
 	}
 	got := stdout.String()
 	for _, want := range []string{
-		"debian-trixie-amd64-netboot\tdebian\tlinux-kexec\terror\tunknown\tdebian-qemu\t",
+		catalogMatrixTestRow("debian-trixie-amd64-netboot", "debian", "debian", "trixie", "amd64", "installer", "", "linux-kexec", "error", "unknown", "debian-qemu", ""),
 		"provider cannot plan target",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("stdout = %q, want %q", got, want)
 		}
 	}
+}
+
+func catalogMatrixTestRow(fields ...string) string {
+	return strings.Join(fields, "\t")
 }
 
 func TestRunShowTargetRejectsUnknownWithoutPlanning(t *testing.T) {

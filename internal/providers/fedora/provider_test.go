@@ -147,6 +147,31 @@ images/pxeboot/vmlinuz = sha256:` + strings.Repeat("a", 64) + `
 	}
 }
 
+func TestProviderPlanOfflineRefusesTreeinfoFallback(t *testing.T) {
+	t.Parallel()
+
+	p := fedora.NewProvider(fedora.Config{
+		ReleaseURL: "https://mirror.example/fedora/releases/44/Server/x86_64/os",
+		Client: &http.Client{Transport: responseMap{
+			"https://mirror.example/fedora/releases/44/Server/x86_64/os/.treeinfo": []byte(fedoraTreeinfo(strings.Repeat("a", 64), strings.Repeat("b", 64))),
+		}},
+	})
+
+	_, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "fedora-44-amd64-server-netboot",
+			ProviderID: "fedora",
+		},
+		Offline: true,
+	})
+	if err == nil {
+		t.Fatal("plan succeeded, want offline metadata error")
+	}
+	if !strings.Contains(err.Error(), "offline") || !strings.Contains(err.Error(), ".treeinfo") {
+		t.Fatalf("plan error = %q, want offline treeinfo context", err)
+	}
+}
+
 func TestProviderPlanUsesExplicitPinsWithoutTreeinfo(t *testing.T) {
 	t.Parallel()
 

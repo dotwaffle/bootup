@@ -228,7 +228,7 @@ func (p *Provider) Plan(ctx context.Context, input provider.PlanInput) (provider
 		return provider.BootPlan{}, fmt.Errorf("unsupported Fedora architecture %q for target %s", architecture, selected.ID)
 	}
 	releaseURL := p.targetBaseURL(selected)
-	checksums, err := p.artifactChecksums(ctx, selected, releaseURL)
+	checksums, err := p.artifactChecksums(ctx, selected, releaseURL, input.Offline)
 	if err != nil {
 		return provider.BootPlan{}, err
 	}
@@ -250,7 +250,7 @@ func (p *Provider) Plan(ctx context.Context, input provider.PlanInput) (provider
 	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
-func (p *Provider) artifactChecksums(ctx context.Context, target provider.Target, releaseURL string) (treeinfoChecksums, error) {
+func (p *Provider) artifactChecksums(ctx context.Context, target provider.Target, releaseURL string, offline bool) (treeinfoChecksums, error) {
 	if (p.kernelSHA256 == "") != (p.initrdSHA256 == "") {
 		return treeinfoChecksums{}, errors.New("kernel and initrd sha256 must be supplied together")
 	}
@@ -268,6 +268,9 @@ func (p *Provider) artifactChecksums(ctx context.Context, target provider.Target
 			kernelSHA256: strings.ToLower(target.Source.KernelSHA256),
 			initrdSHA256: strings.ToLower(target.Source.InitrdSHA256),
 		}, nil
+	}
+	if offline {
+		return treeinfoChecksums{}, fmt.Errorf("fedora .treeinfo checksums are required for target %s but offline planning cannot fetch remote metadata", target.ID)
 	}
 	treeinfoURL := releaseURL + "/.treeinfo"
 	if err := requireHTTPS(treeinfoURL); err != nil {

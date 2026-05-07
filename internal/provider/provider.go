@@ -154,6 +154,8 @@ type Target struct {
 type PlanInput struct {
 	Target  Target
 	Options []SelectedOption
+	// Offline requests dry-run planning without remote metadata fetches.
+	Offline bool
 }
 
 // Artifact describes a boot artifact that can be downloaded and verified.

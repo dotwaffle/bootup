@@ -150,11 +150,12 @@ catalog selection and provider registration:
 bootup --mode=catalog-matrix
 ```
 
-The matrix is tab-separated and includes target ID, provider, resolved boot
-action, dry-run plan status, artifact trust posture, smoke coverage, and any
-planning error. It calls provider planning only; it does not download artifacts,
-stage files, contact upstream mirrors, or launch QEMU. Planning errors are
-rendered in the matrix and make the command exit nonzero.
+The matrix is tab-separated and includes target ID, provider, distribution,
+release, architecture, kind, lifecycle status, resolved boot action, dry-run
+plan status, artifact trust posture, smoke coverage, and any planning error.
+It requests offline provider planning only; it does not download artifacts,
+stage files, contact upstream mirrors, fetch remote metadata, or launch QEMU.
+Planning errors are rendered in the matrix and make the command exit nonzero.
 
 Artifact trust labels describe the dry-run boot plan:
 

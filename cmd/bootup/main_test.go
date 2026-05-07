@@ -211,7 +211,7 @@ func TestRunAcceptsCatalogMatrixModeFlag(t *testing.T) {
 	got := stdout.String()
 	for _, want := range []string{
 		"bootup catalog matrix",
-		"target\tprovider\taction\tplan\ttrust\tsmoke\terror",
+		"target\tprovider\tdistribution\trelease\tarchitecture\tkind\tlifecycle\taction\tplan\ttrust\tsmoke\terror",
 		"opensuse-leap-160-amd64-netboot",
 	} {
 		if !strings.Contains(got, want) {
@@ -256,7 +256,7 @@ func TestRunCatalogMatrixReportsHashPinnedLocalCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	want := "opensuse-leap-160-amd64-netboot\tlinux\tlinux-kexec\tok\thash-pinned\tlive-stage,catalog-qemu\t"
+	want := "opensuse-leap-160-amd64-netboot\tlinux\topensuse\tleap-16.0\tamd64\tinstaller\t\tlinux-kexec\tok\thash-pinned\tlive-stage,catalog-qemu\t"
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}

@@ -108,7 +108,7 @@ bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-confi
 ```
 
 Render the current catalog conformance and smoke coverage matrix without
-staging artifacts or contacting mirrors:
+staging artifacts, fetching remote metadata, or contacting mirrors:
 
 ```sh
 bootup --mode=catalog-matrix

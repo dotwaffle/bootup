@@ -149,6 +149,35 @@ func TestBuildConformanceReportCapturesPlanErrors(t *testing.T) {
 	}
 }
 
+func TestBuildConformanceReportRequestsOfflinePlanning(t *testing.T) {
+	t.Parallel()
+
+	target := conformanceTarget("offline-amd64-netboot", "offline", provider.BootActionLinuxKexec)
+	var planned provider.PlanInput
+	registry := provider.NewRegistry()
+	if err := registry.Register(conformanceProvider{
+		id:      "offline",
+		targets: []provider.Target{target},
+		planned: &planned,
+		plans: map[string]provider.BootPlan{
+			target.ID: {
+				Target: target,
+				Kernel: provider.Artifact{URL: "https://mirror.example/linux"},
+				Initrd: provider.Artifact{URL: "https://mirror.example/initrd"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	if _, err := catalog.BuildConformanceReport(context.Background(), registry); err != nil {
+		t.Fatalf("build report: %v", err)
+	}
+	if !planned.Offline {
+		t.Fatalf("plan input offline = false, want catalog matrix offline planning")
+	}
+}
+
 func TestLiveCatalogSmokeSupportedUsesCoverageClassification(t *testing.T) {
 	t.Parallel()
 
@@ -172,6 +201,7 @@ type conformanceProvider struct {
 	targets []provider.Target
 	plans   map[string]provider.BootPlan
 	err     error
+	planned *provider.PlanInput
 }
 
 func (p conformanceProvider) ID() string {
@@ -183,6 +213,9 @@ func (p conformanceProvider) Targets(context.Context) ([]provider.Target, error)
 }
 
 func (p conformanceProvider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+	if p.planned != nil {
+		*p.planned = input
+	}
 	if p.err != nil {
 		return provider.BootPlan{}, p.err
 	}

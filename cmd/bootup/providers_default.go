@@ -53,6 +53,7 @@ func registerProviders(registry *provider.Registry, config providerconfig.Config
 		InitrdSHA256:     config.Fedora.InitrdSHA256,
 		Targets:          catalogDoc.Targets("fedora"),
 		DiscoveryTimeout: config.Fedora.DiscoveryTimeout,
+		Lifecycle:        config.Fedora.Lifecycle,
 	})); err != nil {
 		return fmt.Errorf("register Fedora provider: %w", err)
 	}

@@ -194,7 +194,14 @@ trust material without embedding distro keyrings in the default bootup binary:
       "discovery_file": "/etc/bootup/discovery/fedora",
       "discovery_timeout": "5s",
       "kernel_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
-      "initrd_sha256": "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
+      "initrd_sha256": "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba",
+      "lifecycle": {
+        "44": {
+          "status": "supported",
+          "source": "operator",
+          "date": "2027-05-13"
+        }
+      }
     }
   }
 }

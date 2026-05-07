@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -46,6 +47,7 @@ type Config struct {
 	InitrdSHA256     string
 	Targets          []provider.Target
 	DiscoveryTimeout time.Duration
+	Lifecycle        map[string]provider.LifecycleEntry
 }
 
 // Provider exposes Fedora Server netboot targets.
@@ -58,6 +60,7 @@ type Provider struct {
 	initrdSHA256         string
 	targets              []provider.Target
 	discoveryTimeout     time.Duration
+	lifecycle            map[string]provider.LifecycleEntry
 	releaseURLConfigured bool
 }
 
@@ -88,6 +91,7 @@ func NewProvider(config Config) *Provider {
 		initrdSHA256:         config.InitrdSHA256,
 		targets:              targets,
 		discoveryTimeout:     discoveryTimeout,
+		lifecycle:            cloneLifecycle(config.Lifecycle),
 		releaseURLConfigured: strings.TrimSpace(config.ReleaseURL) != "",
 	}
 }
@@ -160,7 +164,7 @@ func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, erro
 		if !initrdOK {
 			continue
 		}
-		targets = append(targets, discoveredTarget(release, sourceBaseURL))
+		targets = append(targets, p.discoveredTarget(release, sourceBaseURL))
 	}
 	return targets, nil
 }
@@ -197,6 +201,13 @@ func cloneTargets(targets []provider.Target) []provider.Target {
 	return append([]provider.Target(nil), targets...)
 }
 
+func cloneLifecycle(lifecycle map[string]provider.LifecycleEntry) map[string]provider.LifecycleEntry {
+	if len(lifecycle) == 0 {
+		return nil
+	}
+	return maps.Clone(lifecycle)
+}
+
 func parseReleasesIndex(data []byte) []string {
 	seen := make(map[string]struct{})
 	for _, match := range hrefPattern.FindAllSubmatch(data, -1) {
@@ -217,7 +228,7 @@ func parseReleasesIndex(data []byte) []string {
 	return releases
 }
 
-func discoveredTarget(release string, baseURL string) provider.Target {
+func (p *Provider) discoveredTarget(release string, baseURL string) provider.Target {
 	return provider.Target{
 		ID:         "fedora-" + release + "-amd64-server-netboot",
 		ProviderID: providerID,
@@ -231,6 +242,17 @@ func discoveredTarget(release string, baseURL string) provider.Target {
 		Source: provider.SourceEntry{
 			BaseURL: baseURL,
 		},
+		Lifecycle: p.lifecycleEntry(release),
+	}
+}
+
+func (p *Provider) lifecycleEntry(release string) provider.LifecycleEntry {
+	if entry, ok := p.lifecycle[release]; ok {
+		return entry
+	}
+	return provider.LifecycleEntry{
+		Status: provider.LifecycleUnknown,
+		Source: providerID,
 	}
 }
 

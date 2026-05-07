@@ -60,7 +60,14 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 				"discovery_file": `+quote(fedoraDiscoveryFile)+`,
 				"discovery_timeout": "3s",
 				"kernel_sha256": "`+strings.Repeat("c", 64)+`",
-				"initrd_sha256": "`+strings.Repeat("d", 64)+`"
+				"initrd_sha256": "`+strings.Repeat("d", 64)+`",
+				"lifecycle": {
+					"44": {
+						"status": "supported",
+						"source": "operator",
+						"date": "2027-05-13"
+					}
+				}
 			}
 		}
 	}`))
@@ -124,6 +131,9 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	if config.Fedora.DiscoveryTimeout != 3*time.Second {
 		t.Fatalf("Fedora discovery timeout = %s, want 3s", config.Fedora.DiscoveryTimeout)
 	}
+	if got := config.Fedora.Lifecycle["44"]; got.Status != provider.LifecycleSupported || got.Source != "operator" || got.Date != "2027-05-13" {
+		t.Fatalf("Fedora 44 lifecycle = %#v", got)
+	}
 	if config.Fedora.KernelSHA256 != strings.Repeat("c", 64) {
 		t.Fatalf("Fedora kernel sha256 = %q", config.Fedora.KernelSHA256)
 	}
@@ -178,6 +188,10 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		{
 			name: "invalid Fedora discovery timeout",
 			json: `{"providers":{"fedora":{"discovery_timeout":"zero"}}}`,
+		},
+		{
+			name: "invalid Fedora lifecycle status",
+			json: `{"providers":{"fedora":{"lifecycle":{"44":{"status":"trusted","source":"operator"}}}}}`,
 		},
 		{
 			name: "unreadable keyring",

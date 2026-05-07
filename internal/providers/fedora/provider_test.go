@@ -240,6 +240,13 @@ func TestProviderDiscoversServerNetbootTargets(t *testing.T) {
 
 	p := fedora.NewProvider(fedora.Config{
 		DiscoveryURL: "https://mirror.example/fedora/releases",
+		Lifecycle: map[string]provider.LifecycleEntry{
+			"44": {
+				Status: provider.LifecycleSupported,
+				Source: "operator",
+				Date:   "2027-05-13",
+			},
+		},
 		Client: &http.Client{Transport: responseMap{
 			"https://mirror.example/fedora/releases/": []byte(`
 				<a href="44/">44/</a>
@@ -268,6 +275,9 @@ func TestProviderDiscoversServerNetbootTargets(t *testing.T) {
 	}
 	if target.Catalog.Release != "44" || target.Catalog.Architecture != "amd64" || target.Catalog.Kind != "installer" {
 		t.Fatalf("catalog = %#v, want Fedora 44 amd64 installer", target.Catalog)
+	}
+	if target.Lifecycle.Status != provider.LifecycleSupported || target.Lifecycle.Source != "operator" || target.Lifecycle.Date != "2027-05-13" {
+		t.Fatalf("lifecycle = %#v, want configured supported entry", target.Lifecycle)
 	}
 }
 

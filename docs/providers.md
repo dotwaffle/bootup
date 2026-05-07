@@ -338,11 +338,13 @@ known kexec-compatible image, or a proven real-mode `kexec_load` loader.
 
 Discovery is timeout-bound and explicit. Providers accept optional
 `discovery_url`, `discovery_file`, `discovery_timeout`, and lifecycle
-decoration in `--provider-config`. Local discovery metadata is used only to
-find candidates; discovered target source URLs still use the configured HTTP(S)
-provider source. If the primary discovery index fails, the already-loaded
-static catalog targets remain available. If one candidate's optional metadata
-or probe fails, providers skip that candidate and continue checking the rest.
+decoration in `--provider-config`; Debian, Fedora, and Ubuntu use the same
+lifecycle map shape keyed by release. Local discovery metadata is used only to
+find candidates; discovered target source URLs still use the configured
+HTTP(S) provider source. If the primary discovery index fails, the
+already-loaded static catalog targets remain available. If one candidate's
+optional metadata or probe fails, providers skip that candidate and continue
+checking the rest.
 
 Discovery results can carry lifecycle decoration such as `supported`,
 `obsolete`, `eol`, or `unknown`. That metadata is displayed to operators as

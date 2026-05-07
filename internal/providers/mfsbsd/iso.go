@@ -27,8 +27,9 @@ type isoDirectoryRecord struct {
 }
 
 type rockRidgeInfo struct {
-	name string
-	mode fs.FileMode
+	name    string
+	mode    fs.FileMode
+	symlink string
 }
 
 // Extract reads isoPath directly and copies its ISO9660 tree to dest.
@@ -229,6 +230,9 @@ func parseISODirectoryRecord(data []byte) (isoDirectoryRecord, error) {
 	if rr.name != "" {
 		name = rr.name
 	}
+	if rr.symlink != "" {
+		return isoDirectoryRecord{}, fmt.Errorf("rock ridge symlink %q is not supported", name)
+	}
 	if record[25]&0x80 != 0 {
 		return isoDirectoryRecord{}, fmt.Errorf("multi-extent ISO file %q is not supported", name)
 	}
@@ -272,10 +276,49 @@ func parseRockRidge(systemUse []byte) (rockRidgeInfo, error) {
 			if length >= 12 {
 				info.mode = fs.FileMode(binary.LittleEndian.Uint32(entry[4:8]))
 			}
+		case "SL":
+			target, err := parseRockRidgeSymlink(entry)
+			if err != nil {
+				return rockRidgeInfo{}, err
+			}
+			info.symlink = target
 		}
 		systemUse = systemUse[length:]
 	}
 	return info, nil
+}
+
+func parseRockRidgeSymlink(entry []byte) (string, error) {
+	if len(entry) < 5 {
+		return "", fmt.Errorf("invalid Rock Ridge SL length %d", len(entry))
+	}
+	var parts []string
+	for offset := 5; offset < len(entry); {
+		if offset+2 > len(entry) {
+			return "", fmt.Errorf("invalid Rock Ridge SL component at offset %d", offset)
+		}
+		flags := entry[offset]
+		length := int(entry[offset+1])
+		offset += 2
+		if offset+length > len(entry) {
+			return "", fmt.Errorf("invalid Rock Ridge SL component length %d", length)
+		}
+		switch {
+		case flags&0x02 != 0:
+			parts = append(parts, ".")
+		case flags&0x04 != 0:
+			parts = append(parts, "..")
+		case flags&0x08 != 0:
+			parts = append(parts, "")
+		default:
+			parts = append(parts, string(entry[offset:offset+length]))
+		}
+		if flags&0x01 != 0 {
+			return "", errors.New("continued Rock Ridge symlink is not supported")
+		}
+		offset += length
+	}
+	return strings.Join(parts, "/"), nil
 }
 
 func normalizeISO9660Name(name string) string {

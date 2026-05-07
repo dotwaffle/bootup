@@ -190,6 +190,25 @@ func TestFileISOExtractorRejectsExtentPastEOF(t *testing.T) {
 	}
 }
 
+func TestFileISOExtractorRejectsRockRidgeSymlink(t *testing.T) {
+	t.Parallel()
+
+	iso := tinyMFSBSDISO(t)
+	insertRootISORecord(t, iso, isoSymlinkRecord("LINK.;1", "link", "mfsroot.gz"))
+	isoPath := filepath.Join(t.TempDir(), "mfsbsd.iso")
+	if err := os.WriteFile(isoPath, iso, 0o644); err != nil {
+		t.Fatalf("write test ISO: %v", err)
+	}
+
+	err := (mfsbsd.FileISOExtractor{}).Extract(context.Background(), isoPath, t.TempDir())
+	if err == nil {
+		t.Fatal("extract ISO succeeded, want Rock Ridge symlink error")
+	}
+	if !strings.Contains(err.Error(), "rock ridge symlink") {
+		t.Fatalf("extract error = %v, want rock ridge symlink error", err)
+	}
+}
+
 type extractCall struct {
 	isoPath string
 	dest    string
@@ -447,6 +466,16 @@ func isoDirSector(records ...[]byte) []byte {
 func isoRecord(isoName string, rockRidgeName string, extent int, size int, dir bool) []byte {
 	fileID := []byte(isoName)
 	systemUse := rockRidgeNM(rockRidgeName)
+	return isoRecordWithSystemUse(fileID, systemUse, extent, size, dir)
+}
+
+func isoSymlinkRecord(isoName string, rockRidgeName string, linkTarget string) []byte {
+	fileID := []byte(isoName)
+	systemUse := append(rockRidgeNM(rockRidgeName), rockRidgeSL(linkTarget)...)
+	return isoRecordWithSystemUse(fileID, systemUse, 0, 0, false)
+}
+
+func isoRecordWithSystemUse(fileID []byte, systemUse []byte, extent int, size int, dir bool) []byte {
 	systemUseStart := 33 + len(fileID)
 	if len(fileID)%2 == 0 {
 		systemUseStart++
@@ -482,6 +511,20 @@ func rockRidgeNM(name string) []byte {
 	entry[3] = 1
 	entry[4] = 0
 	copy(entry[5:], name)
+	return entry
+}
+
+func rockRidgeSL(target string) []byte {
+	componentLen := 2 + len(target)
+	entryLen := 5 + componentLen
+	entry := make([]byte, entryLen)
+	copy(entry[0:2], "SL")
+	entry[2] = byte(entryLen)
+	entry[3] = 1
+	entry[4] = 0
+	entry[5] = 0
+	entry[6] = byte(len(target))
+	copy(entry[7:], target)
 	return entry
 }
 
@@ -529,4 +572,25 @@ func patchISORecordSize(t *testing.T, image []byte, isoName string, size uint32)
 		offset += recordLen
 	}
 	t.Fatalf("ISO record %q not found", isoName)
+}
+
+func insertRootISORecord(t *testing.T, image []byte, record []byte) {
+	t.Helper()
+
+	const sectorSize = 2048
+	const rootSector = 20
+
+	root := image[rootSector*sectorSize : (rootSector+1)*sectorSize]
+	for offset := 0; offset < len(root); {
+		recordLen := int(root[offset])
+		if recordLen == 0 {
+			if offset+len(record) > len(root) {
+				t.Fatalf("root directory has no room for record length %d", len(record))
+			}
+			copy(root[offset:], record)
+			return
+		}
+		offset += recordLen
+	}
+	t.Fatalf("root directory has no room for record length %d", len(record))
 }

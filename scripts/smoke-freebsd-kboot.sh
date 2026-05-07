@@ -17,6 +17,7 @@ Environment:
   BOOTUP_FREEBSD_KBOOT_LOADER         Existing loader.kboot path
   BOOTUP_FREEBSD_KBOOT_HELP           Existing loader.help.kboot path
   BOOTUP_FREEBSD_KBOOT_ISO            Existing uncompressed bootonly ISO path
+  BOOTUP_FREEBSD_KBOOT_MFSBSD_ISO     Existing mfsBSD ISO to extract and embed
   BOOTUP_FREEBSD_KBOOT_PAYLOAD_ROOT   Existing FreeBSD/mfsBSD root tree to embed
   BOOTUP_FREEBSD_KBOOT_WORKDIR        Work directory, default /tmp/...
   BOOTUP_FREEBSD_KBOOT_KERNEL         Bootup Linux kernel for the proof ISO
@@ -43,6 +44,28 @@ abs_path() {
 	local dir
 	dir="$(cd -- "$(dirname -- "${path}")" && pwd)"
 	printf '%s/%s\n' "${dir}" "$(basename -- "${path}")"
+}
+
+normalize_mfsbsd_file() {
+	local path="$1"
+	if [[ -r "${path}" ]]; then
+		return
+	fi
+	if [[ ! -r "${path}.gz" ]]; then
+		printf 'mfsBSD payload is missing %s or %s.gz\n' "${path}" "${path}" >&2
+		exit 2
+	fi
+	gzip -dkf "${path}.gz"
+	if [[ ! -r "${path}" ]]; then
+		printf 'mfsBSD payload normalization did not create %s\n' "${path}" >&2
+		exit 2
+	fi
+}
+
+normalize_mfsbsd_root() {
+	local root="$1"
+	normalize_mfsbsd_file "${root}/boot/kernel/kernel"
+	normalize_mfsbsd_file "${root}/mfsroot"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -83,6 +106,28 @@ loader="$(abs_path "${loader}")"
 loader_help="$(abs_path "${loader_help}")"
 
 payload_root="${BOOTUP_FREEBSD_KBOOT_PAYLOAD_ROOT:-}"
+mfsbsd_iso="${BOOTUP_FREEBSD_KBOOT_MFSBSD_ISO:-}"
+if [[ -n "${payload_root}" && -n "${mfsbsd_iso}" ]]; then
+	printf 'set either BOOTUP_FREEBSD_KBOOT_PAYLOAD_ROOT or BOOTUP_FREEBSD_KBOOT_MFSBSD_ISO, not both\n' >&2
+	exit 2
+fi
+if [[ -n "${mfsbsd_iso}" ]]; then
+	if [[ ! -r "${mfsbsd_iso}" ]]; then
+		printf 'mfsBSD ISO is not readable: %s\n' "${mfsbsd_iso}" >&2
+		exit 2
+	fi
+	require_cmd gzip
+	require_cmd xorriso
+	mfsbsd_iso="$(abs_path "${mfsbsd_iso}")"
+	payload_root="${workdir}/mfsbsd-root"
+	if [[ -e "${payload_root}" ]]; then
+		printf 'mfsBSD payload root already exists: %s\n' "${payload_root}" >&2
+		exit 2
+	fi
+	mkdir -p "${payload_root}"
+	xorriso -osirrox on -indev "${mfsbsd_iso}" -extract / "${payload_root}"
+	normalize_mfsbsd_root "${payload_root}"
+fi
 if [[ -n "${payload_root}" ]]; then
 	if [[ ! -d "${payload_root}" ]]; then
 		printf 'FreeBSD payload root is not a directory: %s\n' "${payload_root}" >&2

@@ -222,6 +222,13 @@ from Linux stage-1 without mounting it, normalizes `kernel.gz` and
 `mfsroot.gz`, and runs the loader with `hostfs_root`, `bootdev=host:/`, serial
 console settings, and no target-visible payload disk.
 
+Use this target as the currently supported BSD rescue bridge. It proves bootup
+can enter a FreeBSD-derived, RAM-resident target environment from the Linux
+stage-1 and leaves the operator at the mfsBSD serial login. It does not make
+stock FreeBSD bootonly media executable as a product target; that installer
+still needs target-visible `cd9660` root media after `loader.kboot` jumps into
+the FreeBSD kernel.
+
 Run the product-path mfsBSD smoke with:
 
 ```sh

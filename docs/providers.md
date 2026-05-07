@@ -40,6 +40,7 @@ Bootup embeds a default static catalog. The current default catalog includes:
 - `opensuse-leap-160-amd64-netboot`
 - `archlinux-latest-amd64-netboot`
 - `gparted-live-1813-amd64`
+- `mfsbsd-142-amd64`
 - `ubuntu-24044-amd64-netboot`
 - `ubuntu-2510-amd64-netboot`
 - `ubuntu-2604-amd64-netboot`
@@ -166,6 +167,17 @@ The `local` provider exposes `local-disk-auto` as a `localboot` action. It does
 not download artifacts; handoff invokes u-root's local boot command to inspect
 local boot configuration and continue from disk.
 
+The `mfsbsd` provider exposes `mfsbsd-142-amd64` as a `freebsd-kboot` action.
+It downloads and verifies the pinned mfsBSD 14.2 amd64 ISO, downloads and
+verifies the pinned FreeBSD 15.0 `base.txz`, extracts `loader.kboot` from the
+FreeBSD archive, extracts the mfsBSD ISO without mounting it from Linux, and
+presents the extracted mfsBSD memory-root tree through `hostfs_root`. The
+FreeBSD loader preloads `mfsroot`; after the kernel jump, the target mounts
+`ufs:/dev/md0` and reaches the mfsBSD serial login. This is the supported BSD
+rescue bridge for now. It is not equivalent to booting the stock FreeBSD
+bootonly installer, because stock FreeBSD media still expects target-visible
+`cd9660` root media after the kernel starts.
+
 ## Implemented mode: provider discovery
 
 Dynamic distro discovery is additive to the static catalog. Discovery-capable
@@ -240,14 +252,17 @@ and optional lifecycle data sources. Fedora is static-only for now. That logic
 remains outside the static catalog contract so static catalog documents stay
 stable concrete target lists.
 
-BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
-chainload flows are intentionally deferred. The salstar BSD and several tool
-paths depend on bootloader semantics that are not the same as Linux
-kernel/initrd kexec. u-root's Multiboot support helps only for payloads that
-are actually Multiboot-compatible; stock FreeBSD 15.0 release artifacts still
-need a FreeBSD loader, EFI chainload, disk/ISO chainload, or another dedicated
-handoff. These targets should be added only after bootup has a dedicated
-executor family for those handoff types.
+Stock BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
+chainload flows remain intentionally deferred unless they fit an implemented
+handoff. The supported BSD-adjacent exception is the mfsBSD memory-root target
+above, which uses FreeBSD `loader.kboot` and does not require target-visible
+root media. The salstar BSD and several tool paths depend on bootloader
+semantics that are not the same as Linux kernel/initrd kexec. u-root's
+Multiboot support helps only for payloads that are actually
+Multiboot-compatible; stock FreeBSD 15.0 release artifacts still need a
+FreeBSD loader plus target-visible root media, EFI chainload, disk/ISO
+chainload, or another dedicated handoff. Add those targets only after bootup
+has a proven executor family for their handoff type.
 
 ## Future mode: dynamic policy
 

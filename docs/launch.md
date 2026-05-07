@@ -346,9 +346,13 @@ networking in the initramfs for host kernels without kernel DHCP support, stages
 the Ubuntu netboot artifacts over HTTPS, and attempts kexec. A timeout after
 the target kernel starts is expected for a manual smoke run.
 
-BSD installers, HDT, memdisk ISO images, syslinux COM32 modules, and iPXE
-chainload flows are not executable catalog targets yet. They need a dedicated
-handoff family rather than the current Linux kernel/initrd kexec path.
+The supported BSD-adjacent target is `mfsbsd-142-amd64`. It uses FreeBSD
+`loader.kboot` to boot a verified mfsBSD memory-root payload and reaches the
+mfsBSD serial login without attaching target-visible root media. Treat it as a
+rescue bridge for BSD workflows, not as stock FreeBSD bootonly installer
+support. Stock BSD installers, HDT, memdisk ISO images, syslinux COM32 modules,
+and iPXE chainload flows still need a dedicated handoff family rather than the
+current Linux kernel/initrd kexec path.
 
 Expected local failure modes:
 

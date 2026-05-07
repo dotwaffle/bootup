@@ -1,0 +1,82 @@
+## MODIFIED Requirements
+
+### Requirement: Operator provider runtime configuration
+Bootup SHALL allow operators to supply provider source, discovery, lifecycle,
+and verification inputs for compiled-in providers through an explicit runtime
+configuration file.
+
+#### Scenario: Provider config is absent
+- **WHEN** bootup starts without a provider runtime configuration file
+- **THEN** bootup SHALL preserve the compiled-in provider defaults
+
+#### Scenario: Provider config is loaded
+- **WHEN** bootup starts with a readable provider runtime configuration file
+- **THEN** bootup SHALL apply configured provider source URLs, keyring paths,
+  artifact hash pins, discovery settings, local discovery metadata paths, and
+  lifecycle metadata before target discovery
+
+#### Scenario: Provider discovery config is supplied
+- **WHEN** provider runtime configuration includes discovery URL, local
+  discovery metadata path, or discovery timeout fields for a compiled-in
+  provider
+- **THEN** bootup SHALL validate those fields and pass them to that provider
+  before discovery can run
+
+#### Scenario: Local provider discovery config is supplied
+- **WHEN** provider runtime configuration includes a `discovery_file` path for
+  a compiled-in provider
+- **THEN** bootup SHALL validate that it references a local filesystem path and
+  pass it to that provider before discovery can run
+
+#### Scenario: Provider lifecycle config is supplied
+- **WHEN** provider runtime configuration includes lifecycle metadata for a
+  provider release
+- **THEN** bootup SHALL validate lifecycle status, source, and date fields
+  before provider registration
+
+#### Scenario: Provider keyring path is configured
+- **WHEN** a provider runtime configuration entry references a keyring path
+- **THEN** bootup SHALL read that keyring from the local filesystem and pass its
+  bytes to the compiled-in provider
+
+#### Scenario: Fedora provider config is supplied
+- **WHEN** provider runtime configuration includes Fedora release URL or
+  kernel/initrd hash pins
+- **THEN** bootup SHALL validate those fields and pass them to the Fedora
+  provider before target planning or artifact staging
+
+#### Scenario: Provider config is invalid
+- **WHEN** the provider runtime configuration file is malformed, references an
+  unknown provider, includes an invalid hash pin, or references unreadable trust
+  material
+- **THEN** bootup SHALL fail startup before provider target discovery or artifact
+  retrieval
+
+#### Scenario: Provider discovery config is invalid
+- **WHEN** discovery URL, local discovery metadata path, discovery timeout,
+  lifecycle status, or lifecycle date configuration is malformed
+- **THEN** bootup SHALL fail startup before registering provider targets
+
+#### Scenario: Fedora provider config is invalid
+- **WHEN** Fedora release URL or hash pin configuration is malformed
+- **THEN** bootup SHALL fail startup before registering provider targets
+
+#### Scenario: Release artifacts remain provider-neutral
+- **WHEN** bootup is built with the default release packaging flow
+- **THEN** the release artifacts MUST NOT embed distribution-specific archive
+  keyrings or trust bundles
+
+### Requirement: Fedora discovery runtime configuration
+Bootup SHALL allow operator runtime configuration to override Fedora discovery
+source settings.
+
+#### Scenario: Fedora discovery config is supplied
+- **WHEN** provider runtime configuration includes Fedora discovery URL, local
+  discovery metadata path, or discovery timeout fields
+- **THEN** bootup SHALL validate those fields and pass them to the Fedora
+  provider before discovery can run
+
+#### Scenario: Fedora discovery config is invalid
+- **WHEN** Fedora discovery URL, local discovery metadata path, or discovery
+  timeout configuration is malformed
+- **THEN** bootup SHALL fail startup before registering provider targets

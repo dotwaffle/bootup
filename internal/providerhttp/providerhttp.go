@@ -3,9 +3,13 @@ package providerhttp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -23,6 +27,9 @@ func Fetch(ctx context.Context, client *http.Client, rawURL string) ([]byte, err
 
 // FetchStatus downloads rawURL with GET and returns response body plus status.
 func FetchStatus(ctx context.Context, client *http.Client, rawURL string) ([]byte, int, error) {
+	if isFileURL(rawURL) {
+		return fetchFileStatus(rawURL)
+	}
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -44,6 +51,9 @@ func FetchStatus(ctx context.Context, client *http.Client, rawURL string) ([]byt
 
 // Status requests rawURL with method and returns the HTTP response status.
 func Status(ctx context.Context, client *http.Client, method string, rawURL string) (int, error) {
+	if isFileURL(rawURL) {
+		return fileStatus(rawURL)
+	}
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -96,4 +106,72 @@ func PathBase(value string) string {
 		return value[index+1:]
 	}
 	return value
+}
+
+// LocalFileURL returns a file:// URL for local filesystem path.
+func LocalFileURL(path string) string {
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
+func isFileURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	return err == nil && parsed.Scheme == "file"
+}
+
+func fetchFileStatus(rawURL string) ([]byte, int, error) {
+	path, status, err := filePath(rawURL)
+	if err != nil || status != http.StatusOK {
+		return nil, status, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, http.StatusNotFound, nil
+		}
+		return nil, 0, fmt.Errorf("read local metadata %s: %w", path, err)
+	}
+	return data, http.StatusOK, nil
+}
+
+func fileStatus(rawURL string) (int, error) {
+	_, status, err := filePath(rawURL)
+	return status, err
+}
+
+func filePath(rawURL string) (string, int, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", 0, fmt.Errorf("parse file URL: %w", err)
+	}
+	if parsed.Host != "" && parsed.Host != "localhost" {
+		return "", 0, errors.New("file URL must reference a local path")
+	}
+	path, err := url.PathUnescape(parsed.Path)
+	if err != nil {
+		return "", 0, fmt.Errorf("unescape file path: %w", err)
+	}
+	if !filepath.IsAbs(path) {
+		return "", 0, errors.New("file URL must reference an absolute path")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", http.StatusNotFound, nil
+		}
+		return "", 0, fmt.Errorf("stat local metadata %s: %w", path, err)
+	}
+	if info.IsDir() {
+		path = filepath.Join(path, "index.html")
+		info, err = os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "", http.StatusNotFound, nil
+			}
+			return "", 0, fmt.Errorf("stat local metadata %s: %w", path, err)
+		}
+	}
+	if !info.Mode().IsRegular() {
+		return "", 0, fmt.Errorf("local metadata %s is not a regular file", path)
+	}
+	return path, http.StatusOK, nil
 }

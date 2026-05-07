@@ -112,6 +112,39 @@ func TestProviderDiscoversAMD64NetbootTargets(t *testing.T) {
 	}
 }
 
+func TestProviderDiscoversTargetsFromLocalMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	shaSums := []byte(strings.Repeat("a", 64) + " *ubuntu-24.04.4-live-server-amd64.iso\n")
+	writeFile(t, filepath.Join(root, "index.html"), []byte(`<a href="24.04/">Ubuntu 24.04</a>`))
+	writeFile(t, filepath.Join(root, "24.04", "SHA256SUMS"), shaSums)
+	writeFile(t, filepath.Join(root, "24.04", "netboot", "amd64", "linux"), []byte("kernel"))
+	writeFile(t, filepath.Join(root, "24.04", "netboot", "amd64", "initrd"), []byte("initrd"))
+	p := ubuntu.NewProvider(ubuntu.Config{
+		DiscoveryURL:  "https://releases.example/releases",
+		DiscoveryFile: root,
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets length = %d, want 1: %#v", len(targets), targets)
+	}
+	target := targets[0]
+	if target.Source.BaseURL != "https://releases.example/releases/24.04" {
+		t.Fatalf("source base URL = %q, want configured HTTP release source", target.Source.BaseURL)
+	}
+	if target.Source.ISOName != "ubuntu-24.04.4-live-server-amd64.iso" {
+		t.Fatalf("source ISO name = %q", target.Source.ISOName)
+	}
+	if err := provider.ValidateTarget("ubuntu", target); err != nil {
+		t.Fatalf("validate target: %v", err)
+	}
+}
+
 func TestProviderDiscoveryUsesTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -488,5 +521,16 @@ func ubuntuTarget(release string) provider.Target {
 			Architecture: "amd64",
 			Kind:         "installer",
 		},
+	}
+}
+
+func writeFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create parent for %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }

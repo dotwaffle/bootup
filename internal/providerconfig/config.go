@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ type Config struct {
 type DebianConfig struct {
 	MirrorURL        string
 	DiscoveryURL     string
+	DiscoveryFile    string
 	DiscoveryTimeout time.Duration
 	Keyring          []byte
 	Lifecycle        map[string]provider.LifecycleEntry
@@ -37,6 +39,7 @@ type DebianConfig struct {
 type UbuntuConfig struct {
 	ReleaseURL       string
 	DiscoveryURL     string
+	DiscoveryFile    string
 	DiscoveryTimeout time.Duration
 	Keyring          []byte
 	KernelSHA256     string
@@ -48,6 +51,7 @@ type UbuntuConfig struct {
 type FedoraConfig struct {
 	ReleaseURL       string
 	DiscoveryURL     string
+	DiscoveryFile    string
 	DiscoveryTimeout time.Duration
 	KernelSHA256     string
 	InitrdSHA256     string
@@ -60,6 +64,7 @@ type fileConfig struct {
 type debianFileConfig struct {
 	MirrorURL        string                             `json:"mirror_url"`
 	DiscoveryURL     string                             `json:"discovery_url"`
+	DiscoveryFile    string                             `json:"discovery_file"`
 	DiscoveryTimeout string                             `json:"discovery_timeout"`
 	KeyringPath      string                             `json:"keyring_path"`
 	Lifecycle        map[string]provider.LifecycleEntry `json:"lifecycle"`
@@ -68,6 +73,7 @@ type debianFileConfig struct {
 type ubuntuFileConfig struct {
 	ReleaseURL       string                             `json:"release_url"`
 	DiscoveryURL     string                             `json:"discovery_url"`
+	DiscoveryFile    string                             `json:"discovery_file"`
 	DiscoveryTimeout string                             `json:"discovery_timeout"`
 	KeyringPath      string                             `json:"keyring_path"`
 	KernelSHA256     string                             `json:"kernel_sha256"`
@@ -78,6 +84,7 @@ type ubuntuFileConfig struct {
 type fedoraFileConfig struct {
 	ReleaseURL       string `json:"release_url"`
 	DiscoveryURL     string `json:"discovery_url"`
+	DiscoveryFile    string `json:"discovery_file"`
 	DiscoveryTimeout string `json:"discovery_timeout"`
 	KernelSHA256     string `json:"kernel_sha256"`
 	InitrdSHA256     string `json:"initrd_sha256"`
@@ -137,6 +144,10 @@ func loadFedora(raw json.RawMessage) (FedoraConfig, error) {
 	if err := validateHTTPURL("discovery_url", file.DiscoveryURL); err != nil {
 		return FedoraConfig{}, err
 	}
+	discoveryFile, err := validateLocalPath("discovery_file", file.DiscoveryFile)
+	if err != nil {
+		return FedoraConfig{}, err
+	}
 	discoveryTimeout, err := parseDuration("discovery_timeout", file.DiscoveryTimeout)
 	if err != nil {
 		return FedoraConfig{}, err
@@ -147,6 +158,7 @@ func loadFedora(raw json.RawMessage) (FedoraConfig, error) {
 	return FedoraConfig{
 		ReleaseURL:       strings.TrimRight(file.ReleaseURL, "/"),
 		DiscoveryURL:     strings.TrimRight(file.DiscoveryURL, "/"),
+		DiscoveryFile:    discoveryFile,
 		DiscoveryTimeout: discoveryTimeout,
 		KernelSHA256:     strings.ToLower(file.KernelSHA256),
 		InitrdSHA256:     strings.ToLower(file.InitrdSHA256),
@@ -164,6 +176,10 @@ func loadDebian(raw json.RawMessage) (DebianConfig, error) {
 	if err := validateHTTPURL("discovery_url", file.DiscoveryURL); err != nil {
 		return DebianConfig{}, err
 	}
+	discoveryFile, err := validateLocalPath("discovery_file", file.DiscoveryFile)
+	if err != nil {
+		return DebianConfig{}, err
+	}
 	discoveryTimeout, err := parseDuration("discovery_timeout", file.DiscoveryTimeout)
 	if err != nil {
 		return DebianConfig{}, err
@@ -179,6 +195,7 @@ func loadDebian(raw json.RawMessage) (DebianConfig, error) {
 	return DebianConfig{
 		MirrorURL:        strings.TrimRight(file.MirrorURL, "/"),
 		DiscoveryURL:     strings.TrimRight(file.DiscoveryURL, "/"),
+		DiscoveryFile:    discoveryFile,
 		DiscoveryTimeout: discoveryTimeout,
 		Keyring:          keyring,
 		Lifecycle:        lifecycle,
@@ -194,6 +211,10 @@ func loadUbuntu(raw json.RawMessage) (UbuntuConfig, error) {
 		return UbuntuConfig{}, err
 	}
 	if err := validateHTTPURL("discovery_url", file.DiscoveryURL); err != nil {
+		return UbuntuConfig{}, err
+	}
+	discoveryFile, err := validateLocalPath("discovery_file", file.DiscoveryFile)
+	if err != nil {
 		return UbuntuConfig{}, err
 	}
 	discoveryTimeout, err := parseDuration("discovery_timeout", file.DiscoveryTimeout)
@@ -214,6 +235,7 @@ func loadUbuntu(raw json.RawMessage) (UbuntuConfig, error) {
 	return UbuntuConfig{
 		ReleaseURL:       strings.TrimRight(file.ReleaseURL, "/"),
 		DiscoveryURL:     strings.TrimRight(file.DiscoveryURL, "/"),
+		DiscoveryFile:    discoveryFile,
 		DiscoveryTimeout: discoveryTimeout,
 		Keyring:          keyring,
 		KernelSHA256:     strings.ToLower(file.KernelSHA256),
@@ -253,6 +275,19 @@ func validateHTTPURL(field string, value string) error {
 		return fmt.Errorf("%s must include host", field)
 	}
 	return nil
+}
+
+func validateLocalPath(field string, value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	if strings.TrimSpace(value) != value {
+		return "", fmt.Errorf("%s has surrounding whitespace", field)
+	}
+	if !filepath.IsAbs(value) {
+		return "", fmt.Errorf("%s must be an absolute path", field)
+	}
+	return value, nil
 }
 
 func parseDuration(field string, value string) (time.Duration, error) {

@@ -156,6 +156,7 @@ trust material without embedding distro keyrings in the default bootup binary:
     "debian": {
       "mirror_url": "https://deb.debian.org/debian",
       "discovery_url": "https://deb.debian.org/debian",
+      "discovery_file": "/etc/bootup/discovery/debian",
       "discovery_timeout": "5s",
       "keyring_path": "/etc/bootup/trust/debian-archive-keyring.gpg",
       "lifecycle": {
@@ -169,6 +170,7 @@ trust material without embedding distro keyrings in the default bootup binary:
     "ubuntu": {
       "release_url": "https://releases.ubuntu.com/26.04",
       "discovery_url": "https://releases.ubuntu.com/releases",
+      "discovery_file": "/etc/bootup/discovery/ubuntu",
       "discovery_timeout": "5s",
       "keyring_path": "/etc/bootup/trust/ubuntu-release-keyring.gpg",
       "kernel_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -184,6 +186,7 @@ trust material without embedding distro keyrings in the default bootup binary:
     "fedora": {
       "release_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os",
       "discovery_url": "https://download.fedoraproject.org/pub/fedora/linux/releases",
+      "discovery_file": "/etc/bootup/discovery/fedora",
       "discovery_timeout": "5s",
       "kernel_sha256": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
       "initrd_sha256": "9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba"
@@ -192,11 +195,16 @@ trust material without embedding distro keyrings in the default bootup binary:
 }
 ```
 
+`discovery_file` is optional. When set, discovery reads directory metadata from
+that local path, while discovered target source URLs still come from
+`mirror_url`, `release_url`, or `discovery_url` and must remain HTTP(S).
+
 Unknown provider IDs, unreadable keyring paths, malformed JSON, invalid release
-or discovery URLs, invalid discovery durations, invalid lifecycle entries, and
-invalid hash pins fail startup before provider target discovery. Use absolute
-paths for keyrings in initramfs and ISO environments. Lifecycle entries are
-operator-facing decoration only; they are not artifact trust material.
+or discovery URLs, invalid local discovery paths, invalid discovery durations,
+invalid lifecycle entries, and invalid hash pins fail startup before provider
+target discovery. Use absolute paths for keyrings and local discovery metadata
+in initramfs and ISO environments. Lifecycle entries are operator-facing
+decoration only; they are not artifact trust material.
 
 ## QEMU
 

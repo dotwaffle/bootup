@@ -19,12 +19,16 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 
 	dir := t.TempDir()
 	keyringPath, keyring := writeKeyring(t, dir)
+	debianDiscoveryFile := filepath.Join(dir, "debian-metadata")
+	ubuntuDiscoveryFile := filepath.Join(dir, "ubuntu-metadata")
+	fedoraDiscoveryFile := filepath.Join(dir, "fedora-metadata")
 	configPath := filepath.Join(dir, "providers.json")
 	writeFile(t, configPath, []byte(`{
 		"providers": {
 			"debian": {
 				"mirror_url": "https://mirror.example/debian",
 				"discovery_url": "https://discovery.example/debian",
+				"discovery_file": `+quote(debianDiscoveryFile)+`,
 				"discovery_timeout": "750ms",
 				"keyring_path": `+quote(keyringPath)+`,
 				"lifecycle": {
@@ -38,6 +42,7 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 			"ubuntu": {
 				"release_url": "https://releases.example/26.04",
 				"discovery_url": "https://releases.example/releases/",
+				"discovery_file": `+quote(ubuntuDiscoveryFile)+`,
 				"discovery_timeout": "2s",
 				"keyring_path": `+quote(keyringPath)+`,
 				"kernel_sha256": "`+strings.Repeat("a", 64)+`",
@@ -52,6 +57,7 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 			"fedora": {
 				"release_url": "https://download.example/fedora/releases/44/Server/x86_64/os",
 				"discovery_url": "https://download.example/fedora/releases/",
+				"discovery_file": `+quote(fedoraDiscoveryFile)+`,
 				"discovery_timeout": "3s",
 				"kernel_sha256": "`+strings.Repeat("c", 64)+`",
 				"initrd_sha256": "`+strings.Repeat("d", 64)+`"
@@ -70,6 +76,9 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	if config.Debian.DiscoveryURL != "https://discovery.example/debian" {
 		t.Fatalf("Debian discovery URL = %q", config.Debian.DiscoveryURL)
 	}
+	if config.Debian.DiscoveryFile != debianDiscoveryFile {
+		t.Fatalf("Debian discovery file = %q", config.Debian.DiscoveryFile)
+	}
 	if config.Debian.DiscoveryTimeout != 750*time.Millisecond {
 		t.Fatalf("Debian discovery timeout = %s, want 750ms", config.Debian.DiscoveryTimeout)
 	}
@@ -84,6 +93,9 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	}
 	if config.Ubuntu.DiscoveryURL != "https://releases.example/releases" {
 		t.Fatalf("Ubuntu discovery URL = %q", config.Ubuntu.DiscoveryURL)
+	}
+	if config.Ubuntu.DiscoveryFile != ubuntuDiscoveryFile {
+		t.Fatalf("Ubuntu discovery file = %q", config.Ubuntu.DiscoveryFile)
 	}
 	if config.Ubuntu.DiscoveryTimeout != 2*time.Second {
 		t.Fatalf("Ubuntu discovery timeout = %s, want 2s", config.Ubuntu.DiscoveryTimeout)
@@ -105,6 +117,9 @@ func TestLoadFileAppliesProviderEntries(t *testing.T) {
 	}
 	if config.Fedora.DiscoveryURL != "https://download.example/fedora/releases" {
 		t.Fatalf("Fedora discovery URL = %q", config.Fedora.DiscoveryURL)
+	}
+	if config.Fedora.DiscoveryFile != fedoraDiscoveryFile {
+		t.Fatalf("Fedora discovery file = %q", config.Fedora.DiscoveryFile)
 	}
 	if config.Fedora.DiscoveryTimeout != 3*time.Second {
 		t.Fatalf("Fedora discovery timeout = %s, want 3s", config.Fedora.DiscoveryTimeout)
@@ -157,6 +172,10 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 			json: `{"providers":{"fedora":{"discovery_url":"file:///srv/fedora"}}}`,
 		},
 		{
+			name: "invalid Fedora discovery file",
+			json: `{"providers":{"fedora":{"discovery_file":"relative/fedora"}}}`,
+		},
+		{
 			name: "invalid Fedora discovery timeout",
 			json: `{"providers":{"fedora":{"discovery_timeout":"zero"}}}`,
 		},
@@ -175,6 +194,10 @@ func TestLoadFileRejectsInvalidConfig(t *testing.T) {
 		{
 			name: "invalid discovery url",
 			json: `{"providers":{"debian":{"discovery_url":"file:///srv/debian"}}}`,
+		},
+		{
+			name: "invalid discovery file",
+			json: `{"providers":{"ubuntu":{"discovery_file":" relative/ubuntu "}}}`,
 		},
 		{
 			name: "invalid discovery timeout",

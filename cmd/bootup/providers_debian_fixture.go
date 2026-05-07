@@ -29,13 +29,22 @@ func registerProviders(registry *provider.Registry, config providerconfig.Config
 		return fmt.Errorf("register Debian fixture provider: %w", err)
 	}
 	if err := registry.Register(ubuntu.NewProvider(ubuntu.Config{
-		Targets: catalogDoc.Targets("ubuntu"),
+		ReleaseURL:       config.Ubuntu.ReleaseURL,
+		DiscoveryURL:     config.Ubuntu.DiscoveryURL,
+		DiscoveryFile:    config.Ubuntu.DiscoveryFile,
+		Keyring:          config.Ubuntu.Keyring,
+		KernelSHA256:     config.Ubuntu.KernelSHA256,
+		InitrdSHA256:     config.Ubuntu.InitrdSHA256,
+		Targets:          catalogDoc.Targets("ubuntu"),
+		DiscoveryTimeout: config.Ubuntu.DiscoveryTimeout,
+		Lifecycle:        config.Ubuntu.Lifecycle,
 	})); err != nil {
 		return fmt.Errorf("register Ubuntu provider: %w", err)
 	}
 	if err := registry.Register(fedora.NewProvider(fedora.Config{
 		ReleaseURL:       config.Fedora.ReleaseURL,
 		DiscoveryURL:     config.Fedora.DiscoveryURL,
+		DiscoveryFile:    config.Fedora.DiscoveryFile,
 		KernelSHA256:     config.Fedora.KernelSHA256,
 		InitrdSHA256:     config.Fedora.InitrdSHA256,
 		Targets:          catalogDoc.Targets("fedora"),

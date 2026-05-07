@@ -271,6 +271,64 @@ func TestProviderDiscoversServerNetbootTargets(t *testing.T) {
 	}
 }
 
+func TestProviderDiscoversTargetsFromLocalMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "index.html"), []byte(`<a href="44/">44/</a>`))
+	writeFile(t, filepath.Join(root, "44", "Server", "x86_64", "os", "images", "pxeboot", "vmlinuz"), []byte("kernel"))
+	writeFile(t, filepath.Join(root, "44", "Server", "x86_64", "os", "images", "pxeboot", "initrd.img"), []byte("initrd"))
+	p := fedora.NewProvider(fedora.Config{
+		DiscoveryURL:  "https://mirror.example/fedora/releases",
+		DiscoveryFile: root,
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets length = %d, want 1: %#v", len(targets), targets)
+	}
+	if targets[0].Source.BaseURL != "https://mirror.example/fedora/releases/44/Server/x86_64/os" {
+		t.Fatalf("source base URL = %q, want configured HTTP install tree", targets[0].Source.BaseURL)
+	}
+	if err := provider.ValidateTarget("fedora", targets[0]); err != nil {
+		t.Fatalf("validate target: %v", err)
+	}
+}
+
+func TestProviderDiscoverySkipsFailedCandidateProbe(t *testing.T) {
+	t.Parallel()
+
+	p := fedora.NewProvider(fedora.Config{
+		DiscoveryURL: "https://mirror.example/fedora/releases",
+		Client: &http.Client{Transport: statusResponseMap{
+			"https://mirror.example/fedora/releases/": {
+				statusCode: http.StatusOK,
+				body:       []byte(`<a href="44/">44/</a><a href="45/">45/</a>`),
+			},
+			"https://mirror.example/fedora/releases/44/Server/x86_64/os/images/pxeboot/vmlinuz": {
+				statusCode: http.StatusInternalServerError,
+			},
+			"https://mirror.example/fedora/releases/45/Server/x86_64/os/images/pxeboot/vmlinuz": {
+				statusCode: http.StatusOK,
+			},
+			"https://mirror.example/fedora/releases/45/Server/x86_64/os/images/pxeboot/initrd.img": {
+				statusCode: http.StatusOK,
+			},
+		}},
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].Catalog.Release != "45" {
+		t.Fatalf("targets = %#v, want only Fedora 45", targets)
+	}
+}
+
 func TestFetchAndStageArtifactsAllowsHTTPSOnlyNetboot(t *testing.T) {
 	t.Parallel()
 
@@ -386,6 +444,27 @@ func (m responseMap) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+type statusResponse struct {
+	statusCode int
+	body       []byte
+}
+
+type statusResponseMap map[string]statusResponse
+
+func (m statusResponseMap) RoundTrip(request *http.Request) (*http.Response, error) {
+	item, ok := m[request.URL.String()]
+	if !ok {
+		item = statusResponse{statusCode: http.StatusNotFound, body: []byte("not found")}
+	}
+	return &http.Response{
+		StatusCode: item.statusCode,
+		Status:     http.StatusText(item.statusCode),
+		Body:       io.NopCloser(bytes.NewReader(item.body)),
+		Header:     make(http.Header),
+		Request:    request,
+	}, nil
+}
+
 func fedoraTarget(release string) provider.Target {
 	return provider.Target{
 		ID:         "fedora-" + release + "-amd64-server-netboot",
@@ -409,4 +488,15 @@ images/pxeboot/vmlinuz = sha256:` + kernelSHA256 + `
 initrd = images/pxeboot/initrd.img
 kernel = images/pxeboot/vmlinuz
 `
+}
+
+func writeFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create parent for %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
 }

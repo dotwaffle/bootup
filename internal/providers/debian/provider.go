@@ -36,6 +36,7 @@ var hrefPattern = regexp.MustCompile(`(?i)href\s*=\s*["']?([^"'\s>]+)`)
 type Config struct {
 	MirrorURL        string
 	DiscoveryURL     string
+	DiscoveryFile    string
 	Client           *http.Client
 	Keyring          []byte
 	Targets          []provider.Target
@@ -47,6 +48,7 @@ type Config struct {
 type Provider struct {
 	mirrorURL        string
 	discoveryURL     string
+	discoveryFile    string
 	client           *http.Client
 	keyring          []byte
 	targets          []provider.Target
@@ -83,6 +85,7 @@ func NewProvider(config Config) *Provider {
 	return &Provider{
 		mirrorURL:        mirrorURL,
 		discoveryURL:     discoveryURL,
+		discoveryFile:    strings.TrimSpace(config.DiscoveryFile),
 		client:           config.Client,
 		keyring:          bytes.Clone(config.Keyring),
 		targets:          targets,
@@ -124,16 +127,20 @@ func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, erro
 	if client == nil {
 		client = http.DefaultClient
 	}
-	releases, err := discoverReleases(ctx, client, p.discoveryURL)
+	metadataURL := p.discoveryMetadataURL()
+	releases, err := discoverReleases(ctx, client, metadataURL)
 	if err != nil {
 		return nil, err
 	}
 
 	targets := make([]provider.Target, 0, len(releases))
 	for _, release := range releases {
-		ok, err := hasAMD64Netboot(ctx, client, p.discoveryURL, release)
+		ok, err := hasAMD64Netboot(ctx, client, metadataURL, release)
 		if err != nil {
-			return nil, err
+			if isContextError(err) {
+				return nil, err
+			}
+			continue
 		}
 		if !ok {
 			continue
@@ -141,6 +148,13 @@ func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, erro
 		targets = append(targets, p.discoveredTarget(release))
 	}
 	return targets, nil
+}
+
+func (p *Provider) discoveryMetadataURL() string {
+	if p.discoveryFile != "" {
+		return providerhttp.LocalFileURL(p.discoveryFile)
+	}
+	return p.discoveryURL
 }
 
 func defaultTargets() []provider.Target {
@@ -332,6 +346,10 @@ func (p *Provider) lifecycleEntry(release string) provider.LifecycleEntry {
 		Status: provider.LifecycleUnknown,
 		Source: "debian",
 	}
+}
+
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.

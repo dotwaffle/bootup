@@ -5,6 +5,9 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,6 +30,63 @@ func TestFetchStatusReturnsBodyAndStatus(t *testing.T) {
 	}
 	if string(body) != "metadata" {
 		t.Fatalf("body = %q, want metadata", body)
+	}
+}
+
+func TestFetchStatusReadsLocalFileMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "index.html"), []byte("directory index"))
+	writeFile(t, filepath.Join(root, "SHA256SUMS"), []byte("checksums"))
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{
+			name: "directory index",
+			url:  fileURL(root),
+			want: "directory index",
+		},
+		{
+			name: "regular file",
+			url:  fileURL(filepath.Join(root, "SHA256SUMS")),
+			want: "checksums",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body, status, err := providerhttp.FetchStatus(context.Background(), nil, tt.url)
+			if err != nil {
+				t.Fatalf("fetch status: %v", err)
+			}
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, want 200", status)
+			}
+			if string(body) != tt.want {
+				t.Fatalf("body = %q, want %q", body, tt.want)
+			}
+		})
+	}
+}
+
+func TestFetchStatusTreatsMissingLocalFileAsNotFound(t *testing.T) {
+	t.Parallel()
+
+	body, status, err := providerhttp.FetchStatus(context.Background(), nil, fileURL(filepath.Join(t.TempDir(), "missing")))
+	if err != nil {
+		t.Fatalf("fetch status: %v", err)
+	}
+	if status != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", status)
+	}
+	if len(body) != 0 {
+		t.Fatalf("body length = %d, want empty", len(body))
 	}
 }
 
@@ -56,6 +116,29 @@ func TestProbeTreats404AsAbsentAndFallsBackToGET(t *testing.T) {
 	}
 }
 
+func TestProbeTreatsMissingLocalFileAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "present"), []byte("metadata"))
+
+	ok, err := providerhttp.Probe(context.Background(), nil, fileURL(filepath.Join(root, "missing")))
+	if err != nil {
+		t.Fatalf("probe missing: %v", err)
+	}
+	if ok {
+		t.Fatal("probe missing returned true, want false")
+	}
+
+	ok, err = providerhttp.Probe(context.Background(), nil, fileURL(filepath.Join(root, "present")))
+	if err != nil {
+		t.Fatalf("probe present: %v", err)
+	}
+	if !ok {
+		t.Fatal("probe present returned false, want true")
+	}
+}
+
 func TestProbeRejectsUnexpectedStatus(t *testing.T) {
 	t.Parallel()
 
@@ -80,6 +163,18 @@ func TestURLPathHelpers(t *testing.T) {
 	}
 	if got := providerhttp.PathBase("/pub/fedora/44/"); got != "44" {
 		t.Fatalf("path base = %q, want 44", got)
+	}
+}
+
+func fileURL(path string) string {
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
+func writeFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }
 

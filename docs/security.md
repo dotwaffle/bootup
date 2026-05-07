@@ -40,10 +40,11 @@ runtime or application-level configuration. The default binary accepts a
 provider runtime configuration file with `--provider-config`, but it does not
 commit, generate, package, or embed a distribution keyring by default.
 
-Provider runtime configuration can also set discovery source URLs, discovery
-timeouts, and lifecycle decoration maps. Those fields only control where
-compiled-in discovery code looks and what informational lifecycle text is shown
-to operators; they do not supply or replace artifact authenticity checks.
+Provider runtime configuration can also set discovery source URLs, local
+discovery metadata paths, discovery timeouts, and lifecycle decoration maps.
+Those fields only control where compiled-in discovery code looks and what
+informational lifecycle text is shown to operators; they do not supply or
+replace artifact authenticity checks.
 
 Dynamic provider discovery returns candidate targets and optional lifecycle
 decoration as provider data. Lifecycle fields such as `supported`, `obsolete`,

@@ -106,6 +106,65 @@ func TestProviderDiscoversAMD64NetbootTargets(t *testing.T) {
 	}
 }
 
+func TestProviderDiscoversTargetsFromLocalMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "dists", "index.html"), []byte(`<a href="forky/">forky/</a>`))
+	writeFile(t, filepath.Join(root, "dists", "forky", "main", "installer-amd64", "current", "images", "SHA256SUMS"), []byte(
+		strings.Repeat("a", 64)+"  ./netboot/debian-installer/amd64/linux\n"+
+			strings.Repeat("b", 64)+"  ./netboot/debian-installer/amd64/initrd.gz\n",
+	))
+	p := debian.NewProvider(debian.Config{
+		DiscoveryURL:  "https://mirror.example/debian",
+		DiscoveryFile: root,
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("targets length = %d, want 1: %#v", len(targets), targets)
+	}
+	if targets[0].Source.BaseURL != "https://mirror.example/debian" {
+		t.Fatalf("source base URL = %q, want configured HTTP source", targets[0].Source.BaseURL)
+	}
+	if err := provider.ValidateTarget("debian", targets[0]); err != nil {
+		t.Fatalf("validate target: %v", err)
+	}
+}
+
+func TestProviderDiscoverySkipsFailedCandidateMetadata(t *testing.T) {
+	t.Parallel()
+
+	p := debian.NewProvider(debian.Config{
+		DiscoveryURL: "https://discovery.example/debian",
+		Client: &http.Client{Transport: statusResponseMap{
+			"https://discovery.example/debian/dists/": {
+				statusCode: http.StatusOK,
+				body:       []byte(`<a href="forky/">forky/</a><a href="duke/">duke/</a>`),
+			},
+			"https://discovery.example/debian/dists/forky/main/installer-amd64/current/images/SHA256SUMS": {
+				statusCode: http.StatusInternalServerError,
+			},
+			"https://discovery.example/debian/dists/duke/main/installer-amd64/current/images/SHA256SUMS": {
+				statusCode: http.StatusOK,
+				body: []byte(strings.Repeat("a", 64) +
+					"  ./netboot/debian-installer/amd64/linux\n" + strings.Repeat("b", 64) + "  ./netboot/debian-installer/amd64/initrd.gz\n"),
+			},
+		}},
+	})
+
+	targets, err := p.DiscoverTargets(context.Background())
+	if err != nil {
+		t.Fatalf("discover targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].Catalog.Release != "duke" {
+		t.Fatalf("targets = %#v, want only duke", targets)
+	}
+}
+
 func TestProviderDiscoveryUsesTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -500,6 +559,27 @@ func (m responseMap) RoundTrip(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
+type statusResponse struct {
+	statusCode int
+	body       []byte
+}
+
+type statusResponseMap map[string]statusResponse
+
+func (m statusResponseMap) RoundTrip(request *http.Request) (*http.Response, error) {
+	item, ok := m[request.URL.String()]
+	if !ok {
+		item = statusResponse{statusCode: http.StatusNotFound, body: []byte("not found")}
+	}
+	return &http.Response{
+		StatusCode: item.statusCode,
+		Status:     http.StatusText(item.statusCode),
+		Body:       io.NopCloser(bytes.NewReader(item.body)),
+		Header:     make(http.Header),
+		Request:    request,
+	}, nil
+}
+
 type blockingTransport struct{}
 
 func (blockingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -518,5 +598,16 @@ func debianTarget(release string) provider.Target {
 			Architecture: "amd64",
 			Kind:         "installer",
 		},
+	}
+}
+
+func writeFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create parent for %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }

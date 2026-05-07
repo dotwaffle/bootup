@@ -40,6 +40,7 @@ var (
 type Config struct {
 	ReleaseURL       string
 	DiscoveryURL     string
+	DiscoveryFile    string
 	Client           *http.Client
 	KernelSHA256     string
 	InitrdSHA256     string
@@ -51,6 +52,7 @@ type Config struct {
 type Provider struct {
 	releaseURL           string
 	discoveryURL         string
+	discoveryFile        string
 	client               *http.Client
 	kernelSHA256         string
 	initrdSHA256         string
@@ -80,6 +82,7 @@ func NewProvider(config Config) *Provider {
 	return &Provider{
 		releaseURL:           releaseURL,
 		discoveryURL:         discoveryURL,
+		discoveryFile:        strings.TrimSpace(config.DiscoveryFile),
 		client:               config.Client,
 		kernelSHA256:         config.KernelSHA256,
 		initrdSHA256:         config.InitrdSHA256,
@@ -122,7 +125,8 @@ func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, erro
 	if client == nil {
 		client = http.DefaultClient
 	}
-	indexURL := providerhttp.EnsureTrailingSlash(p.discoveryURL)
+	indexURL := providerhttp.EnsureTrailingSlash(p.discoveryMetadataURL())
+	sourceIndexURL := providerhttp.EnsureTrailingSlash(p.discoveryURL)
 	body, status, err := providerhttp.FetchStatus(ctx, client, indexURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch Fedora releases index: %w", err)
@@ -134,24 +138,38 @@ func (p *Provider) DiscoverTargets(ctx context.Context) ([]provider.Target, erro
 	releases := parseReleasesIndex(body)
 	targets := make([]provider.Target, 0, len(releases))
 	for _, release := range releases {
-		baseURL := indexURL + release + "/Server/x86_64/os"
-		kernelOK, err := providerhttp.Probe(ctx, client, baseURL+"/images/pxeboot/vmlinuz")
+		metadataBaseURL := indexURL + release + "/Server/x86_64/os"
+		sourceBaseURL := sourceIndexURL + release + "/Server/x86_64/os"
+		kernelOK, err := providerhttp.Probe(ctx, client, metadataBaseURL+"/images/pxeboot/vmlinuz")
 		if err != nil {
-			return nil, fmt.Errorf("probe Fedora %s kernel: %w", release, err)
+			if isContextError(err) {
+				return nil, fmt.Errorf("probe Fedora %s kernel: %w", release, err)
+			}
+			continue
 		}
 		if !kernelOK {
 			continue
 		}
-		initrdOK, err := providerhttp.Probe(ctx, client, baseURL+"/images/pxeboot/initrd.img")
+		initrdOK, err := providerhttp.Probe(ctx, client, metadataBaseURL+"/images/pxeboot/initrd.img")
 		if err != nil {
-			return nil, fmt.Errorf("probe Fedora %s initrd: %w", release, err)
+			if isContextError(err) {
+				return nil, fmt.Errorf("probe Fedora %s initrd: %w", release, err)
+			}
+			continue
 		}
 		if !initrdOK {
 			continue
 		}
-		targets = append(targets, discoveredTarget(release, baseURL))
+		targets = append(targets, discoveredTarget(release, sourceBaseURL))
 	}
 	return targets, nil
+}
+
+func (p *Provider) discoveryMetadataURL() string {
+	if p.discoveryFile != "" {
+		return providerhttp.LocalFileURL(p.discoveryFile)
+	}
+	return p.discoveryURL
 }
 
 func defaultTargets() []provider.Target {
@@ -214,6 +232,10 @@ func discoveredTarget(release string, baseURL string) provider.Target {
 			BaseURL: baseURL,
 		},
 	}
+}
+
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // Plan returns a boot plan for target.

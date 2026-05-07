@@ -24,6 +24,7 @@ func registerProviders(registry *provider.Registry, config providerconfig.Config
 	if err := registry.Register(debian.NewProvider(debian.Config{
 		MirrorURL:        config.Debian.MirrorURL,
 		DiscoveryURL:     config.Debian.DiscoveryURL,
+		DiscoveryFile:    config.Debian.DiscoveryFile,
 		Keyring:          config.Debian.Keyring,
 		Targets:          catalogDoc.Targets("debian"),
 		DiscoveryTimeout: config.Debian.DiscoveryTimeout,
@@ -34,6 +35,7 @@ func registerProviders(registry *provider.Registry, config providerconfig.Config
 	if err := registry.Register(ubuntu.NewProvider(ubuntu.Config{
 		ReleaseURL:       config.Ubuntu.ReleaseURL,
 		DiscoveryURL:     config.Ubuntu.DiscoveryURL,
+		DiscoveryFile:    config.Ubuntu.DiscoveryFile,
 		Keyring:          config.Ubuntu.Keyring,
 		KernelSHA256:     config.Ubuntu.KernelSHA256,
 		InitrdSHA256:     config.Ubuntu.InitrdSHA256,
@@ -46,6 +48,7 @@ func registerProviders(registry *provider.Registry, config providerconfig.Config
 	if err := registry.Register(fedora.NewProvider(fedora.Config{
 		ReleaseURL:       config.Fedora.ReleaseURL,
 		DiscoveryURL:     config.Fedora.DiscoveryURL,
+		DiscoveryFile:    config.Fedora.DiscoveryFile,
 		KernelSHA256:     config.Fedora.KernelSHA256,
 		InitrdSHA256:     config.Fedora.InitrdSHA256,
 		Targets:          catalogDoc.Targets("fedora"),

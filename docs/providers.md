@@ -293,24 +293,26 @@ bootup --mode=discover-targets --discovery-family=fedora
 ```
 
 The Debian provider discovers amd64 netboot installers from the configured
-mirror or `discovery_url`. It fetches the `dists/` index, filters release
-aliases such as `stable` and `testing`, probes each release for amd64 netboot
-checksum metadata, and returns one target per available release.
+mirror, `discovery_url`, or optional local `discovery_file` metadata path. It
+fetches the `dists/` index, filters release aliases such as `stable` and
+`testing`, probes each release for amd64 netboot checksum metadata, and returns
+one target per available release.
 
 The Ubuntu provider discovers amd64 netboot installers from the configured
-release index. It reads release links, checks each release `SHA256SUMS` file
-for a live-server amd64 ISO, probes the `netboot/amd64/linux` and
-`netboot/amd64/initrd` paths, and returns concrete targets that the normal
-Ubuntu planner can stage.
+release index or optional local `discovery_file` metadata path. It reads
+release links, checks each release `SHA256SUMS` file for a live-server amd64
+ISO, probes the `netboot/amd64/linux` and `netboot/amd64/initrd` paths, and
+returns concrete targets that the normal Ubuntu planner can stage.
 
 The Fedora provider discovers amd64 Server netboot installers from the
-configured releases index. It filters numeric release directories, probes each
-candidate for `Server/x86_64/os/images/pxeboot/vmlinuz` and
-`Server/x86_64/os/images/pxeboot/initrd.img`, and returns concrete targets
-that the normal Fedora planner can stage. Static Fedora targets continue to
-resolve `images/pxeboot/vmlinuz`, `images/pxeboot/initrd.img`, and an
-`inst.repo=` command line from the target source URL or an operator-supplied
-`release_url` override.
+configured releases index or optional local `discovery_file` metadata path. It
+filters numeric release directories, probes each candidate for
+`Server/x86_64/os/images/pxeboot/vmlinuz` and
+`Server/x86_64/os/images/pxeboot/initrd.img`, and returns concrete targets that
+the normal Fedora planner can stage. Static Fedora targets continue to resolve
+`images/pxeboot/vmlinuz`, `images/pxeboot/initrd.img`, and an `inst.repo=`
+command line from the target source URL or an operator-supplied `release_url`
+override.
 
 Fedora planning uses hash precedence of provider runtime pins, then target
 source pins, then install-tree `.treeinfo`. The embedded Fedora static catalog
@@ -330,9 +332,12 @@ It should be reintroduced only with a dedicated bootloader-style handoff, a
 known kexec-compatible image, or a proven real-mode `kexec_load` loader.
 
 Discovery is timeout-bound and explicit. Providers accept optional
-`discovery_url`, `discovery_timeout`, and lifecycle decoration in
-`--provider-config`. If discovery fails, the already-loaded static catalog
-targets remain available.
+`discovery_url`, `discovery_file`, `discovery_timeout`, and lifecycle
+decoration in `--provider-config`. Local discovery metadata is used only to
+find candidates; discovered target source URLs still use the configured HTTP(S)
+provider source. If the primary discovery index fails, the already-loaded
+static catalog targets remain available. If one candidate's optional metadata
+or probe fails, providers skip that candidate and continue checking the rest.
 
 Discovery results can carry lifecycle decoration such as `supported`,
 `obsolete`, `eol`, or `unknown`. That metadata is displayed to operators as

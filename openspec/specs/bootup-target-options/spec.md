@@ -65,7 +65,8 @@ parameters without hard-coding distro-specific UI.
 
 ### Requirement: Target option secret boundary
 Bootup SHALL treat catalog target options as non-secret boot argument data
-unless a future secret-safe delivery capability is explicitly implemented.
+unless a separate secret-safe delivery capability explicitly handles the secret
+input outside option command-line expansion.
 
 #### Scenario: Secret target option is rejected
 - **WHEN** a static catalog target declares an option with a secret marker
@@ -77,8 +78,9 @@ unless a future secret-safe delivery capability is explicitly implemented.
 - **THEN** bootup SHALL continue to render the resulting boot command-line or
   boot action argument data in diagnostics
 
-#### Scenario: Secret delivery requires a separate capability
+#### Scenario: Secret delivery uses a separate capability
 - **WHEN** a target needs a password, password hash, SSH key, token, or other
   secret input
-- **THEN** that input MUST NOT be represented as a current target option
-  command-line or loader-argument fragment
+- **THEN** that input MUST use a secret delivery declaration and MUST NOT be
+  represented as a current target option command-line or loader-argument
+  fragment

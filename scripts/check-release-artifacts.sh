@@ -281,7 +281,7 @@ require_name_in_checksums "${sums_path}" "${manifest_name}"
 iso_path="${release_dir}/${iso_name}"
 iso_listing="$(xorriso -indev "${iso_path}" -find / -type f -exec echo 2>/dev/null)"
 require_iso_path "${iso_listing}" "/boot/bootup/vmlinuz"
-require_iso_path "${iso_listing}" "/boot/bootup/initramfs.cpio.zst"
+require_iso_path "${iso_listing}" "/boot/bootup/initramfs.cpio.gz"
 require_iso_path "${iso_listing}" "/boot/grub/grub.cfg"
 require_iso_path "${iso_listing}" "/efi/boot/bootx64.efi"
 

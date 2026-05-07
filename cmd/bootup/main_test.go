@@ -905,6 +905,71 @@ func TestRunDiagnosticsDisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestRunMirrorsOutputToConsolePath(t *testing.T) {
+	t.Parallel()
+
+	consolePath := filepath.Join(t.TempDir(), "tty0")
+	if err := os.WriteFile(consolePath, nil, 0o600); err != nil {
+		t.Fatalf("create console mirror: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "list-targets",
+		"--console-mirror", consolePath,
+	}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	mirror := readTextFile(t, consolePath)
+	for _, want := range []string{
+		"bootup: console mirror enabled path=" + consolePath,
+		"bootup targets",
+		"bootup started",
+	} {
+		if !strings.Contains(mirror, want) {
+			t.Fatalf("mirror output = %q, want %q", mirror, want)
+		}
+	}
+	if !strings.Contains(stdout.String(), "bootup targets") {
+		t.Fatalf("stdout = %q, want normal target output", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "console mirror enabled") {
+		t.Fatalf("stderr = %q, want console mirror notice", stderr.String())
+	}
+}
+
+func TestRunSkipsConsoleMirrorWhenPathAlreadyReceivesOutput(t *testing.T) {
+	t.Parallel()
+
+	consolePath := filepath.Join(t.TempDir(), "console")
+	output, err := os.OpenFile(consolePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatalf("open console output: %v", err)
+	}
+	t.Cleanup(func() { _ = output.Close() })
+
+	err = runWithIO(context.Background(), []string{
+		"--mode", "list-targets",
+		"--console-mirror", consolePath,
+	}, strings.NewReader(""), output, output)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	got := readTextFile(t, consolePath)
+	for _, want := range []string{"bootup started", "bootup targets"} {
+		if count := strings.Count(got, want); count != 1 {
+			t.Fatalf("output contains %q %d times, want 1: %q", want, count, got)
+		}
+	}
+	if strings.Contains(got, "console mirror enabled") {
+		t.Fatalf("output = %q, did not want mirror enabled notice", got)
+	}
+}
+
 func TestRunReportsDiagnosticsWriteFailureAsSecondary(t *testing.T) {
 	t.Parallel()
 

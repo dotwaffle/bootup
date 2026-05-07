@@ -195,7 +195,9 @@ can reopen `/dev/console` for the rich UI if the init command starts with
 non-terminal stdio. It falls back to the plain `target> ` prompt for redirected
 input or automation. Discovery-capable providers appear as family entries; when
 selected, bootup discovers concrete targets and prompts again. Use `--ui=plain`
-to force the fallback or `--ui=rich` to require the rich interface.
+to force the fallback or `--ui=rich` to require the rich interface. Use
+`--console-mirror=/dev/tty0` only for debug boots that need an extra copy of
+bootup userspace output on the video console.
 
 Build a Debian-capable initramfs by including an operator-supplied OpenPGP
 public keyring and generated provider config in the initramfs:

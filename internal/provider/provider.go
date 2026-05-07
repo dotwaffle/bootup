@@ -250,6 +250,53 @@ type StageConfig struct {
 	StagingDir string
 	Secrets    SecretStore
 	SecretRefs []SecretRef
+	Progress   StageProgressFunc
+}
+
+// StageProgressFunc receives provider staging progress events.
+type StageProgressFunc func(StageProgress) error
+
+// StageProgress describes one provider staging operation.
+type StageProgress struct {
+	Operation StageOperation
+	State     StageState
+	Artifact  string
+}
+
+// StageOperation identifies the kind of staging work in progress.
+type StageOperation string
+
+const (
+	// StageOperationFetch downloads metadata or an artifact.
+	StageOperationFetch StageOperation = "fetch"
+
+	// StageOperationVerify verifies downloaded metadata or an artifact.
+	StageOperationVerify StageOperation = "verify"
+
+	// StageOperationWrite writes a verified artifact to staging storage.
+	StageOperationWrite StageOperation = "write"
+
+	// StageOperationExtract extracts staged payload content.
+	StageOperationExtract StageOperation = "extract"
+)
+
+// StageState identifies whether a staging operation started or completed.
+type StageState string
+
+const (
+	// StageStateStarted marks the beginning of a staging operation.
+	StageStateStarted StageState = "started"
+
+	// StageStateCompleted marks successful completion of a staging operation.
+	StageStateCompleted StageState = "completed"
+)
+
+// ReportStageProgress sends event to progress when a callback is configured.
+func ReportStageProgress(progress StageProgressFunc, event StageProgress) error {
+	if progress == nil {
+		return nil
+	}
+	return progress(event)
 }
 
 // Provider exposes boot targets and plans for a distribution or tool family.

@@ -16,8 +16,8 @@ version `${kernel_version}`, the public files are:
 | `bootup-${version}-linux-amd64` | Standalone bootup Linux amd64 binary |
 | `bootup-${version}-linux-${kernel_version}-amd64-bzImage` | Stage-1 kernel for iPXE, GRUB, QEMU, and ISO payloads |
 | `bootup-${version}-linux-${kernel_version}-amd64.config` | Kernel config used for the stage-1 kernel |
-| `bootup-${version}-initramfs-amd64.cpio.zst` | Default zstd-compressed u-root initramfs |
-| `bootup-${version}-hybrid-amd64.iso` | Hybrid BIOS/UEFI ISO with the same kernel and initramfs |
+| `bootup-${version}-initramfs-amd64.cpio.zst` | Default zstd-compressed u-root initramfs for direct boot paths |
+| `bootup-${version}-hybrid-amd64.iso` | Hybrid BIOS/UEFI ISO with the same kernel and a gzip-compressed initramfs payload |
 | `bootup-${version}-amd64-manifest.json` | Machine-readable artifact manifest |
 | `bootup-${version}-amd64-SHA256SUMS` | SHA-256 checksums for the artifacts and manifest |
 
@@ -78,7 +78,9 @@ menuentry "bootup ${version}" {
 
 Use `bootup-${version}-hybrid-amd64.iso` for virtual media, optical media, or a
 USB stick. The ISO boots through GRUB in BIOS and x86_64 UEFI mode and contains
-the same kernel and initramfs payloads used by the iPXE and GRUB examples.
+the same kernel as the iPXE and GRUB examples. Its initramfs is gzip-compressed
+from the same raw u-root archive to avoid early-kernel zstd unpacking failures
+seen in some BIOS/libvirt CPU configurations.
 
 On Ubuntu systems with `grub-imageboot`, place the ISO under `/boot/images/`
 and run `update-grub` to let the package add a menu entry.
@@ -111,7 +113,7 @@ when present unless `BOOTUP_RELEASE_REBUILD_KERNEL=1` is set.
 
 ## Dependencies
 
-Release builds need Go, Docker, `jq`, `zstd`, `sha256sum`, `grub-mkrescue`,
-GRUB BIOS and x86_64 EFI modules, `xorriso`, and network access for Go modules
-and kernel sources when a kernel must be built. The BIOS smoke gate also needs
-`qemu-system-x86_64` and `timeout`.
+Release builds need Go, Docker, `jq`, `zstd`, `gzip`, `sha256sum`,
+`grub-mkrescue`, GRUB BIOS and x86_64 EFI modules, `xorriso`, and network
+access for Go modules and kernel sources when a kernel must be built. The BIOS
+smoke gate also needs `qemu-system-x86_64` and `timeout`.

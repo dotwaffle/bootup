@@ -60,6 +60,7 @@ type FetchConfig struct {
 	Client     *http.Client
 	StagingDir string
 	Extractor  ISOExtractor
+	Progress   provider.StageProgressFunc
 }
 
 // ISOExtractor extracts ISO filesystem contents to dest.
@@ -161,6 +162,7 @@ func (p *Provider) Stage(ctx context.Context, config provider.StageConfig) (prov
 		Client:     p.client,
 		StagingDir: config.StagingDir,
 		Extractor:  extractor,
+		Progress:   config.Progress,
 	})
 }
 
@@ -199,10 +201,10 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	}
 
 	var err error
-	if plan.FreeBSDKboot.Payload.Path, err = fetchStageVerify(ctx, client, config.StagingDir, kboot.Payload); err != nil {
+	if plan.FreeBSDKboot.Payload.Path, err = fetchStageVerify(ctx, client, config.StagingDir, kboot.Payload, config.Progress); err != nil {
 		return provider.BootPlan{}, err
 	}
-	if plan.FreeBSDKboot.LoaderArchive.Path, err = fetchStageVerify(ctx, client, config.StagingDir, kboot.LoaderArchive); err != nil {
+	if plan.FreeBSDKboot.LoaderArchive.Path, err = fetchStageVerify(ctx, client, config.StagingDir, kboot.LoaderArchive, config.Progress); err != nil {
 		return provider.BootPlan{}, err
 	}
 
@@ -210,8 +212,14 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	if err != nil {
 		return provider.BootPlan{}, fmt.Errorf("create mfsBSD payload root: %w", err)
 	}
+	if err := reportProgress(config.Progress, provider.StageOperationExtract, provider.StageStateStarted, "mfsBSD ISO"); err != nil {
+		return provider.BootPlan{}, err
+	}
 	if err := extractor.Extract(ctx, plan.FreeBSDKboot.Payload.Path, payloadRoot); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("extract mfsBSD ISO: %w", err)
+	}
+	if err := reportProgress(config.Progress, provider.StageOperationExtract, provider.StageStateCompleted, "mfsBSD ISO"); err != nil {
+		return provider.BootPlan{}, err
 	}
 	if err := normalizeMemoryRoot(payloadRoot); err != nil {
 		return provider.BootPlan{}, err
@@ -225,8 +233,14 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	if err != nil {
 		return provider.BootPlan{}, fmt.Errorf("read FreeBSD loader archive: %w", err)
 	}
+	if err := reportProgress(config.Progress, provider.StageOperationExtract, provider.StageStateStarted, "FreeBSD loader archive"); err != nil {
+		return provider.BootPlan{}, err
+	}
 	loader, loaderHelp, err := extractLoaderArchive(archiveData, loaderDir)
 	if err != nil {
+		return provider.BootPlan{}, err
+	}
+	if err := reportProgress(config.Progress, provider.StageOperationExtract, provider.StageStateCompleted, "FreeBSD loader archive"); err != nil {
 		return provider.BootPlan{}, err
 	}
 
@@ -381,10 +395,20 @@ func requireHTTPS(rawURLs ...string) error {
 	return nil
 }
 
-func fetchStageVerify(ctx context.Context, client *http.Client, dir string, artifact provider.Artifact) (string, error) {
+func fetchStageVerify(ctx context.Context, client *http.Client, dir string, artifact provider.Artifact, progress provider.StageProgressFunc) (string, error) {
+	artifactLabel := artifact.Name
+	if artifactLabel == "" {
+		artifactLabel = artifactNameFromURL(artifact.URL, "")
+	}
+	if err := reportProgress(progress, provider.StageOperationFetch, provider.StageStateStarted, artifactLabel); err != nil {
+		return "", err
+	}
 	data, err := providerhttp.Fetch(ctx, client, artifact.URL)
 	if err != nil {
 		return "", fmt.Errorf("fetch %s: %w", artifact.Name, err)
+	}
+	if err := reportProgress(progress, provider.StageOperationFetch, provider.StageStateCompleted, artifactLabel); err != nil {
+		return "", err
 	}
 	name := artifact.Name
 	if name == "" {
@@ -393,6 +417,9 @@ func fetchStageVerify(ctx context.Context, client *http.Client, dir string, arti
 	if name == "" || filepath.Base(name) != name {
 		return "", fmt.Errorf("artifact name %q must be a filename", name)
 	}
+	if err := reportProgress(progress, provider.StageOperationVerify, provider.StageStateStarted, name); err != nil {
+		return "", err
+	}
 	if err := verify.SHA256(verify.HashInput{
 		Artifact:       bytes.NewReader(data),
 		ExpectedSHA256: artifact.SHA256,
@@ -400,11 +427,28 @@ func fetchStageVerify(ctx context.Context, client *http.Client, dir string, arti
 	}); err != nil {
 		return "", err
 	}
+	if err := reportProgress(progress, provider.StageOperationVerify, provider.StageStateCompleted, name); err != nil {
+		return "", err
+	}
+	if err := reportProgress(progress, provider.StageOperationWrite, provider.StageStateStarted, name); err != nil {
+		return "", err
+	}
 	targetPath := filepath.Join(dir, name)
 	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
 		return "", fmt.Errorf("stage %s: %w", name, err)
 	}
+	if err := reportProgress(progress, provider.StageOperationWrite, provider.StageStateCompleted, name); err != nil {
+		return "", err
+	}
 	return targetPath, nil
+}
+
+func reportProgress(progress provider.StageProgressFunc, operation provider.StageOperation, state provider.StageState, artifact string) error {
+	return provider.ReportStageProgress(progress, provider.StageProgress{
+		Operation: operation,
+		State:     state,
+		Artifact:  artifact,
+	})
 }
 
 func normalizeMemoryRoot(root string) error {

@@ -138,10 +138,27 @@ func New(config Config) *App {
 // Run starts the configured bootup flow.
 func (a *App) Run(ctx context.Context) error {
 	a.config.Logger.Info("bootup started", slog.String("mode", string(a.config.Mode)))
-	for _, preparer := range a.config.Preparers {
+	for index, preparer := range a.config.Preparers {
+		name := preparerName(preparer)
+		a.config.Logger.Info("runtime preparation started",
+			slog.Int("step", index+1),
+			slog.Int("steps", len(a.config.Preparers)),
+			slog.String("preparer", name),
+		)
 		if err := preparer.Prepare(ctx); err != nil {
+			a.config.Logger.Error("runtime preparation failed",
+				slog.Int("step", index+1),
+				slog.Int("steps", len(a.config.Preparers)),
+				slog.String("preparer", name),
+				slog.Any("error", err),
+			)
 			return fmt.Errorf("prepare runtime: %w", err)
 		}
+		a.config.Logger.Info("runtime preparation completed",
+			slog.Int("step", index+1),
+			slog.Int("steps", len(a.config.Preparers)),
+			slog.String("preparer", name),
+		)
 	}
 
 	if err := a.runMode(ctx); err != nil {
@@ -152,6 +169,17 @@ func (a *App) Run(ctx context.Context) error {
 		return hold(ctx)
 	}
 	return nil
+}
+
+type namedPreparer interface {
+	Name() string
+}
+
+func preparerName(preparer Preparer) string {
+	if named, ok := preparer.(namedPreparer); ok && strings.TrimSpace(named.Name()) != "" {
+		return named.Name()
+	}
+	return fmt.Sprintf("%T", preparer)
 }
 
 func hold(ctx context.Context) error {
@@ -348,6 +376,10 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 	if err := renderer.RenderStatus(a.config.Stdout, "planning", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
+	a.config.Logger.Info("planning target",
+		slog.String("target_id", target.ID),
+		slog.String("target_name", target.Name),
+	)
 	plan, err := a.config.Registry.Plan(ctx, provider.PlanInput{
 		Target:     target,
 		Options:    a.config.TargetOptions,
@@ -361,16 +393,27 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 		return provider.BootPlan{}, err
 	}
 	plan = a.applyCmdlineAppend(plan)
+	a.config.Logger.Info("target planned",
+		slog.String("target_id", target.ID),
+		slog.String("action", string(plan.ResolvedAction())),
+		slog.String("kernel", plan.Kernel.Name),
+		slog.String("initrd", plan.Initrd.Name),
+	)
 	if err := renderer.RenderStatus(a.config.Stdout, "verifying", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
 	if err := renderer.RenderStatus(a.config.Stdout, "staging", target.Name); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
+	a.config.Logger.Info("staging target",
+		slog.String("target_id", target.ID),
+		slog.String("staging_dir", stagingDir),
+	)
 	staged, err := a.config.Registry.Stage(ctx, provider.StageConfig{
 		Plan:       plan,
 		StagingDir: stagingDir,
 		Secrets:    a.config.SecretStore,
+		Progress:   a.stageProgress(target, renderer),
 	})
 	if err != nil {
 		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
@@ -378,10 +421,49 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 		}
 		return provider.BootPlan{}, err
 	}
+	a.config.Logger.Info("target staged",
+		slog.String("target_id", target.ID),
+		slog.String("action", string(staged.ResolvedAction())),
+		slog.String("kernel_path", staged.Kernel.Path),
+		slog.String("initrd_path", staged.Initrd.Path),
+	)
 	if err := writeBootPlan(a.config.Stdout, staged); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("write staged boot plan: %w", err)
 	}
 	return staged, nil
+}
+
+func (a *App) stageProgress(target provider.Target, renderer statusRenderer) provider.StageProgressFunc {
+	return func(event provider.StageProgress) error {
+		a.config.Logger.Info("stage progress",
+			slog.String("target_id", target.ID),
+			slog.String("operation", string(event.Operation)),
+			slog.String("state", string(event.State)),
+			slog.String("artifact", event.Artifact),
+		)
+		if event.State != provider.StageStateStarted {
+			return nil
+		}
+		if err := renderer.RenderStatus(a.config.Stdout, stageProgressPhase(event.Operation), event.Artifact); err != nil {
+			return fmt.Errorf("render status: %w", err)
+		}
+		return nil
+	}
+}
+
+func stageProgressPhase(operation provider.StageOperation) string {
+	switch operation {
+	case provider.StageOperationFetch:
+		return "fetching"
+	case provider.StageOperationVerify:
+		return "verifying"
+	case provider.StageOperationWrite:
+		return "writing"
+	case provider.StageOperationExtract:
+		return "extracting"
+	default:
+		return string(operation)
+	}
 }
 
 func writeBootPlan(w io.Writer, plan provider.BootPlan) error {
@@ -458,6 +540,11 @@ func (a *App) executeStaged(ctx context.Context, staged provider.BootPlan, rende
 	if err := renderer.RenderStatus(a.config.Stdout, "loading", staged.Target.Name); err != nil {
 		return fmt.Errorf("render status: %w", err)
 	}
+	a.config.Logger.Info("executing handoff",
+		slog.String("target_id", staged.Target.ID),
+		slog.String("target_name", staged.Target.Name),
+		slog.String("action", string(staged.ResolvedAction())),
+	)
 	if err := executor.Execute(ctx, staged); err != nil {
 		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
 			return fmt.Errorf("render fatal error: %w", renderErr)
@@ -639,6 +726,9 @@ func (a *App) richMenu() ui.RichMenu {
 func (a *App) useRichMenu() (bool, error) {
 	switch a.config.UIMode {
 	case UIModeAuto:
+		if !autoRichMenuAllowed() {
+			return false, nil
+		}
 		if a.hasInteractiveConsole() {
 			return true, nil
 		}
@@ -658,6 +748,15 @@ func (a *App) useRichMenu() (bool, error) {
 		return false, nil
 	default:
 		return false, fmt.Errorf("unsupported ui mode %q", a.config.UIMode)
+	}
+}
+
+func autoRichMenuAllowed() bool {
+	switch strings.ToLower(os.Getenv("TERM")) {
+	case "dumb", "linux":
+		return false
+	default:
+		return true
 	}
 }
 

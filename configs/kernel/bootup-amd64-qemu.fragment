@@ -22,7 +22,7 @@ CONFIG_TTY=y
 # can see boot progress. Do not set CONFIG_CMDLINE_OVERRIDE; loaders should
 # still be able to append or replace policy for a deployment.
 CONFIG_CMDLINE_BOOL=y
-CONFIG_CMDLINE="console=tty0 console=ttyS0,115200n8 earlyprintk=ttyS0,115200 panic=30 ip=::::::dhcp"
+CONFIG_CMDLINE="console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 panic=30 ip=::::::dhcp"
 
 # Boot an initramfs and expose normal early userspace filesystems.
 CONFIG_BLK_DEV_INITRD=y

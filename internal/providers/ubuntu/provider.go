@@ -416,6 +416,7 @@ func (p *Provider) Stage(ctx context.Context, config provider.StageConfig) (prov
 		Client:     p.client,
 		Keyring:    keyring,
 		StagingDir: config.StagingDir,
+		Progress:   config.Progress,
 	})
 }
 
@@ -425,6 +426,7 @@ type FetchConfig struct {
 	Client     *http.Client
 	Keyring    io.Reader
 	StagingDir string
+	Progress   provider.StageProgressFunc
 }
 
 // FetchAndStageArtifacts downloads Ubuntu metadata and artifacts, verifies the
@@ -444,13 +446,16 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	}
 
 	if config.Keyring != nil {
-		shaSums, err := fetch(ctx, client, plan.Verification.ChecksumURL)
+		shaSums, err := fetchWithProgress(ctx, client, plan.Verification.ChecksumURL, "SHA256SUMS", config.Progress)
 		if err != nil {
 			return provider.BootPlan{}, fmt.Errorf("fetch SHA256SUMS: %w", err)
 		}
-		signature, err := fetch(ctx, client, plan.Verification.SignatureURL)
+		signature, err := fetchWithProgress(ctx, client, plan.Verification.SignatureURL, "SHA256SUMS.gpg", config.Progress)
 		if err != nil {
 			return provider.BootPlan{}, fmt.Errorf("fetch SHA256SUMS.gpg: %w", err)
+		}
+		if err := reportProgress(config.Progress, provider.StageOperationVerify, provider.StageStateStarted, "SHA256SUMS"); err != nil {
+			return provider.BootPlan{}, err
 		}
 		if err := verify.Artifact(verify.ArtifactInput{
 			Artifact:  bytes.NewReader(shaSums),
@@ -458,6 +463,9 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 			Keyring:   config.Keyring,
 			Name:      "SHA256SUMS",
 		}); err != nil {
+			return provider.BootPlan{}, err
+		}
+		if err := reportProgress(config.Progress, provider.StageOperationVerify, provider.StageStateCompleted, "SHA256SUMS"); err != nil {
 			return provider.BootPlan{}, err
 		}
 		isoName, err := targetISOName(plan.Target)
@@ -475,10 +483,10 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	}
 
 	var err error
-	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel); err != nil {
+	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel, config.Progress); err != nil {
 		return provider.BootPlan{}, err
 	}
-	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd); err != nil {
+	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd, config.Progress); err != nil {
 		return provider.BootPlan{}, err
 	}
 	return plan, nil
@@ -508,12 +516,15 @@ func requireHTTPS(rawURLs ...string) error {
 	return nil
 }
 
-func fetchStageVerify(ctx context.Context, client *http.Client, dir string, artifact provider.Artifact) (string, error) {
-	data, err := fetch(ctx, client, artifact.URL)
+func fetchStageVerify(ctx context.Context, client *http.Client, dir string, artifact provider.Artifact, progress provider.StageProgressFunc) (string, error) {
+	data, err := fetchWithProgress(ctx, client, artifact.URL, artifact.Name, progress)
 	if err != nil {
 		return "", fmt.Errorf("fetch %s: %w", artifact.Name, err)
 	}
 	if artifact.SHA256 != "" {
+		if err := reportProgress(progress, provider.StageOperationVerify, provider.StageStateStarted, artifact.Name); err != nil {
+			return "", err
+		}
 		if err := verify.SHA256(verify.HashInput{
 			Artifact:       bytes.NewReader(data),
 			ExpectedSHA256: artifact.SHA256,
@@ -521,12 +532,43 @@ func fetchStageVerify(ctx context.Context, client *http.Client, dir string, arti
 		}); err != nil {
 			return "", err
 		}
+		if err := reportProgress(progress, provider.StageOperationVerify, provider.StageStateCompleted, artifact.Name); err != nil {
+			return "", err
+		}
+	}
+	if err := reportProgress(progress, provider.StageOperationWrite, provider.StageStateStarted, artifact.Name); err != nil {
+		return "", err
 	}
 	path := filepath.Join(dir, artifact.Name)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("stage %s: %w", artifact.Name, err)
 	}
+	if err := reportProgress(progress, provider.StageOperationWrite, provider.StageStateCompleted, artifact.Name); err != nil {
+		return "", err
+	}
 	return path, nil
+}
+
+func fetchWithProgress(ctx context.Context, client *http.Client, rawURL string, artifact string, progress provider.StageProgressFunc) ([]byte, error) {
+	if err := reportProgress(progress, provider.StageOperationFetch, provider.StageStateStarted, artifact); err != nil {
+		return nil, err
+	}
+	data, err := fetch(ctx, client, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := reportProgress(progress, provider.StageOperationFetch, provider.StageStateCompleted, artifact); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func reportProgress(progress provider.StageProgressFunc, operation provider.StageOperation, state provider.StageState, artifact string) error {
+	return provider.ReportStageProgress(progress, provider.StageProgress{
+		Operation: operation,
+		State:     state,
+		Artifact:  artifact,
+	})
 }
 
 func fetch(ctx context.Context, client *http.Client, rawURL string) ([]byte, error) {

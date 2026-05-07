@@ -3,6 +3,8 @@ package linux_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -114,6 +116,50 @@ func TestFetchAndStageArtifactsAllowsOptionalInitrd(t *testing.T) {
 	}
 }
 
+func TestFetchAndStageArtifactsReportsProgress(t *testing.T) {
+	t.Parallel()
+
+	kernelData := []byte("kernel")
+	kernelSum := sha256.Sum256(kernelData)
+	plan := provider.BootPlan{
+		Action: provider.BootActionLinuxKexec,
+		Target: provider.Target{ID: "diagnostic-kernel-amd64", ProviderID: "linux"},
+		Kernel: provider.Artifact{
+			Name:   "diagnostic-kernel",
+			URL:    "https://boot.example/images/diagnostic-kernel",
+			SHA256: hex.EncodeToString(kernelSum[:]),
+		},
+	}
+	client := &http.Client{Transport: responseMap{
+		"https://boot.example/images/diagnostic-kernel": kernelData,
+	}}
+	var events []provider.StageProgress
+
+	if _, err := linux.FetchAndStageArtifacts(context.Background(), linux.FetchConfig{
+		Plan:       plan,
+		Client:     client,
+		StagingDir: t.TempDir(),
+		Progress: func(event provider.StageProgress) error {
+			events = append(events, event)
+			return nil
+		},
+	}); err != nil {
+		t.Fatalf("fetch and stage: %v", err)
+	}
+
+	want := []provider.StageProgress{
+		{Operation: provider.StageOperationFetch, State: provider.StageStateStarted, Artifact: "diagnostic-kernel"},
+		{Operation: provider.StageOperationFetch, State: provider.StageStateCompleted, Artifact: "diagnostic-kernel"},
+		{Operation: provider.StageOperationVerify, State: provider.StageStateStarted, Artifact: "diagnostic-kernel"},
+		{Operation: provider.StageOperationVerify, State: provider.StageStateCompleted, Artifact: "diagnostic-kernel"},
+		{Operation: provider.StageOperationWrite, State: provider.StageStateStarted, Artifact: "diagnostic-kernel"},
+		{Operation: provider.StageOperationWrite, State: provider.StageStateCompleted, Artifact: "diagnostic-kernel"},
+	}
+	if !equalStageProgress(events, want) {
+		t.Fatalf("progress events = %#v, want %#v", events, want)
+	}
+}
+
 func TestFetchAndStageArtifactsRejectsUnverifiedHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -129,6 +175,18 @@ func TestFetchAndStageArtifactsRejectsUnverifiedHTTP(t *testing.T) {
 	if err == nil {
 		t.Fatal("fetch and stage succeeded, want https failure")
 	}
+}
+
+func equalStageProgress(a []provider.StageProgress, b []provider.StageProgress) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 type responseMap map[string][]byte

@@ -1,8 +1,8 @@
 # Boot Media Notes
 
 Bootup should prioritize an ISO artifact before any Linux-kernel-wrapper
-format. The ISO can keep shipping the same kernel plus zstd initramfs payload
-used by PXE, iPXE, and vmtest.
+format. The ISO ships the same kernel used by PXE, iPXE, and vmtest, with a
+gzip initramfs payload by default for broader early-boot compatibility.
 
 Release artifact names, checksum verification, and iPXE/GRUB/ISO consumption
 examples are documented in `docs/release.md`.
@@ -25,8 +25,8 @@ scripts/build-iso.sh
 The builder uses `grub-mkrescue` and `xorriso`. Install
 `grub-efi-amd64-bin` as well as the BIOS GRUB modules so `grub-mkrescue` can
 produce a hybrid BIOS/UEFI image. The script discovers the latest
-`dist/kernel/linux-*-bootup-amd64-bzImage`, builds
-`dist/bootup-iso-initramfs.cpio.zst` when no initramfs is supplied, and writes
+`dist/kernel/linux-*-bootup-amd64-bzImage`, builds a gzip
+`dist/bootup-iso-initramfs.cpio.gz` when no initramfs is supplied, and writes
 `dist/bootup.iso`. Set `BOOTUP_ISO_ALLOW_BIOS_ONLY=1` only for local BIOS-only
 smoke artifacts when EFI GRUB modules are absent. Override inputs with:
 
@@ -34,6 +34,14 @@ smoke artifacts when EFI GRUB modules are absent. Override inputs with:
 BOOTUP_ISO_KERNEL=dist/kernel/linux-7.0.2-bootup-amd64-bzImage \
 BOOTUP_ISO_INITRAMFS=dist/bootup-custom-initramfs.cpio.zst \
 scripts/build-iso.sh dist/bootup-debian.iso
+```
+
+If a VM or kernel fails in the kernel's zstd initramfs decompressor, keep the
+default gzip ISO initramfs or pass a raw cpio initramfs instead. For example:
+
+```sh
+BOOTUP_ISO_INITRAMFS=dist/bootup-iso-initramfs.cpio \
+scripts/build-iso.sh dist/bootup-raw-initramfs.iso
 ```
 
 Run the ISO under QEMU BIOS:
@@ -60,6 +68,9 @@ iPXE's current `genfsimg` flow is a useful reference:
   `isohybrid --uefi`.
 
 The ISO layout places the kernel and initramfs under `/boot/bootup/` and uses
-GRUB as the BIOS/UEFI bootloader. The generated GRUB entry keeps both local
-console and serial console output active and passes `panic=30` plus
-`ip=::::::dhcp` to the kernel.
+GRUB as the BIOS/UEFI bootloader. The generated GRUB entry appends
+`console=tty0` so bootup userspace writes to the video console by default, and
+passes `panic=30` plus `ip=::::::dhcp` to the kernel. The project kernel
+fallback command line still includes serial output; when using a custom kernel
+without that fallback, set `BOOTUP_ISO_CMDLINE` to add the deployment's serial
+console explicitly.

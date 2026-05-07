@@ -121,6 +121,7 @@ fi
 require_cmd awk
 require_cmd date
 require_cmd find
+require_cmd gzip
 require_cmd git
 require_cmd go
 require_cmd install
@@ -197,17 +198,19 @@ install -m 0644 "${kernel_config_src}" "${kernel_config_path}"
 initramfs_raw="${work_dir}/bootup-${release_version}-initramfs-${arch}.cpio"
 initramfs_name="bootup-${release_version}-initramfs-${arch}.cpio.zst"
 initramfs_path="${out_dir}/${initramfs_name}"
+initramfs_iso_path="${work_dir}/bootup-${release_version}-iso-initramfs-${arch}.cpio.gz"
 BOOTUP_INITRAMFS_ZSTD="${initramfs_path}" \
 	"${repo_root}/scripts/build-initramfs.sh" \
 	"${initramfs_raw}" \
 	'bootup --mode=menu --ui=auto --prepare-runtime' \
 	'' \
 	''
+gzip -9 -c "${initramfs_raw}" >"${initramfs_iso_path}"
 
 iso_name="bootup-${release_version}-hybrid-${arch}.iso"
 iso_path="${out_dir}/${iso_name}"
 BOOTUP_ISO_KERNEL="${kernel_path}" \
-	BOOTUP_ISO_INITRAMFS="${initramfs_path}" \
+	BOOTUP_ISO_INITRAMFS="${initramfs_iso_path}" \
 	"${repo_root}/scripts/build-iso.sh" "${iso_path}"
 
 manifest_name="bootup-${release_version}-${arch}-manifest.json"

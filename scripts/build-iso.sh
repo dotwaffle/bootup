@@ -7,7 +7,9 @@ usage: scripts/build-iso.sh [output.iso]
 
 Environment:
   BOOTUP_ISO_KERNEL      kernel image to place in the ISO
-  BOOTUP_ISO_INITRAMFS   zstd initramfs to place in the ISO
+  BOOTUP_ISO_INITRAMFS   initramfs to place in the ISO
+  BOOTUP_ISO_INITRAMFS_NAME
+                         initramfs filename under /boot/bootup
   BOOTUP_ISO_CMDLINE     kernel command line for the GRUB menu entry
   BOOTUP_ISO_UINITCMD    u-root init command when building the default initramfs
   BOOTUP_ISO_VOLUME_ID   ISO volume ID, default BOOTUP
@@ -44,11 +46,34 @@ abs_path() {
 	printf '%s/%s\n' "${dir}" "$(basename -- "${path}")"
 }
 
+iso_initramfs_name() {
+	local path="$1"
+
+	case "${path}" in
+	*.zst)
+		printf 'initramfs.cpio.zst\n'
+		;;
+	*.gz)
+		printf 'initramfs.cpio.gz\n'
+		;;
+	*.xz)
+		printf 'initramfs.cpio.xz\n'
+		;;
+	*.lz4)
+		printf 'initramfs.cpio.lz4\n'
+		;;
+	*)
+		basename -- "${path}"
+		;;
+	esac
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 	usage
 	exit 0
 fi
 
+require_cmd gzip
 require_cmd grub-mkrescue
 require_cmd xorriso
 
@@ -64,7 +89,7 @@ fi
 
 out="${1:-${BOOTUP_ISO_OUT:-${repo_root}/dist/bootup.iso}}"
 volume_id="${BOOTUP_ISO_VOLUME_ID:-BOOTUP}"
-cmdline="${BOOTUP_ISO_CMDLINE:-console=tty0 console=ttyS0,115200n8 panic=30 ip=::::::dhcp}"
+cmdline="${BOOTUP_ISO_CMDLINE:-console=tty0 panic=30 ip=::::::dhcp}"
 
 kernel="${BOOTUP_ISO_KERNEL:-$(latest_kernel "${repo_root}/dist/kernel")}"
 if [[ ! -r "${kernel}" ]]; then
@@ -73,20 +98,25 @@ if [[ ! -r "${kernel}" ]]; then
 fi
 kernel="$(abs_path "${kernel}")"
 
-initramfs="${BOOTUP_ISO_INITRAMFS:-${repo_root}/dist/bootup-iso-initramfs.cpio.zst}"
+default_initramfs="${repo_root}/dist/bootup-iso-initramfs.cpio.gz"
+initramfs="${BOOTUP_ISO_INITRAMFS:-${default_initramfs}}"
 if [[ -z "${BOOTUP_ISO_INITRAMFS:-}" && ! -f "${initramfs}" ]]; then
+	raw_initramfs="${repo_root}/dist/bootup-iso-initramfs.cpio"
 	uinitcmd="${BOOTUP_ISO_UINITCMD:-bootup --mode=menu --ui=auto --prepare-runtime}"
 	"${repo_root}/scripts/build-initramfs.sh" \
-		"${repo_root}/dist/bootup-iso-initramfs.cpio" \
+		"${raw_initramfs}" \
 		"${uinitcmd}" \
 		"${BOOTUP_ISO_GO_TAGS:-}" \
 		"${BOOTUP_ISO_EXTRA_FILES:-}"
+	gzip -9 -c "${raw_initramfs}" >"${initramfs}"
 fi
 if [[ ! -r "${initramfs}" ]]; then
 	printf 'initramfs is not readable: %s\n' "${initramfs}" >&2
 	exit 1
 fi
 initramfs="$(abs_path "${initramfs}")"
+initramfs_default_name="$(iso_initramfs_name "${initramfs}")"
+initramfs_name="${BOOTUP_ISO_INITRAMFS_NAME:-${initramfs_default_name}}"
 
 mkdir -p "$(dirname -- "${out}")"
 tmp="$(mktemp -d "$(dirname -- "${out}")/iso.XXXXXX")"
@@ -98,10 +128,10 @@ trap cleanup EXIT
 iso_root="${tmp}/root"
 mkdir -p "${iso_root}/boot/bootup" "${iso_root}/boot/grub"
 install -m 0644 "${kernel}" "${iso_root}/boot/bootup/vmlinuz"
-install -m 0644 "${initramfs}" "${iso_root}/boot/bootup/initramfs.cpio.zst"
+install -m 0644 "${initramfs}" "${iso_root}/boot/bootup/${initramfs_name}"
 cat >"${iso_root}/boot/bootup/manifest" <<EOF
 kernel=$(basename -- "${kernel}")
-initramfs=$(basename -- "${initramfs}")
+initramfs=${initramfs_name}
 cmdline=${cmdline}
 EOF
 cat >"${iso_root}/boot/grub/grub.cfg" <<EOF
@@ -116,7 +146,7 @@ menuentry "bootup" {
     echo "Loading bootup kernel..."
     linux /boot/bootup/vmlinuz ${cmdline}
     echo "Loading bootup initramfs..."
-    initrd /boot/bootup/initramfs.cpio.zst
+    initrd /boot/bootup/${initramfs_name}
 }
 EOF
 

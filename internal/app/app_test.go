@@ -23,6 +23,7 @@ type providerStub struct {
 	staged         provider.BootPlan
 	planned        *provider.PlanInput
 	stageConfig    *provider.StageConfig
+	stageProgress  []provider.StageProgress
 	stageInputPlan bool
 	applyOptions   bool
 	planErr        error
@@ -56,10 +57,28 @@ func (p providerStub) Stage(_ context.Context, config provider.StageConfig) (pro
 	if p.stageConfig != nil {
 		*p.stageConfig = config
 	}
+	for _, event := range p.stageProgress {
+		if err := config.Progress(event); err != nil {
+			return provider.BootPlan{}, err
+		}
+	}
 	if p.stageInputPlan {
 		return config.Plan, nil
 	}
 	return p.staged, nil
+}
+
+type namedPreparerStub struct {
+	name string
+	call func(context.Context) error
+}
+
+func (p namedPreparerStub) Name() string {
+	return p.name
+}
+
+func (p namedPreparerStub) Prepare(ctx context.Context) error {
+	return p.call(ctx)
 }
 
 type discoveryProviderStub struct {
@@ -370,6 +389,48 @@ func TestRunPreparesRuntimeBeforeListingTargets(t *testing.T) {
 	}
 }
 
+func TestRunLogsRuntimePreparationProgress(t *testing.T) {
+	t.Parallel()
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{targets: []provider.Target{debianTarget()}}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var logs bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&logs, nil)),
+		Mode:     app.ModeListTargets,
+		Preparers: []app.Preparer{
+			namedPreparerStub{
+				name: "network",
+				call: func(context.Context) error {
+					return nil
+				},
+			},
+		},
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := logs.String()
+	for _, want := range []string{
+		"msg=\"runtime preparation started\"",
+		"msg=\"runtime preparation completed\"",
+		"preparer=network",
+		"step=1",
+		"steps=1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("logs = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestRunHoldsAfterModeCompletes(t *testing.T) {
 	t.Parallel()
 
@@ -536,6 +597,59 @@ func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 	for _, phase := range []string{"[planning]", "[verifying]", "[staging]"} {
 		if !strings.Contains(stdout.String(), phase) {
 			t.Fatalf("stdout = %q, want phase %s", stdout.String(), phase)
+		}
+	}
+}
+
+func TestRunRendersStageProgress(t *testing.T) {
+	t.Parallel()
+
+	target := debianTarget()
+	plan := provider.BootPlan{Target: target}
+	staged := provider.BootPlan{
+		Target: target,
+		Kernel: provider.Artifact{Name: "linux", Path: "/tmp/bootup/linux"},
+	}
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		targets: []provider.Target{target},
+		plan:    plan,
+		staged:  staged,
+		stageProgress: []provider.StageProgress{
+			{Operation: provider.StageOperationFetch, State: provider.StageStateStarted, Artifact: "linux"},
+		},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var logs bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdout:     &stdout,
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&logs, nil)),
+		Mode:       app.ModeStageTarget,
+		TargetID:   "debian-trixie-amd64-netboot",
+		StagingDir: t.TempDir(),
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "[fetching] linux") {
+		t.Fatalf("stdout = %q, want fetch progress", stdout.String())
+	}
+	gotLogs := logs.String()
+	for _, want := range []string{
+		"msg=\"stage progress\"",
+		"operation=fetch",
+		"state=started",
+		"artifact=linux",
+		"target_id=debian-trixie-amd64-netboot",
+	} {
+		if !strings.Contains(gotLogs, want) {
+			t.Fatalf("logs = %q, want %q", gotLogs, want)
 		}
 	}
 }

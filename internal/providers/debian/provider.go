@@ -62,6 +62,7 @@ type FetchConfig struct {
 	Client     *http.Client
 	Keyring    io.Reader
 	StagingDir string
+	Progress   provider.StageProgressFunc
 }
 
 // NewProvider creates a Debian provider.
@@ -362,6 +363,7 @@ func (p *Provider) Stage(ctx context.Context, config provider.StageConfig) (prov
 		Client:     p.client,
 		Keyring:    bytes.NewReader(p.keyring),
 		StagingDir: config.StagingDir,
+		Progress:   config.Progress,
 	})
 }
 
@@ -407,16 +409,22 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 		return provider.BootPlan{}, errors.New("staging dir is required")
 	}
 
-	inRelease, err := fetch(ctx, client, config.Plan.Verification.MetadataURL)
+	inRelease, err := fetchWithProgress(ctx, client, config.Plan.Verification.MetadataURL, "InRelease", config.Progress)
 	if err != nil {
 		return provider.BootPlan{}, fmt.Errorf("fetch InRelease: %w", err)
+	}
+	if err := reportProgress(config.Progress, provider.StageOperationVerify, provider.StageStateStarted, "InRelease"); err != nil {
+		return provider.BootPlan{}, err
 	}
 	release, err := VerifyInRelease(inRelease, config.Keyring)
 	if err != nil {
 		return provider.BootPlan{}, err
 	}
+	if err := reportProgress(config.Progress, provider.StageOperationVerify, provider.StageStateCompleted, "InRelease"); err != nil {
+		return provider.BootPlan{}, err
+	}
 
-	shaSums, err := fetch(ctx, client, config.Plan.Verification.ChecksumURL)
+	shaSums, err := fetchWithProgress(ctx, client, config.Plan.Verification.ChecksumURL, "SHA256SUMS", config.Progress)
 	if err != nil {
 		return provider.BootPlan{}, fmt.Errorf("fetch SHA256SUMS: %w", err)
 	}
@@ -425,26 +433,35 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	if err != nil {
 		return provider.BootPlan{}, err
 	}
+	if err := reportProgress(config.Progress, provider.StageOperationVerify, provider.StageStateStarted, "SHA256SUMS"); err != nil {
+		return provider.BootPlan{}, err
+	}
 	if err := verifyReleaseFileChecksum(checksumPath, shaSums, release); err != nil {
+		return provider.BootPlan{}, err
+	}
+	if err := reportProgress(config.Progress, provider.StageOperationVerify, provider.StageStateCompleted, "SHA256SUMS"); err != nil {
 		return provider.BootPlan{}, err
 	}
 	plan := config.Plan
 	architecture := plan.Target.Catalog.Architecture
 	kernelChecksumName := fmt.Sprintf("netboot/debian-installer/%s/linux", architecture)
-	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel.URL, "linux", kernelChecksumName, shaSums); err != nil {
+	if plan.Kernel.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Kernel.URL, "linux", kernelChecksumName, shaSums, config.Progress); err != nil {
 		return provider.BootPlan{}, err
 	}
 	initrdChecksumName := fmt.Sprintf("netboot/debian-installer/%s/initrd.gz", architecture)
-	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd.URL, "initrd.gz", initrdChecksumName, shaSums); err != nil {
+	if plan.Initrd.Path, err = fetchStageVerify(ctx, client, config.StagingDir, plan.Initrd.URL, "initrd.gz", initrdChecksumName, shaSums, config.Progress); err != nil {
 		return provider.BootPlan{}, err
 	}
 	return plan, nil
 }
 
-func fetchStageVerify(ctx context.Context, client *http.Client, dir string, artifactURL string, filename string, checksumName string, shaSums []byte) (string, error) {
-	data, err := fetch(ctx, client, artifactURL)
+func fetchStageVerify(ctx context.Context, client *http.Client, dir string, artifactURL string, filename string, checksumName string, shaSums []byte, progress provider.StageProgressFunc) (string, error) {
+	data, err := fetchWithProgress(ctx, client, artifactURL, filename, progress)
 	if err != nil {
 		return "", fmt.Errorf("fetch %s: %w", filename, err)
+	}
+	if err := reportProgress(progress, provider.StageOperationVerify, provider.StageStateStarted, filename); err != nil {
+		return "", err
 	}
 	if err := verify.Artifact(verify.ArtifactInput{
 		Artifact:   bytes.NewReader(data),
@@ -453,11 +470,42 @@ func fetchStageVerify(ctx context.Context, client *http.Client, dir string, arti
 	}); err != nil {
 		return "", err
 	}
+	if err := reportProgress(progress, provider.StageOperationVerify, provider.StageStateCompleted, filename); err != nil {
+		return "", err
+	}
+	if err := reportProgress(progress, provider.StageOperationWrite, provider.StageStateStarted, filename); err != nil {
+		return "", err
+	}
 	path := filepath.Join(dir, filename)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("stage %s: %w", filename, err)
 	}
+	if err := reportProgress(progress, provider.StageOperationWrite, provider.StageStateCompleted, filename); err != nil {
+		return "", err
+	}
 	return path, nil
+}
+
+func fetchWithProgress(ctx context.Context, client *http.Client, rawURL string, artifact string, progress provider.StageProgressFunc) ([]byte, error) {
+	if err := reportProgress(progress, provider.StageOperationFetch, provider.StageStateStarted, artifact); err != nil {
+		return nil, err
+	}
+	data, err := fetch(ctx, client, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := reportProgress(progress, provider.StageOperationFetch, provider.StageStateCompleted, artifact); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func reportProgress(progress provider.StageProgressFunc, operation provider.StageOperation, state provider.StageState, artifact string) error {
+	return provider.ReportStageProgress(progress, provider.StageProgress{
+		Operation: operation,
+		State:     state,
+		Artifact:  artifact,
+	})
 }
 
 func fetch(ctx context.Context, client *http.Client, rawURL string) ([]byte, error) {

@@ -593,12 +593,16 @@ scripts/build-iso.sh
 ```
 
 The script discovers the current `dist/kernel/linux-*-bootup-amd64-bzImage`
-and builds a menu-mode `dist/bootup-iso-initramfs.cpio.zst` when
+and builds a menu-mode `dist/bootup-iso-initramfs.cpio.gz` when
 `BOOTUP_ISO_INITRAMFS` is not set. It writes `dist/bootup.iso` by default.
 It requires `grub-mkrescue`, `xorriso`, and GRUB's x86_64 EFI modules from
 `grub-efi-amd64-bin` for a hybrid BIOS/UEFI artifact. Set
 `BOOTUP_ISO_ALLOW_BIOS_ONLY=1` only when intentionally building a BIOS-only
 local smoke artifact.
+
+`BOOTUP_ISO_INITRAMFS` may point at a zstd, gzip, or raw cpio initramfs. The
+default gzip path avoids the kernel's zstd initramfs decompressor on VM/kernel
+combinations that fault before `/init`.
 
 For a Debian-capable ISO, first build an initramfs with caller-supplied Debian
 archive trust material and provider config, then pass it to the ISO builder:

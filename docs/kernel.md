@@ -6,7 +6,7 @@ That kernel should bring up networking before `/init` by using kernel IP
 autoconfiguration:
 
 ```text
-console=tty0 console=ttyS0,115200n8 panic=30 ip=::::::dhcp
+console=ttyS0,115200n8 console=tty0 panic=30 ip=::::::dhcp
 ```
 
 Kernel DHCP runs before initramfs modules can be loaded, so the boot NIC driver
@@ -49,7 +49,7 @@ a general distro kernel. It requires:
 `CONFIG_CMDLINE_BOOL` supplies fallback defaults:
 
 ```text
-console=tty0 console=ttyS0,115200n8 earlyprintk=ttyS0,115200 panic=30 ip=::::::dhcp
+console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 panic=30 ip=::::::dhcp
 ```
 
 Do not set `CONFIG_CMDLINE_OVERRIDE` for normal bootup builds; PXE, iPXE, GRUB,

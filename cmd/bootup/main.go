@@ -39,6 +39,19 @@ func run(ctx context.Context, args []string) error {
 	return runWithIO(ctx, args, os.Stdin, os.Stdout, os.Stderr)
 }
 
+type namedPreparer struct {
+	name    string
+	prepare func(context.Context) error
+}
+
+func (p namedPreparer) Name() string {
+	return p.name
+}
+
+func (p namedPreparer) Prepare(ctx context.Context) error {
+	return p.prepare(ctx)
+}
+
 func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	flags := flag.NewFlagSet("bootup", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -72,6 +85,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	policyFallback := flags.String("policy-fallback", string(policyFallbackNone), "policy failure fallback: none, manual")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	diagnosticsDir := flags.String("diagnostics-dir", "", "directory for opt-in failure diagnostics bundles")
+	consoleMirror := flags.String("console-mirror", "", "also write stdout and stderr to this console path, for example /dev/tty0")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
 	var targetOptions optionFlags
 	flags.Var(&targetOptions, "option", "target option selection as id=value; repeatable")
@@ -123,6 +137,25 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		stdout = capture.Stdout(stdout)
 		stderr = capture.Stderr(stderr)
 	}
+	if strings.TrimSpace(*consoleMirror) != "" {
+		mirror, err := os.OpenFile(*consoleMirror, os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			if _, writeErr := fmt.Fprintf(stderr, "bootup: console mirror unavailable path=%s error=%v\n", *consoleMirror, err); writeErr != nil {
+				return fmt.Errorf("write console mirror warning: %w", writeErr)
+			}
+		} else if outputAlreadyIncludes(mirror, stdout, stderr) {
+			if closeErr := mirror.Close(); closeErr != nil {
+				return fmt.Errorf("close skipped console mirror: %w", closeErr)
+			}
+		} else {
+			defer func() { _ = mirror.Close() }()
+			stdout = io.MultiWriter(stdout, mirror)
+			stderr = io.MultiWriter(stderr, mirror)
+			if _, writeErr := fmt.Fprintf(stderr, "bootup: console mirror enabled path=%s\n", *consoleMirror); writeErr != nil {
+				return fmt.Errorf("write console mirror notice: %w", writeErr)
+			}
+		}
+	}
 
 	effectiveMode := app.Mode(*mode)
 	effectiveTargetID := *targetID
@@ -157,14 +190,27 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 			DNSServers:  parseDNSServers(*netDNS),
 		}
 		if *prepareRuntime || hasNetworkConfig(networkConfig) {
-			preparers = append(preparers, runtime.NetworkPreparer{Config: networkConfig})
+			preparers = append(preparers, namedPreparer{
+				name: "network",
+				prepare: func(ctx context.Context) error {
+					return runtime.NetworkPreparer{Config: networkConfig}.Prepare(ctx)
+				},
+			})
 		}
 		if *prepareRuntime {
 			preparers = append(preparers,
-				app.PrepareFunc(func(ctx context.Context) error {
-					return runtime.CertPreparer{}.Prepare()
-				}),
-				runtime.TimePreparer{},
+				namedPreparer{
+					name: "certificates",
+					prepare: func(context.Context) error {
+						return runtime.CertPreparer{}.Prepare()
+					},
+				},
+				namedPreparer{
+					name: "time",
+					prepare: func(ctx context.Context) error {
+						return runtime.TimePreparer{}.Prepare(ctx)
+					},
+				},
 			)
 		}
 
@@ -241,6 +287,27 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		})
 	}
 	return runErr
+}
+
+func outputAlreadyIncludes(file *os.File, writers ...io.Writer) bool {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	for _, writer := range writers {
+		output, ok := writer.(*os.File)
+		if !ok {
+			continue
+		}
+		outputInfo, err := output.Stat()
+		if err != nil {
+			continue
+		}
+		if os.SameFile(fileInfo, outputInfo) {
+			return true
+		}
+	}
+	return false
 }
 
 type failureDiagnosticsInput struct {

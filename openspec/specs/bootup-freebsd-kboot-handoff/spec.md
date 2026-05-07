@@ -70,6 +70,13 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
   kernel jump, because the stock installer mounts `/` from its `cd9660` label
   and Linux-only hostfs or loop mounts do not survive as FreeBSD root devices
 
+#### Scenario: Smoke can prove memory-root payloads without target media
+- **WHEN** the FreeBSD kboot smoke uses an extracted mfsBSD payload root with a
+  preloaded `mfsroot`
+- **THEN** it SHALL support embedding that root tree into stage-1 and omitting
+  target-visible payload media, and success SHALL show the target mounting its
+  md root or reaching an mfsBSD shell or login after the kernel jump
+
 #### Scenario: Smoke forces target serial console output
 - **WHEN** the FreeBSD kboot smoke runs `loader.kboot` from Linux stage-1
 - **THEN** it SHALL pass FreeBSD kernel boot flags that enable serial and

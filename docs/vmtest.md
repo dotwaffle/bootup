@@ -184,6 +184,34 @@ The block device is intentional. The stock bootonly ISO mounts `/` from its
 mount can let `loader.kboot` load the kernel but will still stop at
 `mountroot` unless the target kernel can see equivalent root media.
 
+The same helper can also prove mfsBSD-style memory-root payloads without
+target-visible root media. Extract the mfsBSD ISO into a temporary directory
+outside the repository, then normalize the compressed payload names expected by
+the borrowed FreeBSD `loader.kboot` path:
+
+```sh
+xorriso -osirrox on -indev mfsbsd-mini-14.2-RELEASE-amd64.iso \
+  -extract / /tmp/bootup-mfsbsd-root
+gzip -dkf /tmp/bootup-mfsbsd-root/boot/kernel/kernel.gz
+gzip -dkf /tmp/bootup-mfsbsd-root/mfsroot.gz
+```
+
+Then run the helper with the prepared root embedded in the bootup stage-1:
+
+```sh
+BOOTUP_FREEBSD_KBOOT_LOADER=/tmp/bootup-freebsd-kboot/boot/loader.kboot \
+BOOTUP_FREEBSD_KBOOT_HELP=/tmp/bootup-freebsd-kboot/boot/loader.help.kboot \
+BOOTUP_FREEBSD_KBOOT_PAYLOAD_ROOT=/tmp/bootup-mfsbsd-root \
+BOOTUP_FREEBSD_KBOOT_TARGET_PATTERN='login:|root@|mfsBSD|Welcome to mfsBSD' \
+BOOTUP_FREEBSD_KBOOT_KERNEL="${KERNEL}" \
+BOOTUP_FREEBSD_KBOOT_KERNEL_CONFIG="${CONFIG}" \
+scripts/smoke-freebsd-kboot.sh
+```
+
+In this mode the helper does not attach a FreeBSD or mfsBSD payload disk. The
+Linux stage-1 presents the extracted root through `hostfs_root`, `loader.kboot`
+preloads `mfsroot`, and the target kernel mounts `ufs:/dev/md0`.
+
 The script treats the old `boot_params`/EFI memory-map panic as a distinct
 failure. It only exits successfully when a configured target marker appears
 after the FreeBSD kernel jump. Override

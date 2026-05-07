@@ -5,10 +5,10 @@ usage() {
 	cat >&2 <<'USAGE'
 usage: scripts/smoke-freebsd-kboot.sh
 
-Build a temporary bootup ISO containing FreeBSD loader.kboot, attach a
-FreeBSD bootonly ISO as a read-only virtio block device, mount it from Linux
-stage-1, and run a QEMU UEFI smoke. All downloaded and generated artifacts
-stay outside the repository.
+Build a temporary bootup ISO containing FreeBSD loader.kboot, present either a
+FreeBSD bootonly ISO or an embedded FreeBSD/mfsBSD root tree to Linux stage-1,
+and run a QEMU UEFI smoke. All downloaded and generated artifacts stay outside
+the repository.
 
 Environment:
   BOOTUP_FREEBSD_VERSION              FreeBSD release, default 15.0-RELEASE
@@ -17,6 +17,7 @@ Environment:
   BOOTUP_FREEBSD_KBOOT_LOADER         Existing loader.kboot path
   BOOTUP_FREEBSD_KBOOT_HELP           Existing loader.help.kboot path
   BOOTUP_FREEBSD_KBOOT_ISO            Existing uncompressed bootonly ISO path
+  BOOTUP_FREEBSD_KBOOT_PAYLOAD_ROOT   Existing FreeBSD/mfsBSD root tree to embed
   BOOTUP_FREEBSD_KBOOT_WORKDIR        Work directory, default /tmp/...
   BOOTUP_FREEBSD_KBOOT_KERNEL         Bootup Linux kernel for the proof ISO
   BOOTUP_FREEBSD_KBOOT_KERNEL_CONFIG  Config to validate for the proof kernel
@@ -24,6 +25,8 @@ Environment:
   BOOTUP_FREEBSD_KBOOT_OVMF_VARS      OVMF VARS image path
   BOOTUP_FREEBSD_KBOOT_TIMEOUT        QEMU timeout seconds, default 180
   BOOTUP_FREEBSD_KBOOT_TARGET_PATTERN Extended regexp expected after kernel jump
+  BOOTUP_FREEBSD_KBOOT_EXTRA_LOADER_ARGS
+                                      Extra loader.kboot key=value args
   BOOTUP_FREEBSD_KBOOT_LOG            Serial log path, default workdir/qemu.log
 USAGE
 }
@@ -79,21 +82,33 @@ fi
 loader="$(abs_path "${loader}")"
 loader_help="$(abs_path "${loader_help}")"
 
-freebsd_iso="${BOOTUP_FREEBSD_KBOOT_ISO:-}"
-if [[ -z "${freebsd_iso}" ]]; then
-	require_cmd curl
-	require_cmd xz
+payload_root="${BOOTUP_FREEBSD_KBOOT_PAYLOAD_ROOT:-}"
+if [[ -n "${payload_root}" ]]; then
+	if [[ ! -d "${payload_root}" ]]; then
+		printf 'FreeBSD payload root is not a directory: %s\n' "${payload_root}" >&2
+		exit 2
+	fi
+	payload_root="$(abs_path "${payload_root}")"
+fi
 
-	iso_xz="${workdir}/FreeBSD-${version}-${arch}-bootonly.iso.xz"
-	freebsd_iso="${workdir}/FreeBSD-${version}-${arch}-bootonly.iso"
-	curl -fsSL -o "${iso_xz}" "${base_url}/FreeBSD-${version}-${arch}-bootonly.iso.xz"
-	xz -dkf "${iso_xz}"
+freebsd_iso=""
+if [[ -z "${payload_root}" ]]; then
+	freebsd_iso="${BOOTUP_FREEBSD_KBOOT_ISO:-}"
+	if [[ -z "${freebsd_iso}" ]]; then
+		require_cmd curl
+		require_cmd xz
+
+		iso_xz="${workdir}/FreeBSD-${version}-${arch}-bootonly.iso.xz"
+		freebsd_iso="${workdir}/FreeBSD-${version}-${arch}-bootonly.iso"
+		curl -fsSL -o "${iso_xz}" "${base_url}/FreeBSD-${version}-${arch}-bootonly.iso.xz"
+		xz -dkf "${iso_xz}"
+	fi
+	if [[ ! -r "${freebsd_iso}" ]]; then
+		printf 'FreeBSD ISO is not readable: %s\n' "${freebsd_iso}" >&2
+		exit 2
+	fi
+	freebsd_iso="$(abs_path "${freebsd_iso}")"
 fi
-if [[ ! -r "${freebsd_iso}" ]]; then
-	printf 'FreeBSD ISO is not readable: %s\n' "${freebsd_iso}" >&2
-	exit 2
-fi
-freebsd_iso="$(abs_path "${freebsd_iso}")"
 
 kernel="${BOOTUP_FREEBSD_KBOOT_KERNEL:-${BOOTUP_ISO_KERNEL:-}}"
 if [[ -n "${kernel}" ]]; then
@@ -126,6 +141,9 @@ extra_dir="${workdir}/extra"
 mkdir -p "${extra_dir}/bin" "${extra_dir}/boot" "${extra_dir}/mnt/freebsd"
 install -m 0555 "${loader}" "${extra_dir}/bin/loader.kboot"
 install -m 0444 "${loader_help}" "${extra_dir}/boot/loader.help.kboot"
+if [[ -n "${payload_root}" ]]; then
+	cp -a "${payload_root}/." "${extra_dir}/mnt/freebsd/"
+fi
 
 initramfs="${workdir}/bootup-freebsd-kboot-initramfs.cpio"
 initramfs_zst="${initramfs}.zst"
@@ -138,8 +156,16 @@ loader_args=(
 	autoboot_delay=0
 	beastie_disable=YES
 )
+if [[ -n "${BOOTUP_FREEBSD_KBOOT_EXTRA_LOADER_ARGS:-}" ]]; then
+	read -r -a extra_loader_args <<<"${BOOTUP_FREEBSD_KBOOT_EXTRA_LOADER_ARGS}"
+	loader_args+=("${extra_loader_args[@]}")
+fi
 loader_cmd="/bin/loader.kboot ${loader_args[*]}"
-uinitcmd="gosh -c 'echo bootup FreeBSD kboot smoke; echo mounting FreeBSD ISO from /dev/vda; mount -t iso9660 -o ro /dev/vda /mnt/freebsd; echo running ${loader_cmd}; ${loader_cmd}'"
+if [[ -n "${payload_root}" ]]; then
+	uinitcmd="gosh -c 'echo bootup FreeBSD kboot smoke; echo using embedded FreeBSD payload at /mnt/freebsd; echo running ${loader_cmd}; ${loader_cmd}'"
+else
+	uinitcmd="gosh -c 'echo bootup FreeBSD kboot smoke; echo mounting FreeBSD ISO from /dev/vda; mount -t iso9660 -o ro /dev/vda /mnt/freebsd; echo running ${loader_cmd}; ${loader_cmd}'"
+fi
 
 BOOTUP_INITRAMFS_ZSTD="${initramfs_zst}" \
 	"${repo_root}/scripts/build-initramfs.sh" \
@@ -180,9 +206,13 @@ qemu_args=(
 	-drive "if=pflash,format=raw,unit=1,file=${ovmf_vars_copy}"
 	-drive "if=none,id=bootupcd,media=cdrom,readonly=on,file=${bootup_iso}"
 	-device "ide-cd,drive=bootupcd,bootindex=1"
-	-drive "if=none,id=freebsddisk,format=raw,readonly=on,file=${freebsd_iso}"
-	-device "virtio-blk-pci,drive=freebsddisk"
 )
+if [[ -z "${payload_root}" ]]; then
+	qemu_args+=(
+		-drive "if=none,id=freebsddisk,format=raw,readonly=on,file=${freebsd_iso}"
+		-device "virtio-blk-pci,drive=freebsddisk"
+	)
+fi
 
 printf 'workdir: %s\n' "${workdir}"
 printf 'serial log: %s\n' "${log}"

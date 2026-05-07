@@ -217,7 +217,7 @@ func discoveredTarget(release string, baseURL string) provider.Target {
 }
 
 // Plan returns a boot plan for target.
-func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.BootPlan, error) {
+func (p *Provider) Plan(ctx context.Context, input provider.PlanInput) (provider.BootPlan, error) {
 	target := input.Target
 	selected, err := p.selectedTarget(target)
 	if err != nil {
@@ -228,22 +228,64 @@ func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.B
 		return provider.BootPlan{}, fmt.Errorf("unsupported Fedora architecture %q for target %s", architecture, selected.ID)
 	}
 	releaseURL := p.targetBaseURL(selected)
+	checksums, err := p.artifactChecksums(ctx, selected, releaseURL)
+	if err != nil {
+		return provider.BootPlan{}, err
+	}
 
 	plan := provider.BootPlan{
 		Target: selected,
 		Kernel: provider.Artifact{
 			Name:   kernelStageName,
-			URL:    releaseURL + "/images/pxeboot/vmlinuz",
-			SHA256: p.kernelSHA256,
+			URL:    releaseURL + "/" + kernelTreeinfoPath,
+			SHA256: checksums.kernelSHA256,
 		},
 		Initrd: provider.Artifact{
 			Name:   initrdStageName,
-			URL:    releaseURL + "/images/pxeboot/initrd.img",
-			SHA256: p.initrdSHA256,
+			URL:    releaseURL + "/" + initrdTreeinfoPath,
+			SHA256: checksums.initrdSHA256,
 		},
 		Cmdline: "inst.repo=" + releaseURL + " ip=dhcp console=ttyS0",
 	}
 	return provider.ApplySelectedOptions(plan, input.Options)
+}
+
+func (p *Provider) artifactChecksums(ctx context.Context, target provider.Target, releaseURL string) (treeinfoChecksums, error) {
+	if (p.kernelSHA256 == "") != (p.initrdSHA256 == "") {
+		return treeinfoChecksums{}, errors.New("kernel and initrd sha256 must be supplied together")
+	}
+	if p.kernelSHA256 != "" {
+		return treeinfoChecksums{
+			kernelSHA256: p.kernelSHA256,
+			initrdSHA256: p.initrdSHA256,
+		}, nil
+	}
+	if (target.Source.KernelSHA256 == "") != (target.Source.InitrdSHA256 == "") {
+		return treeinfoChecksums{}, fmt.Errorf("target %s source kernel and initrd sha256 must be supplied together", target.ID)
+	}
+	if target.Source.KernelSHA256 != "" {
+		return treeinfoChecksums{
+			kernelSHA256: strings.ToLower(target.Source.KernelSHA256),
+			initrdSHA256: strings.ToLower(target.Source.InitrdSHA256),
+		}, nil
+	}
+	treeinfoURL := releaseURL + "/.treeinfo"
+	if err := requireHTTPS(treeinfoURL); err != nil {
+		return treeinfoChecksums{}, err
+	}
+	client := p.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	data, err := providerhttp.Fetch(ctx, client, treeinfoURL)
+	if err != nil {
+		return treeinfoChecksums{}, fmt.Errorf("fetch Fedora .treeinfo: %w", err)
+	}
+	checksums, err := parseTreeinfoChecksums(data)
+	if err != nil {
+		return treeinfoChecksums{}, fmt.Errorf("parse Fedora .treeinfo: %w", err)
+	}
+	return checksums, nil
 }
 
 func (p *Provider) selectedTarget(target provider.Target) (provider.Target, error) {

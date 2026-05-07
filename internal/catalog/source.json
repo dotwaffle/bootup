@@ -44,7 +44,11 @@
           "architecture": "amd64",
           "kind": "installer",
           "source": {
-            "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/x86_64/os"
+            "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/x86_64/os",
+            "kernel_path": "images/pxeboot/vmlinuz",
+            "initrd_path": "images/pxeboot/initrd.img",
+            "kernel_sha256": "68b0566224393befb04dd2d0a8322481dbd1c38514096f6b9d96445a262c9a1f",
+            "initrd_sha256": "0647fcdab4e5579f446e02e70ba5ced8d57e96ce78c0d7879d3d82fedff9afe0"
           },
           "lifecycle": {
             "status": "supported",
@@ -58,7 +62,11 @@
           "architecture": "amd64",
           "kind": "installer",
           "source": {
-            "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os"
+            "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os",
+            "kernel_path": "images/pxeboot/vmlinuz",
+            "initrd_path": "images/pxeboot/initrd.img",
+            "kernel_sha256": "4b37e4e542a62c580c751787848be6c99e6f908f6712c8c6da85516b8d541de2",
+            "initrd_sha256": "dec8bd9bf9238a34c6b3df465ee4ebae16b5313560b5bc6bab817d3fb18fb0fc"
           },
           "lifecycle": {
             "status": "supported",

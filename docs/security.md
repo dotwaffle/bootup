@@ -61,14 +61,16 @@ catalog freshness metadata is also a catalog acceptance policy, not an artifact
 authenticity signal.
 
 The Debian provider fails closed unless Debian archive trust material is
-provided through configuration. The Fedora provider can stage Fedora Server
-netboot kernel and initrd artifacts over HTTPS by default; callers that need
-pinned verification can configure a Fedora release URL plus explicit SHA-256
-hashes for those netboot artifacts. The Ubuntu provider can stage the official
-26.04 netboot kernel and initrd over HTTPS by default; callers that need a
-stronger chain can configure Ubuntu release key material plus pinned SHA-256
-hashes for those netboot artifacts. Ubuntu's signed release `SHA256SUMS`
-currently covers the ISO set, not the extracted netboot kernel and initrd.
+provided through configuration. The embedded Fedora catalog carries SHA-256
+pins from Fedora `.treeinfo` metadata for the Server pxeboot kernel and initrd.
+Custom or discovered Fedora targets without catalog pins fetch `.treeinfo` over
+HTTPS during planning and fail closed unless both pxeboot SHA-256 checksums are
+present; explicit Fedora runtime hash pins override both catalog pins and
+metadata lookup. The Ubuntu provider can stage the official 26.04 netboot
+kernel and initrd over HTTPS by default; callers that need a stronger chain can
+configure Ubuntu release key material plus pinned SHA-256 hashes for those
+netboot artifacts. Ubuntu's signed release `SHA256SUMS` currently covers the
+ISO set, not the extracted netboot kernel and initrd.
 
 Local builders that want a self-contained Debian-capable initramfs can include
 their chosen Debian archive public keyring as an initramfs file and point

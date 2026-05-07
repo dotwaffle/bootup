@@ -76,7 +76,12 @@ func TestProviderPlanUsesTargetSourceBaseURL(t *testing.T) {
 
 	target := fedoraTarget("43")
 	target.Source.BaseURL = "https://download.example/fedora/releases/43/Server/x86_64/os/"
-	p := fedora.NewProvider(fedora.Config{Targets: []provider.Target{target}})
+	p := fedora.NewProvider(fedora.Config{
+		Targets: []provider.Target{target},
+		Client: &http.Client{Transport: responseMap{
+			"https://download.example/fedora/releases/43/Server/x86_64/os/.treeinfo": []byte(fedoraTreeinfo(strings.Repeat("a", 64), strings.Repeat("b", 64))),
+		}},
+	})
 
 	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
 	if err != nil {
@@ -84,6 +89,112 @@ func TestProviderPlanUsesTargetSourceBaseURL(t *testing.T) {
 	}
 	if plan.Kernel.URL != "https://download.example/fedora/releases/43/Server/x86_64/os/images/pxeboot/vmlinuz" {
 		t.Fatalf("kernel URL = %q", plan.Kernel.URL)
+	}
+}
+
+func TestProviderPlanUsesTreeinfoChecksumsByDefault(t *testing.T) {
+	t.Parallel()
+
+	kernelSHA256 := strings.Repeat("a", 64)
+	initrdSHA256 := strings.Repeat("b", 64)
+	p := fedora.NewProvider(fedora.Config{
+		ReleaseURL: "https://mirror.example/fedora/releases/44/Server/x86_64/os",
+		Client: &http.Client{Transport: responseMap{
+			"https://mirror.example/fedora/releases/44/Server/x86_64/os/.treeinfo": []byte(fedoraTreeinfo(kernelSHA256, initrdSHA256)),
+		}},
+	})
+
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "fedora-44-amd64-server-netboot",
+			ProviderID: "fedora",
+		},
+	})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.Kernel.SHA256 != kernelSHA256 {
+		t.Fatalf("kernel SHA-256 = %q, want treeinfo hash", plan.Kernel.SHA256)
+	}
+	if plan.Initrd.SHA256 != initrdSHA256 {
+		t.Fatalf("initrd SHA-256 = %q, want treeinfo hash", plan.Initrd.SHA256)
+	}
+}
+
+func TestProviderPlanFailsWithoutTreeinfoChecksums(t *testing.T) {
+	t.Parallel()
+
+	p := fedora.NewProvider(fedora.Config{
+		ReleaseURL: "https://mirror.example/fedora/releases/44/Server/x86_64/os",
+		Client: &http.Client{Transport: responseMap{
+			"https://mirror.example/fedora/releases/44/Server/x86_64/os/.treeinfo": []byte(`[checksums]
+images/pxeboot/vmlinuz = sha256:` + strings.Repeat("a", 64) + `
+`),
+		}},
+	})
+
+	_, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "fedora-44-amd64-server-netboot",
+			ProviderID: "fedora",
+		},
+	})
+	if err == nil {
+		t.Fatal("plan succeeded, want missing initrd checksum error")
+	}
+	if !strings.Contains(err.Error(), ".treeinfo") || !strings.Contains(err.Error(), "images/pxeboot/initrd.img") {
+		t.Fatalf("plan error = %q, want treeinfo initrd checksum context", err)
+	}
+}
+
+func TestProviderPlanUsesExplicitPinsWithoutTreeinfo(t *testing.T) {
+	t.Parallel()
+
+	kernelSHA256 := strings.Repeat("a", 64)
+	initrdSHA256 := strings.Repeat("b", 64)
+	p := fedora.NewProvider(fedora.Config{
+		ReleaseURL:   "https://mirror.example/fedora/releases/44/Server/x86_64/os",
+		KernelSHA256: kernelSHA256,
+		InitrdSHA256: initrdSHA256,
+		Client:       &http.Client{Transport: responseMap{}},
+	})
+
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: provider.Target{
+			ID:         "fedora-44-amd64-server-netboot",
+			ProviderID: "fedora",
+		},
+	})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.Kernel.SHA256 != kernelSHA256 || plan.Initrd.SHA256 != initrdSHA256 {
+		t.Fatalf("plan hashes = %q/%q, want explicit pins", plan.Kernel.SHA256, plan.Initrd.SHA256)
+	}
+}
+
+func TestProviderPlanUsesTargetSourcePinsWithoutTreeinfo(t *testing.T) {
+	t.Parallel()
+
+	target := fedoraTarget("44")
+	target.Source = provider.SourceEntry{
+		BaseURL:      "https://mirror.example/fedora/releases/44/Server/x86_64/os",
+		KernelPath:   "images/pxeboot/vmlinuz",
+		InitrdPath:   "images/pxeboot/initrd.img",
+		KernelSHA256: strings.Repeat("a", 64),
+		InitrdSHA256: strings.Repeat("b", 64),
+	}
+	p := fedora.NewProvider(fedora.Config{
+		Targets: []provider.Target{target},
+		Client:  &http.Client{Transport: responseMap{}},
+	})
+
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.Kernel.SHA256 != target.Source.KernelSHA256 || plan.Initrd.SHA256 != target.Source.InitrdSHA256 {
+		t.Fatalf("plan hashes = %q/%q, want target source pins", plan.Kernel.SHA256, plan.Initrd.SHA256)
 	}
 }
 
@@ -262,4 +373,15 @@ func fedoraTarget(release string) provider.Target {
 			Kind:         "installer",
 		},
 	}
+}
+
+func fedoraTreeinfo(kernelSHA256 string, initrdSHA256 string) string {
+	return `[checksums]
+images/pxeboot/initrd.img = sha256:` + initrdSHA256 + `
+images/pxeboot/vmlinuz = sha256:` + kernelSHA256 + `
+
+[images-x86_64]
+initrd = images/pxeboot/initrd.img
+kernel = images/pxeboot/vmlinuz
+`
 }

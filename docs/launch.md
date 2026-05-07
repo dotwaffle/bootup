@@ -399,9 +399,14 @@ https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os
 https://download.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/os/images/pxeboot/initrd.img
 ```
 
-Fedora staging uses HTTPS transport trust by default. Custom builds can supply a
-Fedora `release_url` override and explicit SHA-256 hashes for the netboot
-kernel/initrd if they need pinned artifact verification.
+The embedded Fedora catalog carries SHA-256 pins from Fedora `.treeinfo`
+metadata for the pxeboot kernel and initrd, so the default static targets stage
+with hash verification. Custom or discovered Fedora targets without catalog
+hashes fetch the selected install tree's `.treeinfo`, require SHA-256 entries
+for both pxeboot artifacts, and place those hashes into the boot plan before
+staging. A Fedora `release_url` override plus explicit provider runtime
+`kernel_sha256` and `initrd_sha256` values remains authoritative and avoids the
+metadata fetch.
 
 The default provider set also lists Ubuntu 24.04.4, 25.10, and 26.04 amd64
 netboot. The 26.04 boot plan uses these official release netboot artifacts by

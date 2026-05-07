@@ -311,6 +311,13 @@ resolve `images/pxeboot/vmlinuz`, `images/pxeboot/initrd.img`, and an
 `inst.repo=` command line from the target source URL or an operator-supplied
 `release_url` override.
 
+Fedora planning uses hash precedence of provider runtime pins, then target
+source pins, then install-tree `.treeinfo`. The embedded Fedora static catalog
+stores `.treeinfo` SHA-256 pins for its pxeboot artifacts so dry-run planning
+and catalog matrix output stay hermetic. Discovered or custom Fedora targets
+without pins fetch `.treeinfo` over HTTPS and fail planning unless both
+`images/pxeboot/vmlinuz` and `images/pxeboot/initrd.img` have SHA-256 entries.
+
 The generic Linux provider currently handles openSUSE Leap, Arch Linux, and
 GParted Live catalog targets. These are Linux-shaped paths: kernel plus
 optional initrd plus command line, staged over HTTPS.

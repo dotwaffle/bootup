@@ -364,7 +364,12 @@ func ApplySelectedOptions(plan BootPlan, selected []SelectedOption) (BootPlan, e
 	if err != nil {
 		return BootPlan{}, err
 	}
-	plan.Cmdline = appendCmdline(plan.Cmdline, strings.Join(fragments, " "))
+	switch plan.ResolvedAction() {
+	case BootActionFreeBSDKboot:
+		plan.FreeBSDKboot.Args = append(plan.FreeBSDKboot.Args, fragments...)
+	default:
+		plan.Cmdline = appendCmdline(plan.Cmdline, strings.Join(fragments, " "))
+	}
 	return plan, nil
 }
 

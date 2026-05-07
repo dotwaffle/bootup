@@ -350,9 +350,11 @@ The supported BSD-adjacent target is `mfsbsd-142-amd64`. It uses FreeBSD
 `loader.kboot` to boot a verified mfsBSD memory-root payload and reaches the
 mfsBSD serial login without attaching target-visible root media. Treat it as a
 rescue bridge for BSD workflows, not as stock FreeBSD bootonly installer
-support. Stock BSD installers, HDT, memdisk ISO images, syslinux COM32 modules,
-and iPXE chainload flows still need a dedicated handoff family rather than the
-current Linux kernel/initrd kexec path.
+support. The target uses `root`/`mfsroot`, enables DHCP and SSH in the mfsBSD
+environment, and accepts `--option hostname=<name>` for a non-secret rescue
+hostname override. Stock BSD installers, HDT, memdisk ISO images, syslinux
+COM32 modules, and iPXE chainload flows still need a dedicated handoff family
+rather than the current Linux kernel/initrd kexec path.
 
 Expected local failure modes:
 

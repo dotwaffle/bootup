@@ -201,7 +201,15 @@
           "lifecycle": {
             "status": "supported",
             "source": "catalog"
-          }
+          },
+          "options": [
+            {
+              "id": "hostname",
+              "label": "Hostname",
+              "type": "string",
+              "template": "mfsbsd.hostname={value}"
+            }
+          ]
         }
       ]
     },

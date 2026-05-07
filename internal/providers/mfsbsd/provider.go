@@ -147,7 +147,7 @@ func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.B
 			},
 		},
 	}
-	return plan, nil
+	return provider.ApplySelectedOptions(plan, input.Options)
 }
 
 // Stage downloads, verifies, and stages artifacts for plan.
@@ -184,6 +184,7 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 
 	plan := config.Plan
 	kboot := plan.FreeBSDKboot
+	selectedArgs := append([]string(nil), kboot.Args...)
 	if err := validateArtifact("mfsBSD ISO", kboot.Payload); err != nil {
 		return provider.BootPlan{}, err
 	}
@@ -232,7 +233,7 @@ func FetchAndStageArtifacts(ctx context.Context, config FetchConfig) (provider.B
 	plan.FreeBSDKboot.Loader = provider.Artifact{Name: "loader.kboot", Path: loader}
 	plan.FreeBSDKboot.LoaderHelp = provider.Artifact{Name: "loader.help.kboot", Path: loaderHelp}
 	plan.FreeBSDKboot.PayloadRoot = payloadRoot
-	plan.FreeBSDKboot.Args = defaultLoaderArgs(payloadRoot)
+	plan.FreeBSDKboot.Args = append(defaultLoaderArgs(payloadRoot), selectedArgs...)
 	return plan, nil
 }
 
@@ -306,6 +307,14 @@ func defaultTargets() []provider.Target {
 		Lifecycle: provider.LifecycleEntry{
 			Status: provider.LifecycleSupported,
 			Source: "catalog",
+		},
+		Options: []provider.TargetOption{
+			{
+				ID:       "hostname",
+				Label:    "Hostname",
+				Type:     provider.TargetOptionString,
+				Template: "mfsbsd.hostname={value}",
+			},
 		},
 	}}
 }
@@ -534,6 +543,8 @@ func defaultLoaderArgs(payloadRoot string) []string {
 		"boot_verbose=YES",
 		"autoboot_delay=0",
 		"beastie_disable=YES",
+		"mfsbsd.autodhcp=YES",
+		"mfsbsd.hostname=mfsbsd",
 	}
 }
 

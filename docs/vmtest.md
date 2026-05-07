@@ -220,7 +220,8 @@ it verifies the full mfsBSD 14.2 amd64 ISO, verifies FreeBSD 15.0
 `base.txz`, extracts `loader.kboot` and `loader.help.kboot`, extracts the ISO
 from Linux stage-1 without mounting it, normalizes `kernel.gz` and
 `mfsroot.gz`, and runs the loader with `hostfs_root`, `bootdev=host:/`, serial
-console settings, and no target-visible payload disk.
+console settings, explicit `mfsbsd.autodhcp=YES`,
+`mfsbsd.hostname=mfsbsd`, and no target-visible payload disk.
 
 Use this target as the currently supported BSD rescue bridge. It proves bootup
 can enter a FreeBSD-derived, RAM-resident target environment from the Linux
@@ -228,6 +229,13 @@ stage-1 and leaves the operator at the mfsBSD serial login. It does not make
 stock FreeBSD bootonly media executable as a product target; that installer
 still needs target-visible `cd9660` root media after `loader.kboot` jumps into
 the FreeBSD kernel.
+
+The mfsBSD image uses the temporary rescue login `root` with password
+`mfsroot`, configures discovered network interfaces with DHCP, enables SSH, and
+includes rescue tools such as `tmux`, `rsync`, `smartmontools`, and
+`zfsinstall`. Use `--option hostname=<name>` to set a non-secret hostname in
+the target environment. Password and SSH-key customization are intentionally not
+catalog options until bootup can avoid printing secret-bearing loader args.
 
 Run the product-path mfsBSD smoke with:
 

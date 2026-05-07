@@ -218,7 +218,15 @@
       "lifecycle": {
         "status": "supported",
         "source": "catalog"
-      }
+      },
+      "options": [
+        {
+          "id": "hostname",
+          "label": "Hostname",
+          "type": "string",
+          "template": "mfsbsd.hostname={value}"
+        }
+      ]
     },
     {
       "id": "ubuntu-24044-amd64-netboot",

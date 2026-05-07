@@ -131,6 +131,12 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 	if mfsBSDTargets[0].Source.ISOSHA256 == "" {
 		t.Fatal("mfsBSD ISO SHA256 is empty")
 	}
+	if len(mfsBSDTargets[0].Options) != 1 {
+		t.Fatalf("mfsBSD options = %#v, want hostname option", mfsBSDTargets[0].Options)
+	}
+	if option := mfsBSDTargets[0].Options[0]; option.ID != "hostname" || option.Template != "mfsbsd.hostname={value}" {
+		t.Fatalf("mfsBSD option = %#v, want hostname template option", option)
+	}
 	ubuntuTargets := doc.Targets("ubuntu")
 	for _, target := range ubuntuTargets {
 		if target.ID == "ubuntu-24044-amd64-netboot" {

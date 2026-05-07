@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -44,6 +45,36 @@ func TestProviderPlanBuildsFreeBSDKbootPlan(t *testing.T) {
 	}
 	if plan.FreeBSDKboot.LoaderArchive.URL == "" || plan.FreeBSDKboot.LoaderArchive.SHA256 != strings.Repeat("b", 64) {
 		t.Fatalf("loader archive = %#v, want configured archive", plan.FreeBSDKboot.LoaderArchive)
+	}
+}
+
+func TestProviderPlanAppliesHostnameOption(t *testing.T) {
+	t.Parallel()
+
+	target := mfsbsdTarget()
+	target.Options = []provider.TargetOption{{
+		ID:       "hostname",
+		Label:    "Hostname",
+		Type:     provider.TargetOptionString,
+		Template: "mfsbsd.hostname={value}",
+	}}
+	p := mfsbsd.NewProvider(mfsbsd.Config{
+		Targets:             []provider.Target{target},
+		LoaderArchiveURL:    "https://download.freebsd.org/releases/amd64/amd64/15.0-RELEASE/base.txz",
+		LoaderArchiveSHA256: strings.Repeat("b", 64),
+	})
+
+	plan, err := p.Plan(context.Background(), provider.PlanInput{
+		Target: target,
+		Options: []provider.SelectedOption{
+			{ID: "hostname", Value: "rescue-a"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if !slices.Contains(plan.FreeBSDKboot.Args, "mfsbsd.hostname=rescue-a") {
+		t.Fatalf("loader args = %#v, want selected hostname", plan.FreeBSDKboot.Args)
 	}
 }
 
@@ -95,6 +126,55 @@ func TestFetchAndStageArtifactsExtractsMemoryRootPayload(t *testing.T) {
 	assertFile(t, filepath.Join(staged.FreeBSDKboot.PayloadRoot, "mfsroot"), "mfsroot")
 	if len(staged.FreeBSDKboot.Args) == 0 || staged.FreeBSDKboot.Args[0] != "hostfs_root="+staged.FreeBSDKboot.PayloadRoot {
 		t.Fatalf("loader args = %#v, want hostfs root first", staged.FreeBSDKboot.Args)
+	}
+	for _, want := range []string{"mfsbsd.autodhcp=YES", "mfsbsd.hostname=mfsbsd"} {
+		if !slices.Contains(staged.FreeBSDKboot.Args, want) {
+			t.Fatalf("loader args = %#v, want %q", staged.FreeBSDKboot.Args, want)
+		}
+	}
+}
+
+func TestFetchAndStageArtifactsPreservesSelectedLoaderArgs(t *testing.T) {
+	t.Parallel()
+
+	iso := []byte("iso")
+	loaderArchive := loaderTXZ(t)
+	plan := provider.BootPlan{
+		Action: provider.BootActionFreeBSDKboot,
+		Target: provider.Target{ID: "mfsbsd-142-amd64", ProviderID: "mfsbsd"},
+		FreeBSDKboot: provider.FreeBSDKbootPlan{
+			Payload: provider.Artifact{
+				Name:   "mfsbsd-14.2-RELEASE-amd64.iso",
+				URL:    "https://mfsbsd.example/mfsbsd.iso",
+				SHA256: sha256Hex(iso),
+			},
+			LoaderArchive: provider.Artifact{
+				Name:   "base.txz",
+				URL:    "https://download.example/base.txz",
+				SHA256: sha256Hex(loaderArchive),
+			},
+			Args: []string{"mfsbsd.hostname=rescue-a"},
+		},
+	}
+	client := &http.Client{Transport: responseMap{
+		"https://mfsbsd.example/mfsbsd.iso": body(iso),
+		"https://download.example/base.txz": body(loaderArchive),
+	}}
+
+	staged, err := mfsbsd.FetchAndStageArtifacts(context.Background(), mfsbsd.FetchConfig{
+		Plan:       plan,
+		Client:     client,
+		StagingDir: t.TempDir(),
+		Extractor:  &fakeExtractor{},
+	})
+	if err != nil {
+		t.Fatalf("fetch and stage: %v", err)
+	}
+	if len(staged.FreeBSDKboot.Args) == 0 || staged.FreeBSDKboot.Args[0] != "hostfs_root="+staged.FreeBSDKboot.PayloadRoot {
+		t.Fatalf("loader args = %#v, want generated defaults first", staged.FreeBSDKboot.Args)
+	}
+	if !slices.Contains(staged.FreeBSDKboot.Args, "mfsbsd.hostname=rescue-a") {
+		t.Fatalf("loader args = %#v, want selected hostname arg", staged.FreeBSDKboot.Args)
 	}
 }
 

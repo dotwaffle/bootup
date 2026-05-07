@@ -160,8 +160,11 @@ values, and fragments or templates with surrounding whitespace or control
 characters.
 
 Operators select options with repeatable `--option id=value` flags. Selected
-fragments are appended after provider defaults and before `--append-cmdline`,
-so operator append text remains the final command-line addition.
+fragments are applied by boot action. Linux kexec targets append them after
+provider defaults and before `--append-cmdline`, so operator append text remains
+the final command-line addition. FreeBSD kboot targets append them to the
+`loader.kboot` argument list because they do not boot through a Linux kernel
+command line.
 
 The `local` provider exposes `local-disk-auto` as a `localboot` action. It does
 not download artifacts; handoff invokes u-root's local boot command to inspect
@@ -177,6 +180,21 @@ FreeBSD loader preloads `mfsroot`; after the kernel jump, the target mounts
 rescue bridge for now. It is not equivalent to booting the stock FreeBSD
 bootonly installer, because stock FreeBSD media still expects target-visible
 `cd9660` root media after the kernel starts.
+
+The target passes explicit mfsBSD runtime loader variables for auto-DHCP and
+hostname. The stock image enables SSH and uses `root` with password `mfsroot`;
+use that as a temporary rescue credential and rotate any installed-system
+secrets separately. The catalog exposes a non-secret hostname option:
+
+```sh
+bootup --mode=boot-target --target=mfsbsd-142-amd64 \
+  --option hostname=rescue-a
+```
+
+That option appends `mfsbsd.hostname=rescue-a` to the `loader.kboot` argument
+list after the default `mfsbsd.hostname=mfsbsd` argument. Bootup does not expose
+root password, password hash, or SSH key options yet because plan and stage
+output prints loader arguments.
 
 ## Implemented mode: provider discovery
 

@@ -584,6 +584,45 @@ func TestApplySelectedOptionsAppendsFragmentsInTargetOrder(t *testing.T) {
 	}
 }
 
+func TestApplySelectedOptionsAppendsFragmentsToFreeBSDKbootArgs(t *testing.T) {
+	t.Parallel()
+
+	target := provider.Target{
+		ID:         "mfsbsd-142-amd64",
+		ProviderID: "mfsbsd",
+		Action:     provider.BootActionFreeBSDKboot,
+		Options: []provider.TargetOption{
+			{
+				ID:       "hostname",
+				Label:    "Hostname",
+				Type:     provider.TargetOptionString,
+				Template: "mfsbsd.hostname={value}",
+			},
+		},
+	}
+	plan := provider.BootPlan{
+		Target: target,
+		Action: provider.BootActionFreeBSDKboot,
+		FreeBSDKboot: provider.FreeBSDKbootPlan{
+			Args: []string{"hostfs_root=/tmp/mfsbsd-root"},
+		},
+	}
+
+	got, err := provider.ApplySelectedOptions(plan, []provider.SelectedOption{
+		{ID: "hostname", Value: "rescue-a"},
+	})
+	if err != nil {
+		t.Fatalf("apply selected options: %v", err)
+	}
+	want := []string{"hostfs_root=/tmp/mfsbsd-root", "mfsbsd.hostname=rescue-a"}
+	if !reflect.DeepEqual(got.FreeBSDKboot.Args, want) {
+		t.Fatalf("freebsd kboot args = %#v, want %#v", got.FreeBSDKboot.Args, want)
+	}
+	if got.Cmdline != "" {
+		t.Fatalf("cmdline = %q, want empty", got.Cmdline)
+	}
+}
+
 func TestRegistryStagesThroughTargetProvider(t *testing.T) {
 	t.Parallel()
 

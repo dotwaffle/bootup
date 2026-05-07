@@ -16,14 +16,21 @@ configuration file.
 #### Scenario: Provider config is loaded
 - **WHEN** bootup starts with a readable provider runtime configuration file
 - **THEN** bootup SHALL apply configured provider source URLs, keyring paths,
-  artifact hash pins, discovery settings, and lifecycle metadata before target
-  discovery
+  artifact hash pins, discovery settings, local discovery metadata paths, and
+  lifecycle metadata before target discovery
 
 #### Scenario: Provider discovery config is supplied
-- **WHEN** provider runtime configuration includes discovery URL and discovery
-  timeout fields for a compiled-in provider
+- **WHEN** provider runtime configuration includes discovery URL, local
+  discovery metadata path, or discovery timeout fields for a compiled-in
+  provider
 - **THEN** bootup SHALL validate those fields and pass them to that provider
   before discovery can run
+
+#### Scenario: Local provider discovery config is supplied
+- **WHEN** provider runtime configuration includes a `discovery_file` path for
+  a compiled-in provider
+- **THEN** bootup SHALL validate that it references a local filesystem path and
+  pass it to that provider before discovery can run
 
 #### Scenario: Provider lifecycle config is supplied
 - **WHEN** provider runtime configuration includes lifecycle metadata for a
@@ -50,8 +57,8 @@ configuration file.
   retrieval
 
 #### Scenario: Provider discovery config is invalid
-- **WHEN** discovery URL, discovery timeout, lifecycle status, or lifecycle date
-  configuration is malformed
+- **WHEN** discovery URL, local discovery metadata path, discovery timeout,
+  lifecycle status, or lifecycle date configuration is malformed
 - **THEN** bootup SHALL fail startup before registering provider targets
 
 #### Scenario: Fedora provider config is invalid
@@ -95,13 +102,14 @@ Bootup SHALL allow operator runtime configuration to override Fedora discovery
 source settings.
 
 #### Scenario: Fedora discovery config is supplied
-- **WHEN** provider runtime configuration includes Fedora discovery URL or
-  discovery timeout fields
+- **WHEN** provider runtime configuration includes Fedora discovery URL, local
+  discovery metadata path, or discovery timeout fields
 - **THEN** bootup SHALL validate those fields and pass them to the Fedora
   provider before discovery can run
 
 #### Scenario: Fedora discovery config is invalid
-- **WHEN** Fedora discovery URL or discovery timeout configuration is malformed
+- **WHEN** Fedora discovery URL, local discovery metadata path, or discovery
+  timeout configuration is malformed
 - **THEN** bootup SHALL fail startup before registering provider targets
 
 ### Requirement: Runtime configuration dynamic policy boundary

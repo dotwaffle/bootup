@@ -16,6 +16,7 @@ import (
 	"github.com/dotwaffle/bootup/internal/app"
 	"github.com/dotwaffle/bootup/internal/buildinfo"
 	"github.com/dotwaffle/bootup/internal/catalog"
+	"github.com/dotwaffle/bootup/internal/diagnostics"
 	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
 	"github.com/dotwaffle/bootup/internal/provider"
@@ -57,6 +58,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	catalogCacheFallback := flags.Bool("catalog-cache-fallback", false, "fall back to authenticated hosted catalog cache on fetch failure")
 	catalogMaxBytes := flags.Int64("catalog-max-bytes", 0, "maximum hosted catalog size in bytes")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
+	diagnosticsDir := flags.String("diagnostics-dir", "", "directory for opt-in failure diagnostics bundles")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
 	var targetOptions optionFlags
 	flags.Var(&targetOptions, "option", "target option selection as id=value; repeatable")
@@ -74,16 +76,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		return err
 	}
 
-	var providerConfig providerconfig.Config
-	if *providerConfigPath != "" {
-		config, err := providerconfig.LoadFile(*providerConfigPath)
-		if err != nil {
-			return fmt.Errorf("load provider config: %w", err)
-		}
-		providerConfig = config
-	}
-
-	catalogDoc, err := loadCatalog(ctx, catalogSource{
+	catalogSource := catalogSource{
 		Path:              *catalogPath,
 		URL:               *catalogURL,
 		SHA256:            *catalogSHA256,
@@ -95,53 +88,163 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		CacheFallback:     *catalogCacheFallback,
 		MaxBytes:          *catalogMaxBytes,
 		CompiledProviders: compiledProviderIDs(),
+	}
+	var capture *diagnostics.Capture
+	if strings.TrimSpace(*diagnosticsDir) != "" {
+		capture = diagnostics.NewCapture()
+		stdout = capture.Stdout(stdout)
+		stderr = capture.Stderr(stderr)
+	}
+
+	runErr := func() error {
+		var providerConfig providerconfig.Config
+		if *providerConfigPath != "" {
+			config, err := providerconfig.LoadFile(*providerConfigPath)
+			if err != nil {
+				return fmt.Errorf("load provider config: %w", err)
+			}
+			providerConfig = config
+		}
+
+		catalogDoc, err := loadCatalog(ctx, catalogSource)
+		if err != nil {
+			return fmt.Errorf("load catalog: %w", err)
+		}
+
+		var preparers []app.Preparer
+		networkConfig := runtime.NetworkConfig{
+			Interface:   *netIface,
+			AddressCIDR: *netAddress,
+			Gateway:     *netGateway,
+			DNSServers:  parseDNSServers(*netDNS),
+		}
+		if *prepareRuntime || hasNetworkConfig(networkConfig) {
+			preparers = append(preparers, runtime.NetworkPreparer{Config: networkConfig})
+		}
+		if *prepareRuntime {
+			preparers = append(preparers,
+				app.PrepareFunc(func(ctx context.Context) error {
+					return runtime.CertPreparer{}.Prepare()
+				}),
+				runtime.TimePreparer{},
+			)
+		}
+
+		registry := provider.NewRegistry()
+		if err := registerProviders(registry, providerConfig, catalogDoc); err != nil {
+			return err
+		}
+
+		runner := app.New(app.Config{
+			Registry:          registry,
+			Stdin:             stdin,
+			Stdout:            stdout,
+			Stderr:            stderr,
+			Logger:            logging.NewSerialLogger(stderr, slog.LevelInfo),
+			Mode:              app.Mode(*mode),
+			UIMode:            app.UIMode(*uiMode),
+			TargetID:          *targetID,
+			TargetOptions:     []provider.SelectedOption(targetOptions),
+			DiscoveryFamilyID: *discoveryFamilyID,
+			StagingDir:        *stagingDir,
+			CmdlineAppend:     *cmdlineAppend,
+			Hold:              *hold,
+			Executor:          handoff.KexecExecutor{},
+			Preparers:         preparers,
+		})
+		return runner.Run(ctx)
+	}()
+	if runErr != nil && capture != nil {
+		return writeFailureDiagnostics(runErr, failureDiagnosticsInput{
+			RootDir:           *diagnosticsDir,
+			Capture:           capture,
+			Mode:              *mode,
+			TargetID:          *targetID,
+			DiscoveryFamilyID: *discoveryFamilyID,
+			TargetOptions:     []provider.SelectedOption(targetOptions),
+			CatalogSource:     catalogSource,
+			ProviderConfig:    *providerConfigPath,
+		})
+	}
+	return runErr
+}
+
+type failureDiagnosticsInput struct {
+	RootDir           string
+	Capture           *diagnostics.Capture
+	Mode              string
+	TargetID          string
+	DiscoveryFamilyID string
+	TargetOptions     []provider.SelectedOption
+	CatalogSource     catalogSource
+	ProviderConfig    string
+}
+
+func writeFailureDiagnostics(runErr error, input failureDiagnosticsInput) error {
+	summary := diagnostics.BuildSummary(diagnostics.SummaryInput{
+		Mode:              input.Mode,
+		TargetID:          input.TargetID,
+		DiscoveryFamilyID: input.DiscoveryFamilyID,
+		SelectedOptions:   input.TargetOptions,
+		Catalog:           diagnosticsCatalogPosture(input.CatalogSource),
+		ProviderConfig:    diagnostics.ProviderConfigPosture{PathSet: input.ProviderConfig != ""},
+		Error:             runErr,
+		RedactValues:      diagnosticsRedactValues(input.CatalogSource, input.ProviderConfig),
 	})
-	if err != nil {
-		return fmt.Errorf("load catalog: %w", err)
-	}
-
-	var preparers []app.Preparer
-	networkConfig := runtime.NetworkConfig{
-		Interface:   *netIface,
-		AddressCIDR: *netAddress,
-		Gateway:     *netGateway,
-		DNSServers:  parseDNSServers(*netDNS),
-	}
-	if *prepareRuntime || hasNetworkConfig(networkConfig) {
-		preparers = append(preparers, runtime.NetworkPreparer{Config: networkConfig})
-	}
-	if *prepareRuntime {
-		preparers = append(preparers,
-			app.PrepareFunc(func(ctx context.Context) error {
-				return runtime.CertPreparer{}.Prepare()
-			}),
-			runtime.TimePreparer{},
-		)
-	}
-
-	registry := provider.NewRegistry()
-	if err := registerProviders(registry, providerConfig, catalogDoc); err != nil {
-		return err
-	}
-
-	runner := app.New(app.Config{
-		Registry:          registry,
-		Stdin:             stdin,
-		Stdout:            stdout,
-		Stderr:            stderr,
-		Logger:            logging.NewSerialLogger(stderr, slog.LevelInfo),
-		Mode:              app.Mode(*mode),
-		UIMode:            app.UIMode(*uiMode),
-		TargetID:          *targetID,
-		TargetOptions:     []provider.SelectedOption(targetOptions),
-		DiscoveryFamilyID: *discoveryFamilyID,
-		StagingDir:        *stagingDir,
-		CmdlineAppend:     *cmdlineAppend,
-		Hold:              *hold,
-		Executor:          handoff.KexecExecutor{},
-		Preparers:         preparers,
+	bundleDir, diagnosticsErr := diagnostics.WriteBundle(diagnostics.Bundle{
+		RootDir: input.RootDir,
+		Summary: summary,
+		Stdout:  input.Capture.StdoutBytes(),
+		Stderr:  input.Capture.StderrBytes(),
 	})
-	return runner.Run(ctx)
+	if diagnosticsErr != nil {
+		return fmt.Errorf("%w; write diagnostics: %w", runErr, diagnosticsErr)
+	}
+	return fmt.Errorf("%w; diagnostics: %s", runErr, bundleDir)
+}
+
+func diagnosticsCatalogPosture(source catalogSource) diagnostics.CatalogPosture {
+	posture := diagnostics.CatalogPosture{
+		LocalPathSet:   source.Path != "",
+		HostedURLSet:   source.URL != "",
+		SHA256:         strings.TrimSpace(source.SHA256) != "",
+		Ed25519:        source.SignaturePath != "" || source.PublicKeyPath != "",
+		SignatureFiles: source.SignaturePath != "" || source.PublicKeyPath != "",
+		Freshness:      source.RequireFreshness || source.MaxAge > 0,
+		Cache:          source.CachePath != "",
+		CacheFallback:  source.CacheFallback,
+		MaxBytes:       source.MaxBytes > 0,
+	}
+	switch {
+	case source.Path != "" && source.URL != "":
+		posture.Source = "multiple"
+	case source.URL != "":
+		posture.Source = "hosted"
+	case source.Path != "":
+		posture.Source = "local"
+	default:
+		posture.Source = "embedded"
+	}
+	return posture
+}
+
+func diagnosticsRedactValues(source catalogSource, providerConfigPath string) []string {
+	values := []string{
+		source.Path,
+		source.URL,
+		source.SignaturePath,
+		source.PublicKeyPath,
+		source.CachePath,
+		providerConfigPath,
+	}
+	redactions := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			redactions = append(redactions, value)
+		}
+	}
+	return redactions
 }
 
 type optionFlags []provider.SelectedOption

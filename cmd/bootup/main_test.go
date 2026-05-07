@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/dotwaffle/bootup/internal/diagnostics"
+	"github.com/dotwaffle/bootup/internal/provider"
 )
 
 func TestRunRejectsMissingProviderConfig(t *testing.T) {
@@ -294,6 +299,118 @@ func TestRunAppliesTargetOptionFlagsBeforeAppendCmdline(t *testing.T) {
 	}
 }
 
+func TestRunWritesDiagnosticsOnFailure(t *testing.T) {
+	t.Parallel()
+
+	diagnosticsRoot := t.TempDir()
+	secretMirror := "https://secret.example/install token"
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--diagnostics-dir", diagnosticsRoot,
+		"--mode", "plan-target",
+		"--target", "opensuse-leap-160-amd64-netboot",
+		"--option", "mirror-url=" + secretMirror,
+	}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("run succeeded, want invalid option error")
+	}
+	if !errors.Is(err, provider.ErrInvalidTargetOption) {
+		t.Fatalf("run error = %v, want invalid target option", err)
+	}
+
+	bundleDir := onlyDiagnosticsBundleDir(t, diagnosticsRoot)
+	got := readDiagnosticsSummary(t, filepath.Join(bundleDir, "summary.json"))
+	if got.Mode != "plan-target" {
+		t.Fatalf("mode = %q, want plan-target", got.Mode)
+	}
+	if got.TargetID != "opensuse-leap-160-amd64-netboot" {
+		t.Fatalf("target ID = %q, want selected target", got.TargetID)
+	}
+	if !slices.Equal(got.SelectedOptionIDs, []string{"mirror-url"}) {
+		t.Fatalf("selected option IDs = %#v, want mirror-url", got.SelectedOptionIDs)
+	}
+	if got.Catalog.Source != "embedded" {
+		t.Fatalf("catalog posture = %#v, want embedded source", got.Catalog)
+	}
+	if got.ProviderConfig.PathSet {
+		t.Fatalf("provider config posture = %#v, want no path", got.ProviderConfig)
+	}
+	if strings.Contains(got.Error, secretMirror) || strings.Contains(got.Error, "token") {
+		t.Fatalf("summary error = %q, want redacted selected option value", got.Error)
+	}
+	if !strings.Contains(got.Error, "<redacted>") {
+		t.Fatalf("summary error = %q, want redaction marker", got.Error)
+	}
+	if got.CreatedAt == "" {
+		t.Fatal("created_at is empty")
+	}
+	if got.SchemaVersion != 1 {
+		t.Fatalf("schema version = %d, want 1", got.SchemaVersion)
+	}
+
+	stdoutFile := readTextFile(t, filepath.Join(bundleDir, "stdout.txt"))
+	if stdoutFile != stdout.String() {
+		t.Fatalf("captured stdout = %q, want console stdout %q", stdoutFile, stdout.String())
+	}
+	if !strings.Contains(stdoutFile, "[planning] openSUSE Leap 16.0 amd64 installer") {
+		t.Fatalf("captured stdout = %q, want planning output", stdoutFile)
+	}
+	stderrFile := readTextFile(t, filepath.Join(bundleDir, "stderr.txt"))
+	if stderrFile != stderr.String() {
+		t.Fatalf("captured stderr = %q, want console stderr %q", stderrFile, stderr.String())
+	}
+	if !strings.Contains(stderrFile, "bootup started") {
+		t.Fatalf("captured stderr = %q, want app log output", stderrFile)
+	}
+}
+
+func TestRunDiagnosticsDisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "plan-target",
+		"--target", "opensuse-leap-160-amd64-netboot",
+		"--option", "mirror-url=https://secret.example/install token",
+	}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatal("run succeeded, want invalid option error")
+	}
+	if strings.Contains(err.Error(), "diagnostics") {
+		t.Fatalf("run error = %q, want no diagnostics context by default", err)
+	}
+	if strings.Contains(stdout.String(), "summary.json") || strings.Contains(stderr.String(), "summary.json") {
+		t.Fatalf("output mentions diagnostics by default: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunReportsDiagnosticsWriteFailureAsSecondary(t *testing.T) {
+	t.Parallel()
+
+	rootFile := filepath.Join(t.TempDir(), "diagnostics")
+	if err := os.WriteFile(rootFile, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write root file: %v", err)
+	}
+
+	err := runWithIO(context.Background(), []string{
+		"--diagnostics-dir", rootFile,
+		"--mode", "plan-target",
+		"--target", "opensuse-leap-160-amd64-netboot",
+		"--option", "mirror-url=https://secret.example/install token",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("run succeeded, want invalid option error")
+	}
+	if !errors.Is(err, provider.ErrInvalidTargetOption) {
+		t.Fatalf("run error = %v, want invalid target option", err)
+	}
+	if !strings.Contains(err.Error(), "write diagnostics") {
+		t.Fatalf("run error = %q, want secondary diagnostics write context", err)
+	}
+}
+
 func TestParseDNSServers(t *testing.T) {
 	t.Parallel()
 
@@ -305,4 +422,41 @@ func TestParseDNSServers(t *testing.T) {
 	if got := parseDNSServers(" "); len(got) != 0 {
 		t.Fatalf("empty DNS servers = %#v, want none", got)
 	}
+}
+
+func onlyDiagnosticsBundleDir(t *testing.T, root string) string {
+	t.Helper()
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read diagnostics root: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("diagnostics entries = %d, want 1", len(entries))
+	}
+	if !entries[0].IsDir() {
+		t.Fatalf("diagnostics entry %q is not a directory", entries[0].Name())
+	}
+	return filepath.Join(root, entries[0].Name())
+}
+
+func readDiagnosticsSummary(t *testing.T, path string) diagnostics.Summary {
+	t.Helper()
+
+	data := []byte(readTextFile(t, path))
+	var summary diagnostics.Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("decode diagnostics summary: %v", err)
+	}
+	return summary
+}
+
+func readTextFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
 }

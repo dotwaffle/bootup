@@ -120,6 +120,25 @@ console output, and network configuration inside the VM when the selected target
 must fetch artifacts before kexec. Use the explicit environment variables or
 helper scripts below so those requirements are visible at invocation time.
 
+For local QEMU triage, add `--diagnostics-dir` to the initramfs uinit command
+so bootup captures the failure context inside the VM:
+
+```sh
+scripts/build-initramfs.sh \
+  dist/bootup-diagnostics-initramfs.cpio \
+  'bootup --mode=plan-target --target=opensuse-leap-160-amd64-netboot --diagnostics-dir=/tmp/bootup-diagnostics' \
+  ''
+
+BOOTUP_INITRAMFS=dist/bootup-diagnostics-initramfs.cpio.zst \
+BOOTUP_CMDLINE='console=ttyS0 panic=30' \
+scripts/run-qemu.sh
+```
+
+The diagnostics directory lives in the guest filesystem. Use it when the VM is
+held open for inspection, or back it with a persistent test mount or disk if
+the files must survive QEMU exit. `summary.json` contains redacted metadata;
+`stdout.txt` and `stderr.txt` mirror the serial-visible bootup streams.
+
 To attempt a catalog target through the current QEMU helper by target ID:
 
 ```sh

@@ -276,6 +276,34 @@ bootup --mode=plan-target \
   --append-cmdline=console=ttyS1
 ```
 
+## Failure diagnostics
+
+Bootup can write an opt-in diagnostics bundle when a startup mode fails after
+flag parsing:
+
+```sh
+bootup --diagnostics-dir=/var/log/bootup \
+  --mode=plan-target \
+  --target=opensuse-leap-160-amd64-netboot
+```
+
+Each failure creates a timestamped `bootup-YYYYMMDDThhmmssZ` directory with
+`summary.json`, `stdout.txt`, and `stderr.txt`. The summary records redacted
+metadata: mode, target ID, discovery family ID, selected option IDs, catalog
+source posture, provider config path presence, and final error text. It does
+not store selected option values, provider config contents, catalog trust
+bytes, passwords, tokens, or SSH keys.
+
+The text stream files preserve the same stdout and stderr/log bytes that were
+written to the active console. They can include normal operator-visible plan or
+fatal output, including non-secret target option values. Bundle directories are
+created with mode `0700`, and files are written with mode `0600`.
+
+Diagnostics are best-effort. If bootup fails and the diagnostics bundle cannot
+be written, the original startup error is still returned with the diagnostics
+write failure appended as secondary context. When `--diagnostics-dir` is not
+set, bootup does not buffer streams or create diagnostics files.
+
 To smoke-test menu selection without live network assumptions:
 
 ```sh

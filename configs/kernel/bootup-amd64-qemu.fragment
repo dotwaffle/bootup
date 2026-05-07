@@ -31,6 +31,11 @@ CONFIG_PROC_FS=y
 CONFIG_SYSFS=y
 CONFIG_TMPFS=y
 
+# FreeBSD loader.kboot reads Linux boot metadata through kallsyms and kcore.
+CONFIG_KALLSYMS=y
+CONFIG_KALLSYMS_ALL=y
+CONFIG_PROC_KCORE=y
+
 # Bootup hands off to the selected target with kexec.
 CONFIG_CRYPTO=y
 CONFIG_CRYPTO_SHA256=y

@@ -10,10 +10,10 @@ func TestCheckKernelConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		fixture    string
-		wantOK     bool
-		wantStderr string
+		name          string
+		fixture       string
+		wantOK        bool
+		wantStderrSub []string
 	}{
 		{
 			name:    "pass",
@@ -21,14 +21,20 @@ func TestCheckKernelConfig(t *testing.T) {
 			wantOK:  true,
 		},
 		{
-			name:       "missing",
-			fixture:    "testdata/missing.config",
-			wantStderr: "CONFIG_IP_PNP is not set",
+			name:    "missing",
+			fixture: "testdata/missing.config",
+			wantStderrSub: []string{
+				"CONFIG_KALLSYMS_ALL is not set",
+				"CONFIG_IP_PNP is not set",
+			},
 		},
 		{
-			name:       "modular",
-			fixture:    "testdata/modular.config",
-			wantStderr: "CONFIG_E1000=m, want CONFIG_E1000=y",
+			name:    "modular",
+			fixture: "testdata/modular.config",
+			wantStderrSub: []string{
+				"CONFIG_PROC_KCORE=m, want CONFIG_PROC_KCORE=y",
+				"CONFIG_E1000=m, want CONFIG_E1000=y",
+			},
 		},
 	}
 
@@ -44,8 +50,10 @@ func TestCheckKernelConfig(t *testing.T) {
 			if !tt.wantOK && err == nil {
 				t.Fatalf("check config succeeded, want failure\n%s", output)
 			}
-			if tt.wantStderr != "" && !strings.Contains(string(output), tt.wantStderr) {
-				t.Fatalf("output = %q, want substring %q", output, tt.wantStderr)
+			for _, want := range tt.wantStderrSub {
+				if !strings.Contains(string(output), want) {
+					t.Fatalf("output = %q, want substring %q", output, want)
+				}
 			}
 		})
 	}

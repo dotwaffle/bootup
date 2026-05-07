@@ -142,3 +142,40 @@ scripts/smoke-real-ubuntu.sh
 The helper exits with the timeout status if QEMU remains in the target
 installer after a successful kexec. Check the serial output for
 `[loading] Ubuntu 26.04 amd64 netboot` and the target kernel boot log.
+
+For an opt-in FreeBSD `loader.kboot` proof, first build a bootup kernel from
+the current kernel fragment:
+
+```sh
+scripts/build-kernel.sh
+```
+
+The FreeBSD kboot path depends on Linux metadata interfaces that are not needed
+by normal Linux kexec targets. The bootup kernel validator requires
+`CONFIG_KALLSYMS=y`, `CONFIG_KALLSYMS_ALL=y`, and `CONFIG_PROC_KCORE=y` so
+FreeBSD `loader.kboot` can recover Linux `boot_params` and EFI memory-map
+state before handing off to the FreeBSD kernel.
+
+Then run the opt-in smoke helper with the generated kernel and config:
+
+```sh
+KERNEL="$(ls -1 dist/kernel/linux-*-bootup-amd64-bzImage | tail -n 1)"
+CONFIG="${KERNEL%-bzImage}.config"
+BOOTUP_FREEBSD_KBOOT_KERNEL="${KERNEL}" \
+BOOTUP_FREEBSD_KBOOT_KERNEL_CONFIG="${CONFIG}" \
+scripts/smoke-freebsd-kboot.sh
+```
+
+By default the helper downloads FreeBSD 15.0-RELEASE `base.txz` and the
+uncompressed bootonly ISO into a `/tmp/bootup-freebsd-kboot-smoke.*` work
+directory, extracts `loader.kboot`, builds a temporary bootup initramfs and
+hybrid ISO, attaches the FreeBSD ISO as a read-only virtio block device, and
+runs the loader with `bootdev=/dev/vda:`. Provide
+`BOOTUP_FREEBSD_KBOOT_LOADER`, `BOOTUP_FREEBSD_KBOOT_HELP`, and
+`BOOTUP_FREEBSD_KBOOT_ISO` to reuse already downloaded artifacts.
+
+The script treats the old `boot_params`/EFI memory-map panic as a distinct
+failure. It only exits successfully when a configured target marker appears
+after the FreeBSD kernel jump. Override
+`BOOTUP_FREEBSD_KBOOT_TARGET_PATTERN` if a specific FreeBSD installer or mfsBSD
+shell emits a better serial marker for the environment under test.

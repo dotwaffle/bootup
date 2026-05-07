@@ -345,13 +345,29 @@ Bootup SHALL include a compiled-in Fedora Server amd64 netboot provider.
   target source base URL
 
 #### Scenario: Fedora hashes are absent
-- **WHEN** the Fedora provider lacks explicit kernel and initrd hashes
-- **THEN** bootup SHALL stage Fedora netboot artifacts only from HTTPS URLs
+- **WHEN** the Fedora provider lacks explicit runtime and target source kernel
+  and initrd hashes
+- **THEN** bootup SHALL fetch Fedora install-tree `.treeinfo` metadata, require
+  SHA-256 checksums for `images/pxeboot/vmlinuz` and
+  `images/pxeboot/initrd.img`, and place those checksums in the boot plan
+
+#### Scenario: Fedora treeinfo is incomplete
+- **WHEN** the Fedora provider lacks explicit runtime and target source kernel
+  and initrd hashes and the install-tree `.treeinfo` metadata is unavailable,
+  malformed, or missing either pxeboot SHA-256 checksum
+- **THEN** bootup SHALL fail planning before staging Fedora artifacts
+
+#### Scenario: Fedora target source hashes are present
+- **WHEN** the selected Fedora catalog target has explicit source kernel and
+  initrd hashes and the provider lacks runtime hashes
+- **THEN** bootup SHALL place the target source hashes in the boot plan without
+  requiring Fedora `.treeinfo` metadata
 
 #### Scenario: Fedora hashes are present
-- **WHEN** the Fedora provider has explicit kernel and initrd hashes
+- **WHEN** the Fedora provider has explicit runtime kernel and initrd hashes
 - **THEN** bootup SHALL verify each downloaded Fedora netboot artifact before
-  staging it
+  staging it without using target source hashes or requiring Fedora `.treeinfo`
+  metadata
 
 ### Requirement: Action-dispatched handoff
 Bootup SHALL dispatch target handoff behavior using the boot action in the

@@ -35,6 +35,8 @@ using them.
   expired, or exceeds the configured maximum age
 - **THEN** bootup SHALL reject the cached body before provider planning
 
+## ADDED Requirements
+
 ### Requirement: Policy operations
 Bootup SHALL provide operator-facing support for producing and exercising signed
 policy decisions without weakening the data-only policy contract.

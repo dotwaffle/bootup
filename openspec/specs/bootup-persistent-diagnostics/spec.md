@@ -5,7 +5,6 @@
 Capture opt-in failure bundles for bootup startup modes so operators can
 inspect redacted run metadata and console streams after noisy serial or QEMU
 sessions.
-
 ## Requirements
 ### Requirement: Failure diagnostics bundle
 Bootup SHALL provide an opt-in diagnostics directory that records failure
@@ -26,8 +25,9 @@ context for startup modes without changing normal console output.
 - **WHEN** bootup writes a diagnostics summary
 - **THEN** the summary SHALL include mode, target ID, discovery family ID,
   selected option IDs, catalog source posture, provider config path presence,
-  and final error, and MUST NOT include selected option values, provider config
-  contents, trust material bytes, passwords, tokens, or SSH keys
+  policy source kind, policy cache posture, policy fallback category, and final
+  error, and MUST NOT include selected option values, provider config contents,
+  policy response bodies, trust material bytes, passwords, tokens, or SSH keys
 
 #### Scenario: Diagnostics failure preserves original error
 - **WHEN** bootup fails and diagnostics bundle writing also fails

@@ -28,4 +28,4 @@
 - [x] 5.1 Run gofmt.
 - [x] 5.2 Run go test ./...
 - [x] 5.3 Run golangci-lint run.
-- [ ] 5.4 Archive the change and update the handoff file.
+- [x] 5.4 Archive the change and update the handoff file.

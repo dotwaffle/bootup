@@ -22,7 +22,18 @@ The `kexec_load` fallback is still a Linux kernel handoff, not a firmware,
 memdisk, COM32, or generic bootloader emulator. u-root's Multiboot package is
 useful for Multiboot v1 kernels with modules, but it does not make stock
 FreeBSD release artifacts bootable because they depend on FreeBSD loader
-semantics. For another example, MemTest86+ 8.00's x86_64 image boots through
+semantics.
+
+OpenBSD is also outside the current executor set. OpenBSD/amd64 install and
+recovery flows center on `bsd.rd`, which is an OpenBSD ramdisk kernel loaded by
+OpenBSD `boot`, `cdboot`, `pxeboot`, BIOS/EFI media, or another bootloader that
+knows how to start an OpenBSD kernel. A quick check of OpenBSD 7.8 amd64
+`bsd.rd` shows a gzip-compressed ELF executable, not a Linux bzImage, and no
+Multiboot v1/v2 header in the first 8 KiB. Bootup should not advertise OpenBSD
+installer targets until it has a firmware/bootloader chainload action or an
+OpenBSD-aware loader path with smoke evidence.
+
+For another example, MemTest86+ 8.00's x86_64 image boots through
 QEMU's `-kernel` Linux boot protocol path, but it is not accepted by
 `kexec_file_load` because it does not set `XLF_CAN_BE_LOADED_ABOVE_4G`, and
 u-root's Linux `kexec_load` path does not support the image's non-relocatable

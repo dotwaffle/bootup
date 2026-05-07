@@ -261,8 +261,12 @@ semantics that are not the same as Linux kernel/initrd kexec. u-root's
 Multiboot support helps only for payloads that are actually
 Multiboot-compatible; stock FreeBSD 15.0 release artifacts still need a
 FreeBSD loader plus target-visible root media, EFI chainload, disk/ISO
-chainload, or another dedicated handoff. Add those targets only after bootup
-has a proven executor family for their handoff type.
+chainload, or another dedicated handoff. OpenBSD installer media is in the same
+deferred class: `bsd.rd` is a useful ramdisk installer/recovery kernel, but the
+supported OpenBSD paths load it through OpenBSD boot blocks, `boot`, `cdboot`,
+`pxeboot`, or EFI/BIOS media rather than through Linux kexec or FreeBSD
+`loader.kboot`. Add those targets only after bootup has a proven executor
+family for their handoff type.
 
 ## Future mode: dynamic policy
 

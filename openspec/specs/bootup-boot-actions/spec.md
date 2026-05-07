@@ -39,3 +39,9 @@ targets as executable until a dedicated executor family supports them.
 - **THEN** bootup SHALL keep that target out of the executable default catalog
   and document it as future work
 
+#### Scenario: OpenBSD installer requires OpenBSD boot semantics
+- **WHEN** a candidate OpenBSD target depends on `bsd.rd`, OpenBSD boot blocks,
+  `boot`, `cdboot`, `pxeboot`, EFI media, or BIOS media
+- **THEN** bootup SHALL keep that target out of the executable default catalog
+  until a dedicated OpenBSD-aware loader or firmware/bootloader chainload
+  executor has reproducible smoke evidence

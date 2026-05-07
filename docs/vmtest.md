@@ -214,6 +214,13 @@ In either mfsBSD mode the helper does not attach a FreeBSD or mfsBSD payload
 disk. The Linux stage-1 presents the extracted root through `hostfs_root`,
 `loader.kboot` preloads `mfsroot`, and the target kernel mounts `ufs:/dev/md0`.
 
+The executable `mfsbsd-142-amd64` catalog target uses the same handoff shape:
+it verifies the full mfsBSD 14.2 amd64 ISO, verifies FreeBSD 15.0
+`base.txz`, extracts `loader.kboot` and `loader.help.kboot`, loop-extracts the
+ISO from Linux stage-1, normalizes `kernel.gz` and `mfsroot.gz`, and runs the
+loader with `hostfs_root`, `bootdev=host:/`, serial console settings, and no
+target-visible payload disk.
+
 The script treats the old `boot_params`/EFI memory-map panic as a distinct
 failure. It only exits successfully when a configured target marker appears
 after the FreeBSD kernel jump. Override

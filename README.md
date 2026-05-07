@@ -106,6 +106,14 @@ requirements can be configured through a provider runtime config file:
 bootup --mode=stage-target --target=debian-trixie-amd64-netboot --provider-config=/etc/bootup/providers.json
 ```
 
+The mfsBSD catalog target uses the FreeBSD `loader.kboot` path. It downloads a
+pinned mfsBSD ISO and a pinned FreeBSD `base.txz`, extracts the ISO in stage-1,
+and hands off with the memory root exposed through `hostfs_root`:
+
+```sh
+bootup --mode=plan-target --target=mfsbsd-142-amd64
+```
+
 Append installer or utility kernel parameters without editing provider code:
 
 ```sh

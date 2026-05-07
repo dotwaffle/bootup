@@ -97,7 +97,7 @@ func catalogSmokeTarget(t *testing.T, targetID string) provider.Target {
 func catalogSmokeTargets(t *testing.T, providerIDs ...string) []provider.Target {
 	t.Helper()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local", "mfsbsd"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}

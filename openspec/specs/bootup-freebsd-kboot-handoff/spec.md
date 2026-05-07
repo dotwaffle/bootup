@@ -2,8 +2,8 @@
 
 ## Purpose
 Define the evidence required before bootup treats FreeBSD `loader.kboot` as a
-supported handoff path, and keep FreeBSD-shaped payloads out of the executable
-catalog until that evidence exists.
+supported handoff path, and constrain executable catalog targets to routes with
+reproducible target-environment boot evidence.
 ## Requirements
 ### Requirement: FreeBSD kboot viability is evidence-based
 Bootup SHALL treat FreeBSD `loader.kboot` support as an experimental
@@ -26,8 +26,28 @@ obtained, executed, and supplied with the required FreeBSD or mfsBSD artifacts.
 - **WHEN** `loader.kboot` cannot be built, cannot run from the Linux/u-root
   stage, cannot see the staged artifacts, or cannot hand off to the target
   kernel
-- **THEN** bootup SHALL keep FreeBSD and mfsBSD targets out of the executable
-  default catalog and document the blocking condition
+- **THEN** bootup SHALL keep targets for that blocked route out of the
+  executable default catalog and document the blocking condition
+
+#### Scenario: Memory-root evidence enables mfsBSD catalog target
+- **WHEN** the FreeBSD kboot smoke proves an mfsBSD memory-root payload reaches
+  the target environment without target-visible root media
+- **THEN** bootup MAY expose an mfsBSD `freebsd-kboot` target in the executable
+  default catalog, provided all FreeBSD and mfsBSD payloads are downloaded and
+  verified at runtime instead of vendored
+
+### Requirement: mfsBSD kboot target stages verified runtime artifacts
+Bootup SHALL stage executable mfsBSD `freebsd-kboot` targets from verified
+runtime downloads and SHALL present the extracted mfsBSD root tree through
+Linux hostfs.
+
+#### Scenario: mfsBSD target stages loader and memory-root payload
+- **WHEN** bootup stages an mfsBSD `freebsd-kboot` target
+- **THEN** it SHALL verify a pinned mfsBSD ISO hash, extract the ISO contents
+  from Linux, normalize compressed `kernel` and `mfsroot` payload files when
+  needed, verify a pinned FreeBSD base archive hash, extract `loader.kboot` and
+  `loader.help.kboot`, and prepare loader arguments containing `hostfs_root`,
+  `bootdev=host:/`, and serial console settings
 
 ### Requirement: FreeBSD kboot artifacts are not vendored
 Bootup SHALL NOT commit generated `loader.kboot` binaries, downloaded FreeBSD
@@ -92,5 +112,5 @@ the Linux metadata interfaces required by FreeBSD `loader.kboot`.
 #### Scenario: Smoke failure keeps targets deferred
 - **WHEN** the FreeBSD kboot smoke fails before reaching the FreeBSD installer
   or an mfsBSD shell
-- **THEN** bootup SHALL keep FreeBSD and mfsBSD targets out of the executable
-  default catalog and record the next blocking condition
+- **THEN** bootup SHALL keep targets for that failing route out of the
+  executable default catalog and record the next blocking condition

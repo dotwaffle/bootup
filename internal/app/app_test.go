@@ -113,6 +113,21 @@ func ubuntuTarget() provider.Target {
 	}
 }
 
+func mfsBSDTarget() provider.Target {
+	return provider.Target{
+		ID:         "mfsbsd-142-amd64",
+		ProviderID: "mfsbsd",
+		Name:       "mfsBSD 14.2 amd64",
+		Action:     provider.BootActionFreeBSDKboot,
+		Catalog: provider.CatalogEntry{
+			Distribution: "mfsbsd",
+			Release:      "14.2",
+			Architecture: "amd64",
+			Kind:         "rescue",
+		},
+	}
+}
+
 func TestRunListsTargetsInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
@@ -341,6 +356,58 @@ func TestRunPlansSelectedTargetInNonInteractiveMode(t *testing.T) {
 	}
 }
 
+func TestRunPlansFreeBSDKbootTargetInNonInteractiveMode(t *testing.T) {
+	t.Parallel()
+
+	target := mfsBSDTarget()
+	plan := provider.BootPlan{
+		Target: target,
+		Action: provider.BootActionFreeBSDKboot,
+		FreeBSDKboot: provider.FreeBSDKbootPlan{
+			Payload: provider.Artifact{
+				Name: "mfsbsd.iso",
+				URL:  "https://mfsbsd.example/mfsbsd.iso",
+			},
+			LoaderArchive: provider.Artifact{
+				Name: "base.txz",
+				URL:  "https://download.example/base.txz",
+			},
+		},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		id:      "mfsbsd",
+		targets: []provider.Target{target},
+		plan:    plan,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry: registry,
+		Stdout:   &stdout,
+		Stderr:   &bytes.Buffer{},
+		Logger:   slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:     app.ModePlanTarget,
+		TargetID: "mfsbsd-142-amd64",
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"loader_archive\thttps://download.example/base.txz",
+		"payload\thttps://mfsbsd.example/mfsbsd.iso",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 	t.Parallel()
 
@@ -382,6 +449,59 @@ func TestRunStagesSelectedTargetInNonInteractiveMode(t *testing.T) {
 	for _, phase := range []string{"[planning]", "[verifying]", "[staging]"} {
 		if !strings.Contains(stdout.String(), phase) {
 			t.Fatalf("stdout = %q, want phase %s", stdout.String(), phase)
+		}
+	}
+}
+
+func TestRunStagesFreeBSDKbootTargetInNonInteractiveMode(t *testing.T) {
+	t.Parallel()
+
+	target := mfsBSDTarget()
+	plan := provider.BootPlan{Target: target, Action: provider.BootActionFreeBSDKboot}
+	staged := provider.BootPlan{
+		Target: target,
+		Action: provider.BootActionFreeBSDKboot,
+		FreeBSDKboot: provider.FreeBSDKbootPlan{
+			Loader:      provider.Artifact{Name: "loader.kboot", Path: "/tmp/bootup/freebsd-kboot/loader.kboot"},
+			LoaderHelp:  provider.Artifact{Name: "loader.help.kboot", Path: "/tmp/bootup/freebsd-kboot/loader.help.kboot"},
+			Payload:     provider.Artifact{Name: "mfsbsd.iso", Path: "/tmp/bootup/mfsbsd.iso"},
+			PayloadRoot: "/tmp/bootup/mfsbsd-root",
+			Args:        []string{"hostfs_root=/tmp/bootup/mfsbsd-root", "bootdev=host:/"},
+		},
+	}
+
+	registry := provider.NewRegistry()
+	if err := registry.Register(providerStub{
+		id:      "mfsbsd",
+		targets: []provider.Target{target},
+		plan:    plan,
+		staged:  staged,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	runner := app.New(app.Config{
+		Registry:   registry,
+		Stdout:     &stdout,
+		Stderr:     &bytes.Buffer{},
+		Logger:     slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		Mode:       app.ModeStageTarget,
+		TargetID:   "mfsbsd-142-amd64",
+		StagingDir: t.TempDir(),
+	})
+
+	if err := runner.Run(context.Background()); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"loader\t/tmp/bootup/freebsd-kboot/loader.kboot",
+		"payload_root\t/tmp/bootup/mfsbsd-root",
+		"args\thostfs_root=/tmp/bootup/mfsbsd-root bootdev=host:/",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
 		}
 	}
 }

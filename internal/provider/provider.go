@@ -50,6 +50,7 @@ type CatalogEntry struct {
 type SourceEntry struct {
 	BaseURL    string `json:"base_url,omitzero"`
 	ISOName    string `json:"iso_name,omitzero"`
+	ISOSHA256  string `json:"iso_sha256,omitzero"`
 	KernelPath string `json:"kernel_path,omitzero"`
 	InitrdPath string `json:"initrd_path,omitzero"`
 	Cmdline    string `json:"cmdline,omitzero"`
@@ -64,6 +65,9 @@ const (
 
 	// BootActionLocalBoot runs the local disk boot path.
 	BootActionLocalBoot BootAction = "localboot"
+
+	// BootActionFreeBSDKboot runs FreeBSD loader.kboot from Linux stage-1.
+	BootActionFreeBSDKboot BootAction = "freebsd-kboot"
 )
 
 // LifecycleStatus describes informational lifecycle decoration for a target.
@@ -163,6 +167,16 @@ type Verification struct {
 	SignatureURL string
 }
 
+// FreeBSDKbootPlan describes a staged FreeBSD loader.kboot handoff.
+type FreeBSDKbootPlan struct {
+	Loader        Artifact
+	LoaderHelp    Artifact
+	LoaderArchive Artifact
+	Payload       Artifact
+	PayloadRoot   string
+	Args          []string
+}
+
 // BootPlan describes the artifacts and command line required for kexec.
 type BootPlan struct {
 	Target       Target
@@ -171,6 +185,7 @@ type BootPlan struct {
 	Initrd       Artifact
 	Cmdline      string
 	Verification Verification
+	FreeBSDKboot FreeBSDKbootPlan
 }
 
 // ResolvedAction returns the plan action, defaulting old plans to Linux kexec.
@@ -422,7 +437,7 @@ func ValidateTarget(providerID string, target Target) error {
 
 func validateBootAction(targetID string, action BootAction) error {
 	switch ResolveBootAction(action) {
-	case BootActionLinuxKexec, BootActionLocalBoot:
+	case BootActionLinuxKexec, BootActionLocalBoot, BootActionFreeBSDKboot:
 		return nil
 	default:
 		return fmt.Errorf("%w: target %s boot action %q is invalid", ErrInvalidTarget, targetID, action)
@@ -468,6 +483,9 @@ func validateSourceEntry(targetID string, source SourceEntry) error {
 		if strings.ContainsAny(source.ISOName, `/\`) || filepath.Base(source.ISOName) != source.ISOName {
 			return fmt.Errorf("%w: target %s source ISO name must be a filename", ErrInvalidTarget, targetID)
 		}
+	}
+	if strings.TrimSpace(source.ISOSHA256) != source.ISOSHA256 {
+		return fmt.Errorf("%w: target %s source ISO SHA256 has surrounding whitespace", ErrInvalidTarget, targetID)
 	}
 	if err := validateSourcePath(targetID, "kernel path", source.KernelPath); err != nil {
 		return err

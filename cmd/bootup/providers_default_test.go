@@ -39,6 +39,7 @@ func TestRegisterProvidersIncludesDefaultCatalogTargets(t *testing.T) {
 		"debian-trixie-amd64-netboot",
 		"fedora-43-amd64-server-netboot",
 		"fedora-44-amd64-server-netboot",
+		"mfsbsd-142-amd64",
 		"ubuntu-24044-amd64-netboot",
 		"ubuntu-2510-amd64-netboot",
 		"ubuntu-2604-amd64-netboot",

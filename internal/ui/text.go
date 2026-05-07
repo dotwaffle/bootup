@@ -226,6 +226,7 @@ func (m TextMenu) renderSourceDetails(w io.Writer, source provider.SourceEntry) 
 	for _, line := range []string{
 		"  base_url: " + source.BaseURL,
 		"  iso_name: " + source.ISOName,
+		"  iso_sha256: " + source.ISOSHA256,
 		"  kernel_path: " + source.KernelPath,
 		"  initrd_path: " + source.InitrdPath,
 		"  cmdline: " + source.Cmdline,

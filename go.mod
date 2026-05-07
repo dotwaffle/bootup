@@ -14,6 +14,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/hugelgupf/vmtest v0.0.0-20240307030256-5d9f3d34a58d
 	github.com/u-root/u-root v0.16.0
+	github.com/ulikunitz/xz v0.5.15
 	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.37.0
 )
@@ -59,7 +60,6 @@ require (
 	github.com/u-root/gobusybox/src v0.0.0-20250101170133-2e884e4509c7 // indirect
 	github.com/u-root/mkuimage v0.0.0-20250905073043-9a40452f5d3b // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
-	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/vishvananda/netlink v1.3.0 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect

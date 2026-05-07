@@ -184,6 +184,28 @@
       ]
     },
     {
+      "id": "mfsbsd",
+      "targets": [
+        {
+          "id": "mfsbsd-142-amd64",
+          "name": "mfsBSD 14.2 amd64",
+          "action": "freebsd-kboot",
+          "release": "14.2",
+          "architecture": "amd64",
+          "kind": "rescue",
+          "source": {
+            "base_url": "https://mfsbsd.vx.sk/files/iso/14/amd64",
+            "iso_name": "mfsbsd-14.2-RELEASE-amd64.iso",
+            "iso_sha256": "2803be01ef284cb4d58c9177475c7a20ac72292e4943bc91eb159c592bfc3b5c"
+          },
+          "lifecycle": {
+            "status": "supported",
+            "source": "catalog"
+          }
+        }
+      ]
+    },
+    {
       "id": "ubuntu",
       "targets": [
         {

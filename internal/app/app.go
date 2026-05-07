@@ -250,7 +250,7 @@ func (a *App) planTarget(ctx context.Context) error {
 		return err
 	}
 	plan = a.applyCmdlineAppend(plan)
-	if _, err := fmt.Fprintf(a.config.Stdout, "kernel\t%s\ninitrd\t%s\ncmdline\t%s\n", plan.Kernel.URL, plan.Initrd.URL, plan.Cmdline); err != nil {
+	if err := writeBootPlan(a.config.Stdout, plan); err != nil {
 		return fmt.Errorf("write boot plan: %w", err)
 	}
 	return nil
@@ -308,10 +308,49 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 		}
 		return provider.BootPlan{}, err
 	}
-	if _, err := fmt.Fprintf(a.config.Stdout, "kernel\t%s\ninitrd\t%s\ncmdline\t%s\n", staged.Kernel.Path, staged.Initrd.Path, staged.Cmdline); err != nil {
+	if err := writeBootPlan(a.config.Stdout, staged); err != nil {
 		return provider.BootPlan{}, fmt.Errorf("write staged boot plan: %w", err)
 	}
 	return staged, nil
+}
+
+func writeBootPlan(w io.Writer, plan provider.BootPlan) error {
+	if plan.ResolvedAction() == provider.BootActionFreeBSDKboot {
+		return writeFreeBSDKbootPlan(w, plan.FreeBSDKboot)
+	}
+	if _, err := fmt.Fprintf(w, "kernel\t%s\ninitrd\t%s\ncmdline\t%s\n", artifactLocation(plan.Kernel), artifactLocation(plan.Initrd), plan.Cmdline); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeFreeBSDKbootPlan(w io.Writer, plan provider.FreeBSDKbootPlan) error {
+	for _, line := range []struct {
+		label string
+		value string
+	}{
+		{label: "loader", value: artifactLocation(plan.Loader)},
+		{label: "loader_help", value: artifactLocation(plan.LoaderHelp)},
+		{label: "loader_archive", value: artifactLocation(plan.LoaderArchive)},
+		{label: "payload", value: artifactLocation(plan.Payload)},
+		{label: "payload_root", value: plan.PayloadRoot},
+		{label: "args", value: strings.Join(plan.Args, " ")},
+	} {
+		if line.value == "" {
+			continue
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\n", line.label, line.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func artifactLocation(artifact provider.Artifact) string {
+	if artifact.Path != "" {
+		return artifact.Path
+	}
+	return artifact.URL
 }
 
 func (a *App) applyCmdlineAppend(plan provider.BootPlan) provider.BootPlan {

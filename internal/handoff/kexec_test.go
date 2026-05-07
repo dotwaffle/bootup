@@ -23,6 +23,12 @@ type fakeLocalBooter struct {
 	err      error
 }
 
+type fakeFreeBSDKbootRunner struct {
+	loaders []string
+	args    [][]string
+	err     error
+}
+
 type loadCall struct {
 	kernel  string
 	initrd  string
@@ -46,6 +52,12 @@ func (l *fakeLoader) Execute() error {
 func (b *fakeLocalBooter) Boot(_ context.Context, cmdline string) error {
 	b.cmdlines = append(b.cmdlines, cmdline)
 	return b.err
+}
+
+func (r *fakeFreeBSDKbootRunner) Run(_ context.Context, loader string, args []string) error {
+	r.loaders = append(r.loaders, loader)
+	r.args = append(r.args, append([]string(nil), args...))
+	return r.err
 }
 
 func TestKexecLoadsThenExecutesPlan(t *testing.T) {
@@ -224,6 +236,46 @@ func TestExecutorDispatchesLocalBootAction(t *testing.T) {
 	}
 	if len(loader.loads) != 0 || loader.executes != 0 {
 		t.Fatalf("kexec loader used for localboot: loads=%#v executes=%d", loader.loads, loader.executes)
+	}
+}
+
+func TestExecutorDispatchesFreeBSDKbootAction(t *testing.T) {
+	t.Parallel()
+
+	loader := &fakeLoader{}
+	kbootRunner := &fakeFreeBSDKbootRunner{}
+	executor := handoff.KexecExecutor{
+		Loader:             loader,
+		FreeBSDKbootRunner: kbootRunner,
+	}
+	loaderPath := writeTempFile(t, "loader.kboot")
+
+	err := executor.Execute(context.Background(), provider.BootPlan{
+		Action: provider.BootActionFreeBSDKboot,
+		FreeBSDKboot: provider.FreeBSDKbootPlan{
+			Loader:      provider.Artifact{Path: loaderPath},
+			PayloadRoot: "/tmp/mfsbsd-root",
+			Args: []string{
+				"hostfs_root=/tmp/mfsbsd-root",
+				"bootdev=host:/",
+				"boot_serial=YES",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("execute freebsd kboot: %v", err)
+	}
+	if len(kbootRunner.loaders) != 1 || kbootRunner.loaders[0] != loaderPath {
+		t.Fatalf("kboot loaders = %#v, want %s", kbootRunner.loaders, loaderPath)
+	}
+	if len(kbootRunner.args) != 1 || len(kbootRunner.args[0]) != 3 {
+		t.Fatalf("kboot args = %#v, want three args", kbootRunner.args)
+	}
+	if kbootRunner.args[0][0] != "hostfs_root=/tmp/mfsbsd-root" {
+		t.Fatalf("first kboot arg = %q, want hostfs root", kbootRunner.args[0][0])
+	}
+	if len(loader.loads) != 0 || loader.executes != 0 {
+		t.Fatalf("kexec loader used for freebsd kboot: loads=%#v executes=%d", loader.loads, loader.executes)
 	}
 }
 

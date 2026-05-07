@@ -24,9 +24,10 @@ type Loader interface {
 
 // KexecExecutor executes a staged boot plan through in-process kexec syscalls.
 type KexecExecutor struct {
-	Loader            Loader
-	LoadSyscallLoader Loader
-	LocalBooter       LocalBooter
+	Loader             Loader
+	LoadSyscallLoader  Loader
+	LocalBooter        LocalBooter
+	FreeBSDKbootRunner FreeBSDKbootRunner
 }
 
 // Execute loads the plan into kexec and executes it.
@@ -42,6 +43,8 @@ func (e KexecExecutor) Execute(ctx context.Context, plan provider.BootPlan) erro
 		return e.executeLinuxKexec(plan)
 	case provider.BootActionLocalBoot:
 		return e.executeLocalBoot(ctx, plan)
+	case provider.BootActionFreeBSDKboot:
+		return e.executeFreeBSDKboot(ctx, plan)
 	default:
 		return fmt.Errorf("unsupported boot action %q", plan.Action)
 	}
@@ -137,9 +140,48 @@ func (e KexecExecutor) executeLocalBoot(ctx context.Context, plan provider.BootP
 	return nil
 }
 
+func (e KexecExecutor) executeFreeBSDKboot(ctx context.Context, plan provider.BootPlan) error {
+	kboot := plan.FreeBSDKboot
+	if strings.TrimSpace(kboot.Loader.Path) == "" {
+		return errors.New("freebsd kboot loader path is required")
+	}
+	if strings.TrimSpace(kboot.PayloadRoot) == "" {
+		return errors.New("freebsd kboot payload root is required")
+	}
+	args := append([]string(nil), kboot.Args...)
+	if len(args) == 0 {
+		args = defaultFreeBSDKbootArgs(kboot.PayloadRoot)
+	}
+	runner := e.FreeBSDKbootRunner
+	if runner == nil {
+		runner = CommandFreeBSDKbootRunner{}
+	}
+	if err := runner.Run(ctx, kboot.Loader.Path, args); err != nil {
+		return fmt.Errorf("execute freebsd kboot: %w", err)
+	}
+	return nil
+}
+
+func defaultFreeBSDKbootArgs(payloadRoot string) []string {
+	return []string{
+		"hostfs_root=" + payloadRoot,
+		"bootdev=host:/",
+		"boot_serial=YES",
+		"boot_multicons=YES",
+		"boot_verbose=YES",
+		"autoboot_delay=0",
+		"beastie_disable=YES",
+	}
+}
+
 // LocalBooter boots from local storage.
 type LocalBooter interface {
 	Boot(context.Context, string) error
+}
+
+// FreeBSDKbootRunner runs FreeBSD loader.kboot from Linux stage-1.
+type FreeBSDKbootRunner interface {
+	Run(context.Context, string, []string) error
 }
 
 // CommandLocalBooter invokes a local boot command from the initramfs.
@@ -176,6 +218,34 @@ func (b CommandLocalBooter) Boot(ctx context.Context, cmdline string) error {
 	}
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %v: %w", command, args, err)
+	}
+	return nil
+}
+
+// CommandFreeBSDKbootRunner invokes loader.kboot as a process.
+type CommandFreeBSDKbootRunner struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+// Run executes loader.kboot with args.
+func (r CommandFreeBSDKbootRunner) Run(ctx context.Context, loader string, args []string) error {
+	cmd := exec.CommandContext(ctx, loader, args...)
+	cmd.Stdin = r.Stdin
+	if cmd.Stdin == nil {
+		cmd.Stdin = os.Stdin
+	}
+	cmd.Stdout = r.Stdout
+	if cmd.Stdout == nil {
+		cmd.Stdout = os.Stdout
+	}
+	cmd.Stderr = r.Stderr
+	if cmd.Stderr == nil {
+		cmd.Stderr = os.Stderr
+	}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %v: %w", loader, args, err)
 	}
 	return nil
 }

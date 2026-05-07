@@ -87,13 +87,13 @@ func TestParseValidatesAndFiltersStaticCatalog(t *testing.T) {
 func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local", "mfsbsd"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}
 
 	var ids []string
-	for _, providerID := range []string{"debian", "ubuntu", "fedora", "linux", "local"} {
+	for _, providerID := range []string{"debian", "ubuntu", "fedora", "linux", "local", "mfsbsd"} {
 		for _, target := range doc.Targets(providerID) {
 			ids = append(ids, target.ID)
 		}
@@ -109,6 +109,7 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 		"fedora-43-amd64-server-netboot",
 		"fedora-44-amd64-server-netboot",
 		"local-disk-auto",
+		"mfsbsd-142-amd64",
 		"opensuse-leap-160-amd64-netboot",
 		"archlinux-latest-amd64-netboot",
 		"gparted-live-1813-amd64",
@@ -119,6 +120,16 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 	}
 	if slices.Contains(ids, "memtest86plus-800-amd64") {
 		t.Fatalf("default catalog IDs = %v, want MemTest86+ excluded until it has a compatible handoff", ids)
+	}
+	mfsBSDTargets := doc.Targets("mfsbsd")
+	if len(mfsBSDTargets) != 1 {
+		t.Fatalf("mfsBSD targets = %#v, want one target", mfsBSDTargets)
+	}
+	if mfsBSDTargets[0].Action != "freebsd-kboot" {
+		t.Fatalf("mfsBSD action = %q, want freebsd-kboot", mfsBSDTargets[0].Action)
+	}
+	if mfsBSDTargets[0].Source.ISOSHA256 == "" {
+		t.Fatal("mfsBSD ISO SHA256 is empty")
 	}
 	ubuntuTargets := doc.Targets("ubuntu")
 	for _, target := range ubuntuTargets {
@@ -138,7 +149,7 @@ func TestLoadDefaultIncludesInitialStaticTargets(t *testing.T) {
 func TestLoadDefaultIncludesGenericLinuxSourceTargets(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local", "mfsbsd"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}
@@ -168,7 +179,7 @@ func TestLoadDefaultIncludesGenericLinuxSourceTargets(t *testing.T) {
 func TestLoadDefaultIncludesLocalBootAction(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local", "mfsbsd"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}
@@ -401,7 +412,7 @@ func TestGeneratedDefaultCatalogIsCurrent(t *testing.T) {
 func TestGeneratedDefaultPreservesFedoraLifecycle(t *testing.T) {
 	t.Parallel()
 
-	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local"})
+	doc, err := catalog.LoadDefault([]string{"debian", "ubuntu", "fedora", "linux", "local", "mfsbsd"})
 	if err != nil {
 		t.Fatalf("load default catalog: %v", err)
 	}

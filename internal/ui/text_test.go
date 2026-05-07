@@ -191,6 +191,8 @@ func TestTextMenuRendersTargetDetails(t *testing.T) {
 		},
 		Source: provider.SourceEntry{
 			BaseURL:    "https://download.example/opensuse",
+			ISOName:    "opensuse.iso",
+			ISOSHA256:  strings.Repeat("a", 64),
 			KernelPath: "boot/x86_64/loader/linux",
 			InitrdPath: "boot/x86_64/loader/initrd",
 			Cmdline:    "install={base_url}",
@@ -227,6 +229,8 @@ func TestTextMenuRendersTargetDetails(t *testing.T) {
 		"action: linux-kexec",
 		"distribution: opensuse",
 		"base_url: https://download.example/opensuse",
+		"iso_name: opensuse.iso",
+		"iso_sha256: " + strings.Repeat("a", 64),
 		"kernel_path: boot/x86_64/loader/linux",
 		"lifecycle: supported catalog",
 		"options:",

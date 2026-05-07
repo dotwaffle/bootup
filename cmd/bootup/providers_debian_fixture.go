@@ -12,11 +12,12 @@ import (
 	"github.com/dotwaffle/bootup/internal/providers/fedora"
 	"github.com/dotwaffle/bootup/internal/providers/linux"
 	"github.com/dotwaffle/bootup/internal/providers/localdisk"
+	"github.com/dotwaffle/bootup/internal/providers/mfsbsd"
 	"github.com/dotwaffle/bootup/internal/providers/ubuntu"
 )
 
 func compiledProviderIDs() []string {
-	return []string{"debian", "fedora", "linux", "local", "ubuntu"}
+	return []string{"debian", "fedora", "linux", "local", "mfsbsd", "ubuntu"}
 }
 
 func registerProviders(registry *provider.Registry, _ providerconfig.Config, catalogDoc catalog.Document) error {
@@ -46,6 +47,11 @@ func registerProviders(registry *provider.Registry, _ providerconfig.Config, cat
 		Targets: catalogDoc.Targets("local"),
 	})); err != nil {
 		return fmt.Errorf("register local disk provider: %w", err)
+	}
+	if err := registry.Register(mfsbsd.NewProvider(mfsbsd.Config{
+		Targets: catalogDoc.Targets("mfsbsd"),
+	})); err != nil {
+		return fmt.Errorf("register mfsBSD provider: %w", err)
 	}
 	return nil
 }

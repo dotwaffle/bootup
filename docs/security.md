@@ -61,6 +61,20 @@ provider artifact hashes, or provider-owned signature verification. Hosted
 catalog freshness metadata is also a catalog acceptance policy, not an artifact
 authenticity signal.
 
+Signed local dynamic policy decisions are authenticated before parsing. Bootup
+requires a detached Ed25519 signature and public key for `--policy-file`; the
+signature covers the raw policy document bytes. A valid policy can only select
+an existing target, validated non-secret option values, and secret references
+handled by the secret input path. It cannot define executable behavior,
+providers, trust roots, artifact pins, or new command-line fragments.
+
+Policy freshness is fail-closed. A decision must carry `expires_at`, or must
+carry `published_at` when `--policy-max-age` is used. Expired decisions,
+signature failures, malformed JSON, unsupported targets/options/secrets, and
+missing required secrets fail before provider planning. Policy diagnostics
+record posture and decision IDs, not response bodies, trust bytes, secret
+values, or policy source paths.
+
 The Debian provider fails closed unless Debian archive trust material is
 provided through configuration. The embedded Fedora catalog carries SHA-256
 pins from Fedora `.treeinfo` metadata for the Server pxeboot kernel and initrd.

@@ -390,15 +390,20 @@ supported OpenBSD paths load it through OpenBSD boot blocks, `boot`, `cdboot`,
 `loader.kboot`. Add those targets only after bootup has a proven executor
 family for their handoff type.
 
-## Future mode: dynamic policy
+## Implemented mode: signed local dynamic policy
 
-A fully dynamic mode can evaluate site-specific policy before choosing a boot
-action. That policy might call an in-house service, use machine identity such as
-MAC address or serial number, decide to boot local disk, or choose an installer
-with generated options.
+Signed local dynamic policy can select an already-known target before provider
+planning. The policy result is data only: target ID, selected non-secret
+options, and optional secret references that map target-declared secret IDs to
+operator-provided secret input IDs. Bootup validates the selected target,
+options, and secret references against the current static catalog inventory
+before staging artifacts.
 
-Bootup does not implement script execution, remote policy plugins, or a
-self-hosted catalog/policy server yet. Those pieces should be designed as
-separate capabilities so the static catalog remains predictable and usable in
-restricted stage-1 environments. The current policy boundary is documented in
+Use `--mode=policy-target` to resolve and print the policy-selected boot plan,
+or use the same policy flags with `plan-target`, `stage-target`, or
+`boot-target` to let policy supply the target for those non-interactive modes.
+Policy documents must be signed with an operator-supplied Ed25519 public key
+and must carry freshness metadata. Cache fallback is local and authenticated;
+remote policy URLs, executable policy engines, plugins, and provider-defined
+runtime code are still deferred. The policy boundary is documented in
 [policy.md](policy.md).

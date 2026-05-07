@@ -19,6 +19,8 @@ selected kernel and initrd, and hands off with kexec.
   opt-in default catalog composition.
 - File-backed secret input validation, provider plumbing, and redacted
   diagnostics for targets that declare provider-owned secret consumers.
+- Signed local dynamic policy decisions for data-only target, option, and
+  secret-reference selection.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
@@ -141,6 +143,16 @@ Secret inputs are local file paths only. Bootup validates them before provider
 planning, rejects unsafe permissions by default, and redacts source paths and
 staged secret paths from diagnostics. The default catalog does not currently
 include a distro target that consumes a secret input.
+
+Preview a signed dynamic policy decision without handoff:
+
+```sh
+bootup --mode=policy-target --policy-file=/etc/bootup/policy.json --policy-signature=/etc/bootup/policy.json.sig --policy-public-key=/etc/bootup/policy.pub
+```
+
+The same policy flags can be used with `plan-target`, `stage-target`, or
+`boot-target` to let the authenticated decision supply the target ID, selected
+non-secret options, and secret references.
 
 Configure networking directly before provider operations when kernel DHCP is
 not available:

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/dotwaffle/bootup/internal/diagnostics"
+	"github.com/dotwaffle/bootup/internal/policy"
 	"github.com/dotwaffle/bootup/internal/provider"
 )
 
@@ -522,6 +524,126 @@ func TestRunAppliesTargetOptionFlagsBeforeAppendCmdline(t *testing.T) {
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
+}
+
+func TestRunPlansPolicySelectedTarget(t *testing.T) {
+	t.Parallel()
+
+	policyPath, signaturePath, publicKeyPath := writeSignedPolicyDecision(t, `{
+		"schema_version": 1,
+		"decision_id": "lab-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"options": {
+			"text-install": "true",
+			"mirror-url": "https://mirror.example/opensuse"
+		},
+		"expires_at": "2099-01-01T00:00:00Z"
+	}`)
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "policy-target",
+		"--policy-file", policyPath,
+		"--policy-signature", signaturePath,
+		"--policy-public-key", publicKeyPath,
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, want := range []string{
+		"[planning] openSUSE Leap 16.0 amd64 installer",
+		"textmode=1",
+		"install=https://mirror.example/opensuse",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		}
+	}
+	if strings.Contains(stdout.String(), policyPath) || strings.Contains(stdout.String(), signaturePath) || strings.Contains(stdout.String(), publicKeyPath) {
+		t.Fatalf("stdout exposed policy paths: %q", stdout.String())
+	}
+}
+
+func TestRunRejectsDynamicPolicyWithoutTrust(t *testing.T) {
+	t.Parallel()
+
+	policyPath, _, _ := writeSignedPolicyDecision(t, `{
+		"schema_version": 1,
+		"decision_id": "lab-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"expires_at": "2099-01-01T00:00:00Z"
+	}`)
+
+	err := runWithIO(context.Background(), []string{
+		"--mode", "policy-target",
+		"--policy-file", policyPath,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("run error = %v, want invalid policy", err)
+	}
+}
+
+func TestRunDiagnosticsRedactsPolicyPaths(t *testing.T) {
+	t.Parallel()
+
+	policyPath, signaturePath, publicKeyPath := writeSignedPolicyDecision(t, `{
+		"schema_version": 1,
+		"decision_id": "expired-opensuse",
+		"target_id": "opensuse-leap-160-amd64-netboot",
+		"expires_at": "2000-01-01T00:00:00Z"
+	}`)
+	diagnosticsRoot := t.TempDir()
+
+	err := runWithIO(context.Background(), []string{
+		"--diagnostics-dir", diagnosticsRoot,
+		"--mode", "policy-target",
+		"--policy-file", policyPath,
+		"--policy-signature", signaturePath,
+		"--policy-public-key", publicKeyPath,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, policy.ErrInvalidPolicy) {
+		t.Fatalf("run error = %v, want invalid policy", err)
+	}
+
+	bundleDir := onlyDiagnosticsBundleDir(t, diagnosticsRoot)
+	summaryPath := filepath.Join(bundleDir, "summary.json")
+	got := readDiagnosticsSummary(t, summaryPath)
+	if got.Policy.Source != "local" || !got.Policy.Ed25519 || !got.Policy.Freshness {
+		t.Fatalf("policy posture = %#v, want local Ed25519 freshness posture", got.Policy)
+	}
+	summaryBytes, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, secretPath := range []string{policyPath, signaturePath, publicKeyPath} {
+		if strings.Contains(string(summaryBytes), secretPath) {
+			t.Fatalf("summary exposes policy path %q: %s", secretPath, summaryBytes)
+		}
+	}
+}
+
+func writeSignedPolicyDecision(t *testing.T, body string) (string, string, string) {
+	t.Helper()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	dir := t.TempDir()
+	policyPath := filepath.Join(dir, "policy.json")
+	data := []byte(body)
+	if err := os.WriteFile(policyPath, data, 0o644); err != nil {
+		t.Fatalf("write policy: %v", err)
+	}
+	signaturePath := filepath.Join(dir, "policy.json.sig")
+	if err := os.WriteFile(signaturePath, ed25519.Sign(privateKey, data), 0o644); err != nil {
+		t.Fatalf("write signature: %v", err)
+	}
+	publicKeyPath := filepath.Join(dir, "policy.pub")
+	if err := os.WriteFile(publicKeyPath, publicKey, 0o644); err != nil {
+		t.Fatalf("write public key: %v", err)
+	}
+	return policyPath, signaturePath, publicKeyPath
 }
 
 func TestRunWritesDiagnosticsOnFailure(t *testing.T) {

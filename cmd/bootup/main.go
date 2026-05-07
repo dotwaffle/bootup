@@ -19,6 +19,7 @@ import (
 	"github.com/dotwaffle/bootup/internal/diagnostics"
 	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
+	"github.com/dotwaffle/bootup/internal/policy"
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providerconfig"
 	"github.com/dotwaffle/bootup/internal/runtime"
@@ -59,6 +60,13 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	catalogCacheFallback := flags.Bool("catalog-cache-fallback", false, "fall back to authenticated hosted catalog cache on fetch failure")
 	catalogMaxBytes := flags.Int64("catalog-max-bytes", 0, "maximum hosted catalog size in bytes")
 	catalogIncludeDefault := flags.Bool("catalog-include-default", false, "include embedded default catalog with selected catalog")
+	policyFilePath := flags.String("policy-file", "", "signed local dynamic policy decision JSON path")
+	policySignaturePath := flags.String("policy-signature", "", "detached Ed25519 signature path for policy decision bytes")
+	policyPublicKeyPath := flags.String("policy-public-key", "", "Ed25519 public key path for policy decision signature")
+	policyMaxAge := flags.Duration("policy-max-age", 0, "maximum age for policy published_at metadata")
+	policyCachePath := flags.String("policy-cache", "", "dynamic policy cache file path")
+	policyCacheFallback := flags.Bool("policy-cache-fallback", false, "fall back to authenticated policy cache on source read failure")
+	policyMaxBytes := flags.Int64("policy-max-bytes", 0, "maximum policy decision size in bytes")
 	providerConfigPath := flags.String("provider-config", "", "provider runtime config JSON path")
 	diagnosticsDir := flags.String("diagnostics-dir", "", "directory for opt-in failure diagnostics bundles")
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
@@ -94,12 +102,27 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		IncludeDefault:    *catalogIncludeDefault,
 		CompiledProviders: compiledProviderIDs(),
 	}
+	policySource := policySource{
+		Path:          *policyFilePath,
+		SignaturePath: *policySignaturePath,
+		PublicKeyPath: *policyPublicKeyPath,
+		MaxAge:        *policyMaxAge,
+		CachePath:     *policyCachePath,
+		CacheFallback: *policyCacheFallback,
+		MaxBytes:      *policyMaxBytes,
+	}
 	var capture *diagnostics.Capture
 	if strings.TrimSpace(*diagnosticsDir) != "" {
 		capture = diagnostics.NewCapture()
 		stdout = capture.Stdout(stdout)
 		stderr = capture.Stderr(stderr)
 	}
+
+	effectiveMode := app.Mode(*mode)
+	effectiveTargetID := *targetID
+	effectiveTargetOptions := []provider.SelectedOption(targetOptions)
+	var effectiveSecretRefs []provider.SecretRef
+	policyPosture := diagnosticsPolicyPosture(policySource)
 
 	runErr := func() error {
 		var providerConfig providerconfig.Config
@@ -143,6 +166,23 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		if err != nil {
 			return fmt.Errorf("load secret inputs: %w", err)
 		}
+		if policySource.configured() || effectiveMode == modePolicyTarget {
+			selection, decision, selectedMode, err := resolvePolicySelection(ctx, registry, policySource, policySelectionInput{
+				Mode:              effectiveMode,
+				TargetID:          effectiveTargetID,
+				TargetOptions:     effectiveTargetOptions,
+				DiscoveryFamilyID: *discoveryFamilyID,
+				Secrets:           secretStore,
+			})
+			if err != nil {
+				return fmt.Errorf("resolve policy: %w", err)
+			}
+			effectiveMode = selectedMode
+			effectiveTargetID = selection.Target.ID
+			effectiveTargetOptions = selection.Options
+			effectiveSecretRefs = selection.SecretRefs
+			policyPosture = policyPostureWithDecision(policyPosture, decision)
+		}
 
 		runner := app.New(app.Config{
 			Registry:          registry,
@@ -150,11 +190,12 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 			Stdout:            stdout,
 			Stderr:            stderr,
 			Logger:            logging.NewSerialLogger(stderr, slog.LevelInfo),
-			Mode:              app.Mode(*mode),
+			Mode:              effectiveMode,
 			UIMode:            app.UIMode(*uiMode),
-			TargetID:          *targetID,
-			TargetOptions:     []provider.SelectedOption(targetOptions),
+			TargetID:          effectiveTargetID,
+			TargetOptions:     effectiveTargetOptions,
 			SecretStore:       secretStore,
+			SecretRefs:        effectiveSecretRefs,
 			DiscoveryFamilyID: *discoveryFamilyID,
 			StagingDir:        *stagingDir,
 			CmdlineAppend:     *cmdlineAppend,
@@ -169,11 +210,14 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 			RootDir:           *diagnosticsDir,
 			Capture:           capture,
 			Mode:              *mode,
-			TargetID:          *targetID,
+			TargetID:          effectiveTargetID,
 			DiscoveryFamilyID: *discoveryFamilyID,
-			TargetOptions:     []provider.SelectedOption(targetOptions),
+			TargetOptions:     effectiveTargetOptions,
 			SecretInputIDs:    secretInputIDs([]bootsecrets.Selection(secretInputs)),
+			SecretRefIDs:      secretRefIDs(effectiveSecretRefs),
 			SecretRedactions:  secretRedactValues([]bootsecrets.Selection(secretInputs)),
+			Policy:            policyPosture,
+			PolicyRedactions:  diagnosticsPolicyRedactValues(policySource),
 			CatalogSource:     catalogSource,
 			ProviderConfig:    *providerConfigPath,
 		})
@@ -189,7 +233,10 @@ type failureDiagnosticsInput struct {
 	DiscoveryFamilyID string
 	TargetOptions     []provider.SelectedOption
 	SecretInputIDs    []string
+	SecretRefIDs      []string
 	SecretRedactions  []string
+	Policy            diagnostics.PolicyPosture
+	PolicyRedactions  []string
 	CatalogSource     catalogSource
 	ProviderConfig    string
 }
@@ -201,10 +248,12 @@ func writeFailureDiagnostics(runErr error, input failureDiagnosticsInput) error 
 		DiscoveryFamilyID: input.DiscoveryFamilyID,
 		SelectedOptions:   input.TargetOptions,
 		SecretInputIDs:    input.SecretInputIDs,
+		SecretRefIDs:      input.SecretRefIDs,
 		Catalog:           diagnosticsCatalogPosture(input.CatalogSource),
 		ProviderConfig:    diagnostics.ProviderConfigPosture{PathSet: input.ProviderConfig != ""},
+		Policy:            input.Policy,
 		Error:             runErr,
-		RedactValues:      append(diagnosticsRedactValues(input.CatalogSource, input.ProviderConfig), input.SecretRedactions...),
+		RedactValues:      append(append(diagnosticsRedactValues(input.CatalogSource, input.ProviderConfig), input.SecretRedactions...), input.PolicyRedactions...),
 	})
 	bundleDir, diagnosticsErr := diagnostics.WriteBundle(diagnostics.Bundle{
 		RootDir: input.RootDir,
@@ -284,6 +333,16 @@ func secretRedactValues(selections []bootsecrets.Selection) []string {
 	return values
 }
 
+func secretRefIDs(refs []provider.SecretRef) []string {
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		if ref.ID != "" {
+			ids = append(ids, ref.ID)
+		}
+	}
+	return ids
+}
+
 type optionFlags []provider.SelectedOption
 
 func (f *optionFlags) String() string {
@@ -358,6 +417,161 @@ func parseDNSServers(value string) []string {
 
 func hasNetworkConfig(config runtime.NetworkConfig) bool {
 	return config.Interface != "" || config.AddressCIDR != "" || config.Gateway != "" || len(config.DNSServers) > 0
+}
+
+const modePolicyTarget app.Mode = "policy-target"
+
+type policySource struct {
+	Path          string
+	SignaturePath string
+	PublicKeyPath string
+	MaxAge        time.Duration
+	CachePath     string
+	CacheFallback bool
+	MaxBytes      int64
+}
+
+func (s policySource) configured() bool {
+	return s.Path != "" ||
+		s.SignaturePath != "" ||
+		s.PublicKeyPath != "" ||
+		s.MaxAge > 0 ||
+		s.CachePath != "" ||
+		s.CacheFallback ||
+		s.MaxBytes > 0
+}
+
+type policySelectionInput struct {
+	Mode              app.Mode
+	TargetID          string
+	TargetOptions     []provider.SelectedOption
+	DiscoveryFamilyID string
+	Secrets           provider.SecretStore
+}
+
+func resolvePolicySelection(ctx context.Context, registry *provider.Registry, source policySource, input policySelectionInput) (policy.Selection, policy.Decision, app.Mode, error) {
+	selectedMode, err := policyAppMode(input.Mode, source)
+	if err != nil {
+		return policy.Selection{}, policy.Decision{}, "", err
+	}
+	if input.TargetID != "" {
+		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: cannot combine --target with dynamic policy", policy.ErrInvalidPolicy)
+	}
+	if len(input.TargetOptions) != 0 {
+		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: cannot combine --option with dynamic policy", policy.ErrInvalidPolicy)
+	}
+	if input.DiscoveryFamilyID != "" {
+		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: cannot combine --discovery-family with dynamic policy", policy.ErrInvalidPolicy)
+	}
+	trust, err := policyTrust(source)
+	if err != nil {
+		return policy.Selection{}, policy.Decision{}, "", err
+	}
+	decision, err := policy.LoadFile(policy.LoadOptions{
+		Path:          source.Path,
+		Trust:         trust,
+		MaxAge:        source.MaxAge,
+		CachePath:     source.CachePath,
+		CacheFallback: source.CacheFallback,
+		MaxBytes:      source.MaxBytes,
+	})
+	if err != nil {
+		return policy.Selection{}, policy.Decision{}, "", err
+	}
+	targets, err := registry.Targets(ctx)
+	if err != nil {
+		return policy.Selection{}, policy.Decision{}, "", fmt.Errorf("%w: list target inventory: %w", policy.ErrInvalidPolicy, err)
+	}
+	selection, err := policy.Validate(policy.ValidateInput{
+		Decision: decision,
+		Targets:  targets,
+		Secrets:  input.Secrets,
+	})
+	if err != nil {
+		return policy.Selection{}, policy.Decision{}, "", err
+	}
+	return selection, decision, selectedMode, nil
+}
+
+func policyAppMode(mode app.Mode, source policySource) (app.Mode, error) {
+	if mode == modePolicyTarget {
+		if !source.configured() {
+			return "", fmt.Errorf("%w: policy source is required for policy-target mode", policy.ErrInvalidPolicy)
+		}
+		return app.ModePlanTarget, nil
+	}
+	if !source.configured() {
+		return mode, nil
+	}
+	switch mode {
+	case app.ModePlanTarget, app.ModeStageTarget, app.ModeBootTarget:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("%w: dynamic policy requires policy-target, plan-target, stage-target, or boot-target mode", policy.ErrInvalidPolicy)
+	}
+}
+
+func policyTrust(source policySource) (policy.Trust, error) {
+	if source.SignaturePath == "" || source.PublicKeyPath == "" {
+		return policy.Trust{}, fmt.Errorf("%w: policy Ed25519 signature and public key paths are both required", policy.ErrInvalidPolicy)
+	}
+	signature, err := readHexOrRawFile(source.SignaturePath)
+	if err != nil {
+		return policy.Trust{}, fmt.Errorf("%w: read policy signature: %w", policy.ErrInvalidPolicy, err)
+	}
+	publicKey, err := readHexOrRawFile(source.PublicKeyPath)
+	if err != nil {
+		return policy.Trust{}, fmt.Errorf("%w: read policy public key: %w", policy.ErrInvalidPolicy, err)
+	}
+	return policy.Trust{
+		Ed25519Signature: signature,
+		Ed25519PublicKey: publicKey,
+	}, nil
+}
+
+func diagnosticsPolicyPosture(source policySource) diagnostics.PolicyPosture {
+	posture := diagnostics.PolicyPosture{
+		LocalPathSet:   source.Path != "",
+		Ed25519:        source.SignaturePath != "" || source.PublicKeyPath != "",
+		SignatureFiles: source.SignaturePath != "" || source.PublicKeyPath != "",
+		Freshness:      source.configured(),
+		Cache:          source.CachePath != "",
+		CacheFallback:  source.CacheFallback,
+		MaxBytes:       source.MaxBytes > 0,
+	}
+	if source.Path != "" {
+		posture.Source = "local"
+	}
+	return posture
+}
+
+func policyPostureWithDecision(posture diagnostics.PolicyPosture, decision policy.Decision) diagnostics.PolicyPosture {
+	posture.DecisionID = decision.DecisionID
+	posture.TargetID = decision.TargetID
+	if decision.PublishedAt != nil {
+		posture.PublishedAt = decision.PublishedAt.Format(time.RFC3339)
+	}
+	if decision.ExpiresAt != nil {
+		posture.ExpiresAt = decision.ExpiresAt.Format(time.RFC3339)
+	}
+	return posture
+}
+
+func diagnosticsPolicyRedactValues(source policySource) []string {
+	values := []string{
+		source.Path,
+		source.SignaturePath,
+		source.PublicKeyPath,
+		source.CachePath,
+	}
+	redactions := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			redactions = append(redactions, value)
+		}
+	}
+	return redactions
 }
 
 type catalogSource struct {

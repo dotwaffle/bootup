@@ -41,6 +41,23 @@ type ProviderConfigPosture struct {
 	PathSet bool `json:"path_set"`
 }
 
+// PolicyPosture records dynamic policy configuration without source paths,
+// trust bytes, or response bodies.
+type PolicyPosture struct {
+	Source         string `json:"source,omitzero"`
+	LocalPathSet   bool   `json:"local_path_set,omitzero"`
+	Ed25519        bool   `json:"ed25519,omitzero"`
+	SignatureFiles bool   `json:"signature_files,omitzero"`
+	Freshness      bool   `json:"freshness,omitzero"`
+	Cache          bool   `json:"cache,omitzero"`
+	CacheFallback  bool   `json:"cache_fallback,omitzero"`
+	MaxBytes       bool   `json:"max_bytes,omitzero"`
+	DecisionID     string `json:"decision_id,omitzero"`
+	TargetID       string `json:"target_id,omitzero"`
+	PublishedAt    string `json:"published_at,omitzero"`
+	ExpiresAt      string `json:"expires_at,omitzero"`
+}
+
 // Summary is the structured diagnostics metadata written to summary.json.
 type Summary struct {
 	SchemaVersion     int                   `json:"schema_version"`
@@ -53,6 +70,7 @@ type Summary struct {
 	SecretRefIDs      []string              `json:"secret_ref_ids,omitzero"`
 	Catalog           CatalogPosture        `json:"catalog"`
 	ProviderConfig    ProviderConfigPosture `json:"provider_config"`
+	Policy            PolicyPosture         `json:"policy,omitzero"`
 	Error             string                `json:"error,omitzero"`
 }
 
@@ -66,6 +84,7 @@ type SummaryInput struct {
 	SecretRefIDs      []string
 	Catalog           CatalogPosture
 	ProviderConfig    ProviderConfigPosture
+	Policy            PolicyPosture
 	Error             error
 	RedactValues      []string
 }
@@ -91,6 +110,7 @@ func BuildSummary(input SummaryInput) Summary {
 		SecretRefIDs:      append([]string(nil), input.SecretRefIDs...),
 		Catalog:           input.Catalog,
 		ProviderConfig:    input.ProviderConfig,
+		Policy:            input.Policy,
 		Error:             redactError(input.Error, redactions),
 	}
 }

@@ -47,15 +47,51 @@ secret input.
 
 ## Dynamic Policy
 
-Dynamic policy is still a future capability. A safe policy design needs all of
-these pieces before it should affect boot decisions:
+Bootup supports an initial signed local dynamic policy mode. A policy decision
+is JSON data, authenticated with a detached Ed25519 signature over the raw
+policy bytes:
 
-- explicit local trust material for any policy service or policy document
-- timeout-bound and fail-closed evaluation
-- a data-only result shape, such as target ID plus selected non-secret options
-- a separate delivery path for secret material
-- redacted plan, stage, smoke, and error output
-- clear behavior when policy is unavailable or returns an unsupported target
+```json
+{
+  "schema_version": 1,
+  "decision_id": "site-a-rack-22-node-03",
+  "target_id": "ubuntu-2604-amd64-netboot",
+  "options": {
+    "console": "serial"
+  },
+  "secret_refs": {
+    "installer-password": "site-installer-password"
+  },
+  "published_at": "2026-05-07T10:00:00Z",
+  "expires_at": "2026-05-07T10:10:00Z"
+}
+```
 
-Until that exists, bootup rejects unsupported policy fields in provider runtime
-configuration and keeps static catalogs predictable.
+Use `policy-target` to resolve and print the selected boot plan:
+
+```sh
+bootup --mode=policy-target \
+  --policy-file=/etc/bootup/policy.json \
+  --policy-signature=/etc/bootup/policy.json.sig \
+  --policy-public-key=/etc/bootup/policy.pub
+```
+
+The policy flags can also be used with `plan-target`, `stage-target`, or
+`boot-target`; in those modes the policy supplies the target, selected
+non-secret options, and secret references. Do not combine dynamic policy with
+`--target`, `--option`, or `--discovery-family`.
+
+Policy decisions fail closed before provider planning when trust material is
+missing, signature verification fails, JSON is malformed, freshness metadata is
+missing, the decision is expired, `--policy-max-age` is exceeded, or the result
+references an unknown target, invalid option, undeclared secret, or missing
+required secret. `expires_at` is accepted as a freshness bound; `published_at`
+is required when `--policy-max-age` is used. `--policy-cache` updates a local
+cache after a fresh source decision authenticates, and
+`--policy-cache-fallback` can use that cache after source read failure. Cached
+bytes go through the same signature and freshness checks.
+
+Policy is data only. It cannot define targets, providers, boot actions,
+command-line fragments, trust roots, artifact hash pins, plugins, scripts,
+Rego, WebAssembly, shell commands, or remote provider code. Remote policy URLs
+and interactive manual fallback remain deferred.

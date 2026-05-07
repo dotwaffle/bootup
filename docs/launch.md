@@ -153,6 +153,43 @@ hosted catalog only decides which concrete targets compiled-in providers expose;
 providers still verify downloaded boot artifacts using provider-owned trust
 material, hashes, signatures, and runtime configuration.
 
+## Dynamic policy
+
+Bootup can resolve a signed local dynamic policy decision before non-interactive
+target planning:
+
+```sh
+bootup --mode=policy-target \
+  --policy-file=/etc/bootup/policy.json \
+  --policy-signature=/etc/bootup/policy.json.sig \
+  --policy-public-key=/etc/bootup/policy.pub
+```
+
+`policy-target` prints the selected boot plan. Use the same policy flags with
+`plan-target`, `stage-target`, or `boot-target` to let the policy decision
+supply the target ID, non-secret target options, and secret references for that
+mode. Policy cannot be combined with `--target`, `--option`, or
+`--discovery-family`.
+
+Policy documents use schema version 1 and are authenticated before parsing:
+
+```json
+{
+  "schema_version": 1,
+  "decision_id": "site-a-node-03",
+  "target_id": "ubuntu-2604-amd64-netboot",
+  "options": {},
+  "secret_refs": {},
+  "expires_at": "2026-05-07T10:10:00Z"
+}
+```
+
+Use `--policy-max-age=10m` with `published_at` to limit staleness further.
+`--policy-cache` updates a local cache after successful authentication and
+freshness checks. `--policy-cache-fallback` can use that cache after a source
+read failure, but cached bytes are verified again with the configured signature
+and public key.
+
 ## Provider runtime config
 
 Use `--provider-config` to point bootup at a JSON file that configures

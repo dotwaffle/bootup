@@ -48,6 +48,24 @@ sha256_file() {
 	sha256sum "$1" | awk '{print $1}'
 }
 
+bootup_version_line() {
+	local output="$1"
+	local field="$2"
+
+	awk -F '\t' -v field="${field}" '
+		$1 == field {
+			print $2
+			found = 1
+			exit
+		}
+		END {
+			if (!found) {
+				exit 1
+			}
+		}
+	' <<<"${output}"
+}
+
 require_name_in_checksums() {
 	local sums="$1"
 	local name="$2"
@@ -99,9 +117,14 @@ manifest_name="$(basename -- "${manifest_path}")"
 
 schema_version="$(json_string "${manifest_path}" '.schemaVersion')"
 release_version="$(json_string "${manifest_path}" '.releaseVersion')"
+git_commit="$(json_string "${manifest_path}" '.gitCommit')"
 manifest_arch="$(json_string "${manifest_path}" '.architecture')"
 kernel_version="$(json_string "${manifest_path}" '.kernelVersion')"
 trust_embedded="$(json_string "${manifest_path}" '.trustMaterial.distributionSpecificEmbedded')"
+bootup_build_version="$(json_string "${manifest_path}" '.bootupBuild.version')"
+bootup_build_commit="$(json_string "${manifest_path}" '.bootupBuild.gitCommit')"
+bootup_build_date="$(json_string "${manifest_path}" '.bootupBuild.buildDate')"
+bootup_build_dirty="$(json_string "${manifest_path}" '.bootupBuild.dirty')"
 
 if [[ "${schema_version}" != "1" ]]; then
 	printf 'manifest schemaVersion = %q, want 1\n' "${schema_version}" >&2
@@ -111,12 +134,42 @@ if [[ -z "${release_version}" || "${release_version}" == "null" ]]; then
 	printf 'manifest releaseVersion is empty\n' >&2
 	exit 1
 fi
+if [[ -z "${git_commit}" || "${git_commit}" == "null" ]]; then
+	printf 'manifest gitCommit is empty\n' >&2
+	exit 1
+fi
 if [[ "${manifest_arch}" != "${arch}" ]]; then
 	printf 'manifest architecture = %q, want %q\n' "${manifest_arch}" "${arch}" >&2
 	exit 1
 fi
 if [[ -z "${kernel_version}" || "${kernel_version}" == "null" ]]; then
 	printf 'manifest kernelVersion is empty\n' >&2
+	exit 1
+fi
+if [[ -z "${bootup_build_version}" || "${bootup_build_version}" == "null" ]]; then
+	printf 'manifest bootupBuild.version is empty\n' >&2
+	exit 1
+fi
+if [[ -z "${bootup_build_commit}" || "${bootup_build_commit}" == "null" ]]; then
+	printf 'manifest bootupBuild.gitCommit is empty\n' >&2
+	exit 1
+fi
+if [[ -z "${bootup_build_date}" || "${bootup_build_date}" == "null" ]]; then
+	printf 'manifest bootupBuild.buildDate is empty\n' >&2
+	exit 1
+fi
+if [[ "${bootup_build_dirty}" != "clean" && "${bootup_build_dirty}" != "dirty" ]]; then
+	printf 'manifest bootupBuild.dirty = %q, want clean or dirty\n' "${bootup_build_dirty}" >&2
+	exit 1
+fi
+if [[ "${bootup_build_version}" != "${release_version}" ]]; then
+	printf 'manifest bootupBuild.version = %q, want releaseVersion %q\n' \
+		"${bootup_build_version}" "${release_version}" >&2
+	exit 1
+fi
+if [[ "${bootup_build_commit}" != "${git_commit}" ]]; then
+	printf 'manifest bootupBuild.gitCommit = %q, want gitCommit %q\n' \
+		"${bootup_build_commit}" "${git_commit}" >&2
 	exit 1
 fi
 if [[ "${trust_embedded}" != "false" ]]; then
@@ -138,6 +191,7 @@ fi
 
 declare -A roles_seen=()
 iso_name=""
+bootup_binary_name=""
 
 while IFS=$'\t' read -r role name bytes expected_sha256; do
 	artifact_path="${release_dir}/${name}"
@@ -177,6 +231,9 @@ while IFS=$'\t' read -r role name bytes expected_sha256; do
 	if [[ "${role}" == "iso" ]]; then
 		iso_name="${name}"
 	fi
+	if [[ "${role}" == "bootup-binary" ]]; then
+		bootup_binary_name="${name}"
+	fi
 done < <(jq --raw-output '.artifacts[] | [.role, .name, (.bytes | tostring), .sha256] | @tsv' "${manifest_path}")
 
 for role in bootup-binary kernel-image kernel-config initramfs iso; do
@@ -185,6 +242,35 @@ for role in bootup-binary kernel-image kernel-config initramfs iso; do
 		exit 1
 	fi
 done
+
+if ! bootup_version_output="$("${release_dir}/${bootup_binary_name}" --version)"; then
+	printf 'failed to run bootup binary version check: %s\n' "${bootup_binary_name}" >&2
+	exit 1
+fi
+binary_build_version="$(bootup_version_line "${bootup_version_output}" version)"
+binary_build_commit="$(bootup_version_line "${bootup_version_output}" commit)"
+binary_build_date="$(bootup_version_line "${bootup_version_output}" date)"
+binary_dirty_state="$(bootup_version_line "${bootup_version_output}" dirty)"
+if [[ "${binary_build_version}" != "${bootup_build_version}" ]]; then
+	printf 'binary build version = %q, manifest says %q\n' \
+		"${binary_build_version}" "${bootup_build_version}" >&2
+	exit 1
+fi
+if [[ "${binary_build_commit}" != "${bootup_build_commit}" ]]; then
+	printf 'binary build commit = %q, manifest says %q\n' \
+		"${binary_build_commit}" "${bootup_build_commit}" >&2
+	exit 1
+fi
+if [[ "${binary_build_date}" != "${bootup_build_date}" ]]; then
+	printf 'binary build date = %q, manifest says %q\n' \
+		"${binary_build_date}" "${bootup_build_date}" >&2
+	exit 1
+fi
+if [[ "${binary_dirty_state}" != "${bootup_build_dirty}" ]]; then
+	printf 'binary dirty state = %q, manifest says %q\n' \
+		"${binary_dirty_state}" "${bootup_build_dirty}" >&2
+	exit 1
+fi
 
 require_name_in_checksums "${sums_path}" "${manifest_name}"
 (

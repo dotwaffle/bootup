@@ -21,9 +21,9 @@ version `${kernel_version}`, the public files are:
 | `bootup-${version}-amd64-manifest.json` | Machine-readable artifact manifest |
 | `bootup-${version}-amd64-SHA256SUMS` | SHA-256 checksums for the artifacts and manifest |
 
-The manifest records the schema version, release version, git commit,
-architecture, kernel version, artifact roles, byte sizes, SHA-256 digests, and
-trust-material posture.
+The manifest records the schema version, release version, git commit, bootup
+binary build metadata, architecture, kernel version, artifact roles, byte
+sizes, SHA-256 digests, and trust-material posture.
 
 ## Verification
 
@@ -31,12 +31,26 @@ Verify downloaded files before booting them:
 
 ```sh
 sha256sum --check bootup-${version}-amd64-SHA256SUMS
-jq '.trustMaterial, .artifacts[] | {role, name, bytes, sha256}' \
+jq '{bootupBuild, trustMaterial, artifacts: [.artifacts[] | {role, name, bytes, sha256}]}' \
   bootup-${version}-amd64-manifest.json
 ```
 
 `trustMaterial.distributionSpecificEmbedded` is `false` for default release
 artifacts.
+
+## Binary Build Metadata
+
+Inspect the standalone binary to confirm which release metadata was stamped
+into it:
+
+```sh
+./bootup-${version}-linux-amd64 --version
+```
+
+The output reports the bootup release version, git commit, build date, source
+tree state, and Go runtime version. The release manifest records the stamped
+binary fields under `bootupBuild`, and `scripts/check-release-artifacts.sh`
+compares those manifest fields against the binary before publication.
 
 ## iPXE
 

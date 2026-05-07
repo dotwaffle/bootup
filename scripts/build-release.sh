@@ -44,6 +44,22 @@ validate_release_version() {
 	fi
 }
 
+release_build_date() {
+	if [[ -n "${SOURCE_DATE_EPOCH:-}" ]]; then
+		date -u -d "@${SOURCE_DATE_EPOCH}" '+%Y-%m-%dT%H:%M:%SZ'
+		return
+	fi
+	date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+release_dirty_state() {
+	if [[ -n "$(git status --porcelain)" ]]; then
+		printf 'dirty\n'
+		return
+	fi
+	printf 'clean\n'
+}
+
 latest_kernel() {
 	local kernel_dir="$1"
 	local -a kernels=()
@@ -103,6 +119,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 require_cmd awk
+require_cmd date
 require_cmd find
 require_cmd git
 require_cmd go
@@ -125,6 +142,8 @@ out_dir="${1:-${BOOTUP_RELEASE_OUT:-${repo_root}/dist/release}}"
 work_dir="${BOOTUP_RELEASE_WORK:-${repo_root}/dist/release-work}"
 kernel_dir="${BOOTUP_RELEASE_KERNEL_DIR:-${repo_root}/dist/kernel}"
 commit="$(git rev-parse HEAD)"
+build_date="$(release_build_date)"
+dirty_state="$(release_dirty_state)"
 
 mkdir -p "${out_dir}" "${work_dir}" "${kernel_dir}"
 out_dir="$(cd -- "${out_dir}" && pwd)"
@@ -132,10 +151,17 @@ work_dir="$(cd -- "${work_dir}" && pwd)"
 kernel_dir="$(cd -- "${kernel_dir}" && pwd)"
 find "${out_dir}" -maxdepth 1 -type f -name 'bootup-*' -delete
 
+ldflags=(
+	"-X github.com/dotwaffle/bootup/internal/buildinfo.version=${release_version}"
+	"-X github.com/dotwaffle/bootup/internal/buildinfo.commit=${commit}"
+	"-X github.com/dotwaffle/bootup/internal/buildinfo.date=${build_date}"
+	"-X github.com/dotwaffle/bootup/internal/buildinfo.dirty=${dirty_state}"
+)
+
 binary_name="bootup-${release_version}-linux-${arch}"
 binary_path="${out_dir}/${binary_name}"
 GOOS=linux GOARCH=amd64 GOAMD64="${GOAMD64:-v1}" \
-	go build -trimpath -o "${binary_path}" ./cmd/bootup
+	go build -trimpath -ldflags "${ldflags[*]}" -o "${binary_path}" ./cmd/bootup
 
 if [[ -n "${BOOTUP_RELEASE_KERNEL:-}" ]]; then
 	kernel_src="${BOOTUP_RELEASE_KERNEL}"
@@ -200,12 +226,22 @@ artifact_entries=(
 printf '%s\n' "${artifact_entries[@]}" | jq --slurp \
 	--arg releaseVersion "${release_version}" \
 	--arg gitCommit "${commit}" \
+	--arg bootupBuildVersion "${release_version}" \
+	--arg bootupBuildCommit "${commit}" \
+	--arg bootupBuildDate "${build_date}" \
+	--arg bootupBuildDirty "${dirty_state}" \
 	--arg architecture "${arch}" \
 	--arg kernelVersion "${kernel_version}" \
 	'{
 		schemaVersion: 1,
 		releaseVersion: $releaseVersion,
 		gitCommit: $gitCommit,
+		bootupBuild: {
+			version: $bootupBuildVersion,
+			gitCommit: $bootupBuildCommit,
+			buildDate: $bootupBuildDate,
+			dirty: $bootupBuildDirty
+		},
 		architecture: $architecture,
 		kernelVersion: $kernelVersion,
 		trustMaterial: {

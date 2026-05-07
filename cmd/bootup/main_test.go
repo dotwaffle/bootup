@@ -27,6 +27,39 @@ func TestRunRejectsMissingProviderConfig(t *testing.T) {
 	}
 }
 
+func TestRunVersionBypassesStartup(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--version",
+		"--provider-config", filepath.Join(t.TempDir(), "missing.json"),
+		"--catalog", filepath.Join(t.TempDir(), "missing-catalog.json"),
+	}, strings.NewReader(""), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q, want empty output", stderr.String())
+	}
+	got := stdout.String()
+	for _, want := range []string{
+		"bootup version\n",
+		"version\tdevel\n",
+		"commit\tunknown\n",
+		"date\tunknown\n",
+		"dirty\tunknown\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout = %q, want %q", got, want)
+		}
+	}
+	if !strings.Contains(got, "go\t") {
+		t.Fatalf("stdout = %q, want Go runtime field", got)
+	}
+}
+
 func TestRunRejectsMissingCatalog(t *testing.T) {
 	t.Parallel()
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/dotwaffle/bootup/internal/app"
+	"github.com/dotwaffle/bootup/internal/buildinfo"
 	"github.com/dotwaffle/bootup/internal/catalog"
 	"github.com/dotwaffle/bootup/internal/handoff"
 	"github.com/dotwaffle/bootup/internal/logging"
@@ -39,6 +40,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	flags := flag.NewFlagSet("bootup", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 
+	showVersion := flags.Bool("version", false, "print build version and exit")
 	mode := flags.String("mode", string(app.ModeListTargets), "startup mode")
 	uiMode := flags.String("ui", string(app.UIModeAuto), "menu UI mode: auto, rich, plain")
 	targetID := flags.String("target", "", "target ID for non-interactive modes")
@@ -66,6 +68,10 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	prepareRuntime := flags.Bool("prepare-runtime", false, "validate network, CA roots, and time before provider operations")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
+	}
+	if *showVersion {
+		_, err := io.WriteString(stdout, buildinfo.FormatText(buildinfo.Current()))
+		return err
 	}
 
 	var providerConfig providerconfig.Config

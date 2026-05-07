@@ -60,7 +60,7 @@ func (FileISOExtractor) Extract(ctx context.Context, isoPath string, dest string
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return fmt.Errorf("create extract destination: %w", err)
 	}
-	return extractISORecord(ctx, file, root, dest)
+	return extractISORecord(ctx, file, info.Size(), root, dest)
 }
 
 func readPrimaryVolumeRoot(reader io.ReaderAt, size int64) (isoDirectoryRecord, error) {
@@ -89,8 +89,11 @@ func readPrimaryVolumeRoot(reader io.ReaderAt, size int64) (isoDirectoryRecord, 
 	return isoDirectoryRecord{}, errors.New("ISO primary volume descriptor not found")
 }
 
-func extractISORecord(ctx context.Context, reader io.ReaderAt, record isoDirectoryRecord, dest string) error {
+func extractISORecord(ctx context.Context, reader io.ReaderAt, imageSize int64, record isoDirectoryRecord, dest string) error {
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validateISOExtent(record, imageSize); err != nil {
 		return err
 	}
 	if record.dir {
@@ -101,7 +104,7 @@ func extractISORecord(ctx context.Context, reader io.ReaderAt, record isoDirecto
 		if err := os.MkdirAll(dest, mode); err != nil {
 			return fmt.Errorf("create ISO directory %s: %w", dest, err)
 		}
-		records, err := readISODirectory(ctx, reader, record)
+		records, err := readISODirectory(ctx, reader, imageSize, record)
 		if err != nil {
 			return err
 		}
@@ -110,7 +113,7 @@ func extractISORecord(ctx context.Context, reader io.ReaderAt, record isoDirecto
 			if err != nil {
 				return err
 			}
-			if err := extractISORecord(ctx, reader, child, filepath.Join(dest, name)); err != nil {
+			if err := extractISORecord(ctx, reader, imageSize, child, filepath.Join(dest, name)); err != nil {
 				return err
 			}
 		}
@@ -139,8 +142,11 @@ func extractISORecord(ctx context.Context, reader io.ReaderAt, record isoDirecto
 	return os.Chmod(dest, mode)
 }
 
-func readISODirectory(ctx context.Context, reader io.ReaderAt, record isoDirectoryRecord) ([]isoDirectoryRecord, error) {
+func readISODirectory(ctx context.Context, reader io.ReaderAt, imageSize int64, record isoDirectoryRecord) ([]isoDirectoryRecord, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := validateISOExtent(record, imageSize); err != nil {
 		return nil, err
 	}
 	data := make([]byte, record.size)
@@ -171,6 +177,18 @@ func readISODirectory(ctx context.Context, reader io.ReaderAt, record isoDirecto
 		offset += recordLen
 	}
 	return records, nil
+}
+
+func validateISOExtent(record isoDirectoryRecord, imageSize int64) error {
+	if imageSize < 0 {
+		return errors.New("ISO size is negative")
+	}
+	start := int64(record.extent) * iso9660SectorSize
+	end := start + int64(record.size)
+	if start > imageSize || end > imageSize {
+		return fmt.Errorf("ISO record %q extent %d size %d exceeds ISO size %d", record.name, record.extent, record.size, imageSize)
+	}
+	return nil
 }
 
 func parseISODirectoryRecord(data []byte) (isoDirectoryRecord, error) {

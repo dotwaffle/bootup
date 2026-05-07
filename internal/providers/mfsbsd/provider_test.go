@@ -171,6 +171,25 @@ func TestFileISOExtractorExtractsConfiguredISO(t *testing.T) {
 	assertReadableGzip(t, filepath.Join(dest, "mfsroot.gz"))
 }
 
+func TestFileISOExtractorRejectsExtentPastEOF(t *testing.T) {
+	t.Parallel()
+
+	iso := tinyMFSBSDISO(t)
+	patchISORecordSize(t, iso, "MFSROOT.GZ;1", uint32(len(iso)+1))
+	isoPath := filepath.Join(t.TempDir(), "mfsbsd.iso")
+	if err := os.WriteFile(isoPath, iso, 0o644); err != nil {
+		t.Fatalf("write test ISO: %v", err)
+	}
+
+	err := (mfsbsd.FileISOExtractor{}).Extract(context.Background(), isoPath, t.TempDir())
+	if err == nil {
+		t.Fatal("extract ISO succeeded, want extent bounds error")
+	}
+	if !strings.Contains(err.Error(), "exceeds ISO size") {
+		t.Fatalf("extract error = %v, want ISO size error", err)
+	}
+}
+
 type extractCall struct {
 	isoPath string
 	dest    string
@@ -482,4 +501,32 @@ func putBothEndian32(target []byte, value uint32) {
 	target[5] = byte(value >> 16)
 	target[6] = byte(value >> 8)
 	target[7] = byte(value)
+}
+
+func patchISORecordSize(t *testing.T, image []byte, isoName string, size uint32) {
+	t.Helper()
+
+	const sectorSize = 2048
+	const rootSector = 20
+
+	root := image[rootSector*sectorSize : (rootSector+1)*sectorSize]
+	for offset := 0; offset < len(root); {
+		recordLen := int(root[offset])
+		if recordLen == 0 {
+			offset = ((offset / sectorSize) + 1) * sectorSize
+			continue
+		}
+		if offset+recordLen > len(root) {
+			t.Fatalf("record at offset %d exceeds image length", offset)
+		}
+		record := root[offset : offset+recordLen]
+		fileIDLen := int(record[32])
+		fileIDEnd := 33 + fileIDLen
+		if fileIDEnd <= len(record) && string(record[33:fileIDEnd]) == isoName {
+			putBothEndian32(record[10:18], size)
+			return
+		}
+		offset += recordLen
+	}
+	t.Fatalf("ISO record %q not found", isoName)
 }

@@ -1,7 +1,10 @@
 # bootup-freebsd-kboot-handoff Specification
 
 ## Purpose
-TBD - created by archiving change investigate-freebsd-kboot-handoff. Update Purpose after archive.
+Define the evidence required before bootup treats FreeBSD `loader.kboot` as a
+supported handoff path, and keep FreeBSD-shaped payloads out of the executable
+catalog until that evidence exists.
+
 ## Requirements
 ### Requirement: FreeBSD kboot viability is evidence-based
 Bootup SHALL treat FreeBSD `loader.kboot` support as an experimental

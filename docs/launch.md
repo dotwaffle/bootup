@@ -87,6 +87,9 @@ target discovery. `source.base_url` is an optional HTTP(S) source root for that
 target; `source.iso_name` is an optional pathless installer ISO filename used by
 providers such as Ubuntu. Generic Linux catalog targets also use
 `source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`.
+They may include `source.kernel_sha256` and `source.initrd_sha256` to pin
+generic Linux artifacts; when an initrd path is present and either hash is set,
+both hashes are required.
 Targets may also declare `options`; each option is validated catalog data that
 can append a kernel command-line fragment when selected with `--option`.
 The `localboot` action does not download artifacts and hands off to u-root's

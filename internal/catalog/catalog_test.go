@@ -189,6 +189,45 @@ func TestLoadDefaultIncludesGenericLinuxSourceTargets(t *testing.T) {
 	t.Fatalf("default Linux targets = %#v, want openSUSE target", linuxTargets)
 }
 
+func TestParsePreservesSourceArtifactHashPins(t *testing.T) {
+	t.Parallel()
+
+	kernelHash := strings.Repeat("a", 64)
+	initrdHash := strings.Repeat("b", 64)
+	doc, err := catalog.Parse([]byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "opensuse-leap-160-amd64-netboot",
+			"provider_id": "linux",
+			"name": "openSUSE Leap 16.0 amd64 installer",
+			"catalog": {
+				"distribution": "opensuse",
+				"release": "leap-16.0",
+				"architecture": "amd64",
+				"kind": "installer"
+			},
+			"source": {
+				"base_url": "https://download.example/opensuse",
+				"kernel_path": "boot/x86_64/loader/linux",
+				"initrd_path": "boot/x86_64/loader/initrd",
+				"kernel_sha256": "`+kernelHash+`",
+				"initrd_sha256": "`+initrdHash+`"
+			}
+		}]
+	}`), []string{"linux"})
+	if err != nil {
+		t.Fatalf("parse catalog: %v", err)
+	}
+
+	target := doc.Targets("linux")[0]
+	if target.Source.KernelSHA256 != kernelHash {
+		t.Fatalf("kernel sha256 = %q, want %q", target.Source.KernelSHA256, kernelHash)
+	}
+	if target.Source.InitrdSHA256 != initrdHash {
+		t.Fatalf("initrd sha256 = %q, want %q", target.Source.InitrdSHA256, initrdHash)
+	}
+}
+
 func TestLoadDefaultIncludesLocalBootAction(t *testing.T) {
 	t.Parallel()
 
@@ -239,6 +278,50 @@ func TestGenerateAllowsTargetDistributionDifferentFromProvider(t *testing.T) {
 	target := doc.Targets("linux")[0]
 	if target.ProviderID != "linux" || target.Catalog.Distribution != "opensuse" {
 		t.Fatalf("target provider/distribution = %q/%q", target.ProviderID, target.Catalog.Distribution)
+	}
+}
+
+func TestGeneratePreservesSourceArtifactHashPins(t *testing.T) {
+	t.Parallel()
+
+	kernelHash := strings.Repeat("a", 64)
+	initrdHash := strings.Repeat("b", 64)
+	generated, err := catalog.Generate([]byte(`{
+		"schema_version": 1,
+		"providers": [{
+			"id": "linux",
+			"targets": [{
+				"id": "opensuse-leap-160-amd64-netboot",
+				"name": "openSUSE Leap 16.0 amd64 installer",
+				"distribution": "opensuse",
+				"release": "leap-16.0",
+				"architecture": "amd64",
+				"kind": "installer",
+				"source": {
+					"base_url": "https://download.example/opensuse",
+					"kernel_path": "boot/x86_64/loader/linux",
+					"initrd_path": "boot/x86_64/loader/initrd",
+					"kernel_sha256": "` + kernelHash + `",
+					"initrd_sha256": "` + initrdHash + `",
+					"cmdline": "install={base_url}"
+				}
+			}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("generate catalog: %v", err)
+	}
+
+	doc, err := catalog.Parse(generated, []string{"linux"})
+	if err != nil {
+		t.Fatalf("parse generated catalog: %v", err)
+	}
+	target := doc.Targets("linux")[0]
+	if target.Source.KernelSHA256 != kernelHash {
+		t.Fatalf("kernel sha256 = %q, want %q", target.Source.KernelSHA256, kernelHash)
+	}
+	if target.Source.InitrdSHA256 != initrdHash {
+		t.Fatalf("initrd sha256 = %q, want %q", target.Source.InitrdSHA256, initrdHash)
 	}
 }
 
@@ -952,6 +1035,26 @@ func TestParseRejectsInvalidCatalogs(t *testing.T) {
 				"name": "Ubuntu 26.04 amd64 netboot",
 				"catalog": {"distribution": "ubuntu", "release": "26.04", "architecture": "amd64", "kind": "installer"},
 				"source": {"iso_name": "../ubuntu.iso"}
+			}]}`,
+		},
+		{
+			name: "invalid source kernel sha256",
+			data: `{"schema_version": 1, "targets": [{
+				"id": "ubuntu-2604-amd64-netboot",
+				"provider_id": "ubuntu",
+				"name": "Ubuntu 26.04 amd64 netboot",
+				"catalog": {"distribution": "ubuntu", "release": "26.04", "architecture": "amd64", "kind": "installer"},
+				"source": {"kernel_sha256": "not-a-sha256"}
+			}]}`,
+		},
+		{
+			name: "partial initrd hash pins",
+			data: `{"schema_version": 1, "targets": [{
+				"id": "ubuntu-2604-amd64-netboot",
+				"provider_id": "ubuntu",
+				"name": "Ubuntu 26.04 amd64 netboot",
+				"catalog": {"distribution": "ubuntu", "release": "26.04", "architecture": "amd64", "kind": "installer"},
+				"source": {"kernel_path": "netboot/linux", "initrd_path": "netboot/initrd", "kernel_sha256": "` + strings.Repeat("a", 64) + `"}
 			}]}`,
 		},
 		{

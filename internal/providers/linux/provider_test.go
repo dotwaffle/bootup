@@ -56,6 +56,26 @@ func TestProviderPlanAllowsKernelOnlyTarget(t *testing.T) {
 	}
 }
 
+func TestProviderPlanAppliesSourceArtifactHashPins(t *testing.T) {
+	t.Parallel()
+
+	target := linuxTarget()
+	target.Source.KernelSHA256 = strings.Repeat("a", 64)
+	target.Source.InitrdSHA256 = strings.Repeat("b", 64)
+	p := linux.NewProvider(linux.Config{Targets: []provider.Target{target}})
+
+	plan, err := p.Plan(context.Background(), provider.PlanInput{Target: target})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.Kernel.SHA256 != target.Source.KernelSHA256 {
+		t.Fatalf("kernel sha256 = %q, want %q", plan.Kernel.SHA256, target.Source.KernelSHA256)
+	}
+	if plan.Initrd.SHA256 != target.Source.InitrdSHA256 {
+		t.Fatalf("initrd sha256 = %q, want %q", plan.Initrd.SHA256, target.Source.InitrdSHA256)
+	}
+}
+
 func TestFetchAndStageArtifactsAllowsOptionalInitrd(t *testing.T) {
 	t.Parallel()
 

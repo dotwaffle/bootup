@@ -3,6 +3,7 @@ package provider
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -48,12 +49,14 @@ type CatalogEntry struct {
 
 // SourceEntry describes provider source metadata for a concrete boot target.
 type SourceEntry struct {
-	BaseURL    string `json:"base_url,omitzero"`
-	ISOName    string `json:"iso_name,omitzero"`
-	ISOSHA256  string `json:"iso_sha256,omitzero"`
-	KernelPath string `json:"kernel_path,omitzero"`
-	InitrdPath string `json:"initrd_path,omitzero"`
-	Cmdline    string `json:"cmdline,omitzero"`
+	BaseURL      string `json:"base_url,omitzero"`
+	ISOName      string `json:"iso_name,omitzero"`
+	ISOSHA256    string `json:"iso_sha256,omitzero"`
+	KernelPath   string `json:"kernel_path,omitzero"`
+	InitrdPath   string `json:"initrd_path,omitzero"`
+	KernelSHA256 string `json:"kernel_sha256,omitzero"`
+	InitrdSHA256 string `json:"initrd_sha256,omitzero"`
+	Cmdline      string `json:"cmdline,omitzero"`
 }
 
 // BootAction describes how bootup hands off to a selected target.
@@ -498,8 +501,48 @@ func validateSourceEntry(targetID string, source SourceEntry) error {
 	if err := validateSourcePath(targetID, "initrd path", source.InitrdPath); err != nil {
 		return err
 	}
+	if err := validateSourceHashPins(targetID, source); err != nil {
+		return err
+	}
 	if strings.TrimSpace(source.Cmdline) != source.Cmdline {
 		return fmt.Errorf("%w: target %s source cmdline has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	return nil
+}
+
+func validateSourceHashPins(targetID string, source SourceEntry) error {
+	if strings.TrimSpace(source.KernelSHA256) != source.KernelSHA256 {
+		return fmt.Errorf("%w: target %s source kernel SHA256 has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	if strings.TrimSpace(source.InitrdSHA256) != source.InitrdSHA256 {
+		return fmt.Errorf("%w: target %s source initrd SHA256 has surrounding whitespace", ErrInvalidTarget, targetID)
+	}
+	if source.KernelSHA256 != "" {
+		if source.KernelPath == "" {
+			return fmt.Errorf("%w: target %s source kernel SHA256 requires kernel path", ErrInvalidTarget, targetID)
+		}
+		if err := validateSourceSHA256(targetID, "kernel", source.KernelSHA256); err != nil {
+			return err
+		}
+	}
+	if source.InitrdSHA256 != "" {
+		if source.InitrdPath == "" {
+			return fmt.Errorf("%w: target %s source initrd SHA256 requires initrd path", ErrInvalidTarget, targetID)
+		}
+		if err := validateSourceSHA256(targetID, "initrd", source.InitrdSHA256); err != nil {
+			return err
+		}
+	}
+	if source.InitrdPath != "" && (source.KernelSHA256 == "") != (source.InitrdSHA256 == "") {
+		return fmt.Errorf("%w: target %s source kernel and initrd SHA256 pins must be supplied together", ErrInvalidTarget, targetID)
+	}
+	return nil
+}
+
+func validateSourceSHA256(targetID string, name string, value string) error {
+	decoded, err := hex.DecodeString(value)
+	if err != nil || len(decoded) != 32 {
+		return fmt.Errorf("%w: target %s source %s SHA256 must be a 64-character SHA-256 hex digest", ErrInvalidTarget, targetID, name)
 	}
 	return nil
 }

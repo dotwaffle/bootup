@@ -72,15 +72,17 @@ func (p *Provider) Plan(_ context.Context, input provider.PlanInput) (provider.B
 		Target: selected,
 		Action: provider.BootActionLinuxKexec,
 		Kernel: provider.Artifact{
-			Name: path.Base(selected.Source.KernelPath),
-			URL:  joinURLPath(baseURL, selected.Source.KernelPath),
+			Name:   path.Base(selected.Source.KernelPath),
+			URL:    joinURLPath(baseURL, selected.Source.KernelPath),
+			SHA256: strings.ToLower(selected.Source.KernelSHA256),
 		},
 		Cmdline: strings.ReplaceAll(selected.Source.Cmdline, "{base_url}", baseURL),
 	}
 	if selected.Source.InitrdPath != "" {
 		plan.Initrd = provider.Artifact{
-			Name: path.Base(selected.Source.InitrdPath),
-			URL:  joinURLPath(baseURL, selected.Source.InitrdPath),
+			Name:   path.Base(selected.Source.InitrdPath),
+			URL:    joinURLPath(baseURL, selected.Source.InitrdPath),
+			SHA256: strings.ToLower(selected.Source.InitrdSHA256),
 		}
 	}
 	return provider.ApplySelectedOptions(plan, input.Options)

@@ -139,6 +139,48 @@ func TestRunAcceptsCatalogMatrixModeFlag(t *testing.T) {
 	}
 }
 
+func TestRunCatalogMatrixReportsHashPinnedLocalCatalog(t *testing.T) {
+	t.Parallel()
+
+	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(catalogPath, []byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "opensuse-leap-160-amd64-netboot",
+			"provider_id": "linux",
+			"name": "openSUSE Leap 16.0 amd64 installer",
+			"catalog": {
+				"distribution": "opensuse",
+				"release": "leap-16.0",
+				"architecture": "amd64",
+				"kind": "installer"
+			},
+			"source": {
+				"base_url": "https://download.example/opensuse",
+				"kernel_path": "boot/x86_64/loader/linux",
+				"initrd_path": "boot/x86_64/loader/initrd",
+				"kernel_sha256": "`+strings.Repeat("a", 64)+`",
+				"initrd_sha256": "`+strings.Repeat("b", 64)+`"
+			}
+		}]
+	}`), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "catalog-matrix",
+		"--catalog", catalogPath,
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := "opensuse-leap-160-amd64-netboot\tlinux\tlinux-kexec\tok\thash-pinned\tlive-stage,catalog-qemu\t"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
 func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	t.Parallel()
 

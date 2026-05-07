@@ -93,6 +93,8 @@ Catalog documents use schema version 1:
         "base_url": "https://download.opensuse.org/distribution/leap/16.0/repo/oss",
         "kernel_path": "boot/x86_64/loader/linux",
         "initrd_path": "boot/x86_64/loader/initrd",
+        "kernel_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "initrd_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "cmdline": "netsetup=dhcp install={base_url} console=ttyS0"
       },
       "options": [
@@ -214,6 +216,11 @@ providers that need one. The generic `linux` provider also accepts
 `source.kernel_path`, optional `source.initrd_path`, and `source.cmdline`.
 Those paths are clean relative URL paths resolved against `source.base_url`.
 The command line may include `{base_url}` to refer to the trimmed source root.
+Generic Linux source entries may also include `source.kernel_sha256` and
+`source.initrd_sha256` as 64-character SHA-256 hex digests. When an initrd path
+is present and either hash is supplied, both kernel and initrd hashes are
+required. Pinned generic Linux artifacts are verified before staging, and the
+catalog matrix reports the target as `hash-pinned`.
 `lifecycle` is informational decoration for operator display; it is not
 signature, checksum, transport, keyring, or other trust material.
 

@@ -1,7 +1,9 @@
 # bootup-boot-actions Specification
 
 ## Purpose
-TBD - created by archiving change add-boot-actions-and-tools. Update Purpose after archive.
+Define typed boot actions for dispatching Linux kexec, local disk boot,
+FreeBSD kboot, and deferred future handoff families without overloading
+provider-specific target metadata.
 ## Requirements
 ### Requirement: Typed boot actions
 Bootup SHALL represent the selected handoff method with a typed boot action on

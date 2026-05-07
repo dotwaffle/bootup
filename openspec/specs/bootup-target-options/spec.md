@@ -1,7 +1,9 @@
 # bootup-target-options Specification
 
 ## Purpose
-TBD - created by archiving change add-catalog-validation-and-options. Update Purpose after archive.
+Define catalog-declared target options that validate operator-selected values
+and translate them into deterministic Linux command-line fragments or
+action-specific boot arguments.
 ## Requirements
 ### Requirement: Catalog target option definitions
 Bootup SHALL allow static catalog targets to declare operator-selectable option

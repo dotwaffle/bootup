@@ -1,7 +1,9 @@
 # bootup-live-smoke-validation Specification
 
 ## Purpose
-TBD - created by archiving change add-catalog-validation-and-options. Update Purpose after archive.
+Define opt-in live smoke validation for selected catalog targets, keeping
+network and QEMU-dependent checks explicit while preserving hermetic default
+tests.
 ## Requirements
 ### Requirement: Catalog target live smoke selection
 Bootup SHALL provide an explicit opt-in live smoke path for selected static

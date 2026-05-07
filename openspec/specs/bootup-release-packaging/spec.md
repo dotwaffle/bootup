@@ -1,7 +1,9 @@
 # bootup-release-packaging Specification
 
 ## Purpose
-TBD - created by archiving change add-release-packaging. Update Purpose after archive.
+Define bootup's amd64 release artifact contract, manifest and checksum
+metadata, validation gates, publication workflow, and operator-facing release
+usage documentation.
 ## Requirements
 ### Requirement: Release artifact contract
 Bootup SHALL define a stable amd64 release artifact set for operators and

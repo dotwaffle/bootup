@@ -1,7 +1,9 @@
 # bootup-catalog-discovery Specification
 
 ## Purpose
-TBD - created by archiving change add-catalog-validation-and-options. Update Purpose after archive.
+Define operator-facing catalog inspection behavior for listing available
+targets and showing target metadata, artifact references, lifecycle decoration,
+boot actions, and selectable options before staging artifacts.
 ## Requirements
 ### Requirement: Catalog list metadata
 Bootup SHALL present compact catalog list output that includes enough metadata

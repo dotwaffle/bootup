@@ -35,6 +35,9 @@ var ErrInvalidTarget = errors.New("invalid target")
 // ErrInvalidTargetOption is returned when selected target options are invalid.
 var ErrInvalidTargetOption = errors.New("invalid target option")
 
+// ErrInvalidSecretInput is returned when selected secret inputs are invalid.
+var ErrInvalidSecretInput = errors.New("invalid secret input")
+
 // ErrInvalidDiscoveryFamily is returned when a provider exposes malformed
 // discovery family metadata.
 var ErrInvalidDiscoveryFamily = errors.New("invalid discovery family")
@@ -131,10 +134,40 @@ type TargetOption struct {
 	Secret   bool                `json:"secret,omitzero"`
 }
 
+// SecretDelivery identifies how a provider can consume a secret input.
+type SecretDelivery string
+
+const (
+	// SecretDeliveryStagedFile stages a private file for provider use.
+	SecretDeliveryStagedFile SecretDelivery = "staged-file"
+)
+
+// SecretInput describes one secret-bearing provider input declaration.
+type SecretInput struct {
+	ID       string         `json:"id"`
+	Label    string         `json:"label"`
+	Purpose  string         `json:"purpose"`
+	Required bool           `json:"required,omitzero"`
+	Delivery SecretDelivery `json:"delivery"`
+}
+
 // SelectedOption describes an operator-selected target option value.
 type SelectedOption struct {
 	ID    string `json:"id"`
 	Value string `json:"value"`
+}
+
+// SecretRef maps a target secret declaration ID to an operator secret input ID.
+type SecretRef struct {
+	ID      string
+	InputID string
+}
+
+// SecretStore provides providers access to validated secret inputs.
+type SecretStore interface {
+	IDs() []string
+	Has(string) bool
+	StageFile(id string, dir string, name string) (string, error)
 }
 
 // Target describes an operating system installer or live environment that
@@ -148,12 +181,15 @@ type Target struct {
 	Source     SourceEntry    `json:"source,omitzero"`
 	Lifecycle  LifecycleEntry `json:"lifecycle,omitzero"`
 	Options    []TargetOption `json:"options,omitzero"`
+	Secrets    []SecretInput  `json:"secrets,omitzero"`
 }
 
 // PlanInput describes an explicit provider planning request.
 type PlanInput struct {
-	Target  Target
-	Options []SelectedOption
+	Target     Target
+	Options    []SelectedOption
+	Secrets    SecretStore
+	SecretRefs []SecretRef
 	// Offline requests dry-run planning without remote metadata fetches.
 	Offline bool
 }
@@ -192,6 +228,7 @@ type BootPlan struct {
 	Cmdline      string
 	Verification Verification
 	FreeBSDKboot FreeBSDKbootPlan
+	SecretRefs   []SecretRef
 }
 
 // ResolvedAction returns the plan action, defaulting old plans to Linux kexec.
@@ -211,6 +248,8 @@ func ResolveBootAction(action BootAction) BootAction {
 type StageConfig struct {
 	Plan       BootPlan
 	StagingDir string
+	Secrets    SecretStore
+	SecretRefs []SecretRef
 }
 
 // Provider exposes boot targets and plans for a distribution or tool family.
@@ -347,6 +386,11 @@ func (r *Registry) Plan(ctx context.Context, input PlanInput) (BootPlan, error) 
 	if err := ValidateSelectedOptions(input.Target, input.Options); err != nil {
 		return BootPlan{}, err
 	}
+	secretRefs, err := ResolveSecretRefs(input.Target, input.SecretRefs, input.Secrets)
+	if err != nil {
+		return BootPlan{}, err
+	}
+	input.SecretRefs = secretRefs
 	provider, ok := r.providers[input.Target.ProviderID]
 	if !ok {
 		return BootPlan{}, fmt.Errorf("%w: %s", ErrProviderNotFound, input.Target.ProviderID)
@@ -354,6 +398,9 @@ func (r *Registry) Plan(ctx context.Context, input PlanInput) (BootPlan, error) 
 	plan, err := provider.Plan(ctx, input)
 	if err != nil {
 		return BootPlan{}, fmt.Errorf("plan target %s: %w", input.Target.ID, err)
+	}
+	if len(secretRefs) != 0 {
+		plan.SecretRefs = secretRefs
 	}
 	return plan, nil
 }
@@ -381,6 +428,15 @@ func ApplySelectedOptions(plan BootPlan, selected []SelectedOption) (BootPlan, e
 
 // Stage stages and verifies artifacts for plan through its provider.
 func (r *Registry) Stage(ctx context.Context, config StageConfig) (BootPlan, error) {
+	secretRefs := config.SecretRefs
+	if len(secretRefs) == 0 {
+		secretRefs = config.Plan.SecretRefs
+	}
+	resolvedRefs, err := ResolveSecretRefs(config.Plan.Target, secretRefs, config.Secrets)
+	if err != nil {
+		return BootPlan{}, err
+	}
+	config.SecretRefs = resolvedRefs
 	provider, ok := r.providers[config.Plan.Target.ProviderID]
 	if !ok {
 		return BootPlan{}, fmt.Errorf("%w: %s", ErrProviderNotFound, config.Plan.Target.ProviderID)
@@ -441,6 +497,9 @@ func ValidateTarget(providerID string, target Target) error {
 		return err
 	}
 	if err := validateTargetOptions(target.ID, target.Options); err != nil {
+		return err
+	}
+	if err := validateSecretInputs(target.ID, target.Secrets); err != nil {
 		return err
 	}
 	return nil
@@ -622,6 +681,96 @@ func validateTargetOptions(targetID string, options []TargetOption) error {
 		}
 	}
 	return nil
+}
+
+func validateSecretInputs(targetID string, secrets []SecretInput) error {
+	seen := make(map[string]struct{}, len(secrets))
+	for _, secret := range secrets {
+		if strings.TrimSpace(secret.ID) == "" {
+			return fmt.Errorf("%w: target %s secret input ID is empty", ErrInvalidTarget, targetID)
+		}
+		if !validOptionID(secret.ID) {
+			return fmt.Errorf("%w: target %s secret input %q ID is invalid", ErrInvalidTarget, targetID, secret.ID)
+		}
+		if _, ok := seen[secret.ID]; ok {
+			return fmt.Errorf("%w: target %s secret input ID %q is duplicate", ErrInvalidTarget, targetID, secret.ID)
+		}
+		seen[secret.ID] = struct{}{}
+		if strings.TrimSpace(secret.Label) == "" {
+			return fmt.Errorf("%w: target %s secret input %s label is empty", ErrInvalidTarget, targetID, secret.ID)
+		}
+		if strings.TrimSpace(secret.Purpose) == "" {
+			return fmt.Errorf("%w: target %s secret input %s purpose is empty", ErrInvalidTarget, targetID, secret.ID)
+		}
+		switch secret.Delivery {
+		case SecretDeliveryStagedFile:
+		case "":
+			return fmt.Errorf("%w: target %s secret input %s delivery is empty", ErrInvalidTarget, targetID, secret.ID)
+		default:
+			return fmt.Errorf("%w: target %s secret input %s delivery %q is invalid", ErrInvalidTarget, targetID, secret.ID, secret.Delivery)
+		}
+	}
+	return nil
+}
+
+// ResolveSecretRefs validates selected secret refs against target declarations
+// and the supplied secret store.
+func ResolveSecretRefs(target Target, selected []SecretRef, store SecretStore) ([]SecretRef, error) {
+	declarations := make(map[string]SecretInput, len(target.Secrets))
+	for _, secret := range target.Secrets {
+		declarations[secret.ID] = secret
+	}
+
+	if len(selected) == 0 && store != nil {
+		for _, id := range store.IDs() {
+			selected = append(selected, SecretRef{ID: id, InputID: id})
+		}
+	}
+
+	selectedByID := make(map[string]SecretRef, len(selected))
+	for _, ref := range selected {
+		if strings.TrimSpace(ref.ID) == "" {
+			return nil, fmt.Errorf("%w: target %s secret ref ID is empty", ErrInvalidSecretInput, target.ID)
+		}
+		if _, ok := selectedByID[ref.ID]; ok {
+			return nil, fmt.Errorf("%w: target %s secret ref %q is duplicate", ErrInvalidSecretInput, target.ID, ref.ID)
+		}
+		declaration, ok := declarations[ref.ID]
+		if !ok {
+			return nil, fmt.Errorf("%w: target %s does not declare secret input %q", ErrInvalidSecretInput, target.ID, ref.ID)
+		}
+		inputID := strings.TrimSpace(ref.InputID)
+		if inputID == "" {
+			inputID = ref.ID
+		}
+		if !validOptionID(inputID) {
+			return nil, fmt.Errorf("%w: target %s secret input ID %q is invalid", ErrInvalidSecretInput, target.ID, inputID)
+		}
+		if store == nil || !store.Has(inputID) {
+			return nil, fmt.Errorf("%w: target %s secret input %q for %s is missing", ErrInvalidSecretInput, target.ID, inputID, declaration.ID)
+		}
+		selectedByID[ref.ID] = SecretRef{ID: ref.ID, InputID: inputID}
+	}
+
+	for _, declaration := range target.Secrets {
+		if !declaration.Required {
+			continue
+		}
+		if _, ok := selectedByID[declaration.ID]; !ok {
+			return nil, fmt.Errorf("%w: target %s required secret input %q is missing", ErrInvalidSecretInput, target.ID, declaration.ID)
+		}
+	}
+
+	resolved := make([]SecretRef, 0, len(target.Secrets))
+	for _, declaration := range target.Secrets {
+		if ref, ok := selectedByID[declaration.ID]; ok {
+			resolved = append(resolved, ref)
+		}
+	}
+	if len(resolved) == 0 {
+		return nil, nil
+	}
+	return resolved, nil
 }
 
 func selectedOptionFragments(target Target, selected []SelectedOption) ([]string, error) {

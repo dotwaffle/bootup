@@ -356,6 +356,91 @@ func TestRunAppliesAppendCmdlineFlag(t *testing.T) {
 	}
 }
 
+func TestRunValidatesSecretInputFlagForRequiredTargetSecret(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	catalogPath := writeLinuxSecretCatalog(t, "opensuse-secret-amd64-netboot")
+	secretPath := filepath.Join(dir, "installer-password")
+	if err := os.WriteFile(secretPath, []byte("secret value"), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	err := runWithIO(context.Background(), []string{
+		"--mode", "plan-target",
+		"--catalog", catalogPath,
+		"--target", "opensuse-secret-amd64-netboot",
+		"--secret", "installer-password=" + secretPath,
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if strings.Contains(stdout.String(), "secret value") || strings.Contains(stdout.String(), secretPath) {
+		t.Fatalf("stdout exposed secret material: %q", stdout.String())
+	}
+}
+
+func TestRunRejectsMissingRequiredSecret(t *testing.T) {
+	t.Parallel()
+
+	err := runWithIO(context.Background(), []string{
+		"--mode", "plan-target",
+		"--catalog", writeLinuxSecretCatalog(t, "opensuse-secret-amd64-netboot"),
+		"--target", "opensuse-secret-amd64-netboot",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, provider.ErrInvalidSecretInput) {
+		t.Fatalf("run error = %v, want invalid secret input", err)
+	}
+}
+
+func TestRunDiagnosticsRedactsSecretInputPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	catalogPath := writeLinuxSecretCatalog(t, "opensuse-secret-amd64-netboot")
+	secretPath := filepath.Join(dir, "missing-secret")
+	diagnosticsRoot := filepath.Join(dir, "diagnostics")
+	err := runWithIO(context.Background(), []string{
+		"--diagnostics-dir", diagnosticsRoot,
+		"--mode", "plan-target",
+		"--catalog", catalogPath,
+		"--target", "opensuse-secret-amd64-netboot",
+		"--secret", "installer-password=" + secretPath,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("run succeeded, want missing secret error")
+	}
+	if !errors.Is(err, provider.ErrInvalidSecretInput) {
+		t.Fatalf("run error = %v, want invalid secret input", err)
+	}
+
+	bundleDir := onlyDiagnosticsBundleDir(t, diagnosticsRoot)
+	got := readDiagnosticsSummary(t, filepath.Join(bundleDir, "summary.json"))
+	if !slices.Equal(got.SecretInputIDs, []string{"installer-password"}) {
+		t.Fatalf("secret input IDs = %#v, want installer-password", got.SecretInputIDs)
+	}
+	if strings.Contains(got.Error, secretPath) {
+		t.Fatalf("summary error = %q, want redacted secret path", got.Error)
+	}
+}
+
+func TestSecretFlagsStringRedactsPaths(t *testing.T) {
+	t.Parallel()
+
+	var flags secretFlags
+	if err := flags.Set("installer-password=/run/bootup/secrets/installer-password"); err != nil {
+		t.Fatalf("set secret flag: %v", err)
+	}
+	got := flags.String()
+	if strings.Contains(got, "/run/bootup/secrets/installer-password") {
+		t.Fatalf("secret flag string = %q, want redacted path", got)
+	}
+	if !strings.Contains(got, "installer-password=<redacted>") {
+		t.Fatalf("secret flag string = %q, want secret ID with redacted path", got)
+	}
+}
+
 func writeLinuxCatalog(t *testing.T, targetID string) string {
 	t.Helper()
 
@@ -377,6 +462,41 @@ func writeLinuxCatalog(t *testing.T, targetID string) string {
 				"kernel_path": "boot/x86_64/loader/linux",
 				"kernel_sha256": "`+strings.Repeat("a", 64)+`"
 			}
+		}]
+	}`), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	return catalogPath
+}
+
+func writeLinuxSecretCatalog(t *testing.T, targetID string) string {
+	t.Helper()
+
+	catalogPath := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(catalogPath, []byte(`{
+		"schema_version": 1,
+		"targets": [{
+			"id": "`+targetID+`",
+			"provider_id": "linux",
+			"name": "openSUSE secret amd64 netboot",
+			"catalog": {
+				"distribution": "opensuse",
+				"release": "secret",
+				"architecture": "amd64",
+				"kind": "installer"
+			},
+			"source": {
+				"base_url": "https://download.example/opensuse",
+				"kernel_path": "boot/x86_64/loader/linux",
+				"kernel_sha256": "`+strings.Repeat("a", 64)+`"
+			},
+			"secrets": [{
+				"id": "installer-password",
+				"label": "Installer password",
+				"purpose": "automated installer login",
+				"required": true,
+				"delivery": "staged-file"
+			}]
 		}]
 	}`), 0o644); err != nil {
 		t.Fatalf("write catalog: %v", err)

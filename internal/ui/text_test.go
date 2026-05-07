@@ -215,6 +215,13 @@ func TestTextMenuRendersTargetDetails(t *testing.T) {
 				Template: "install={value}",
 			},
 		},
+		Secrets: []provider.SecretInput{{
+			ID:       "installer-password",
+			Label:    "Installer password",
+			Purpose:  "Used by the installer automation profile.",
+			Required: true,
+			Delivery: provider.SecretDeliveryStagedFile,
+		}},
 	}
 
 	if err := menu.RenderTargetDetails(&out, target); err != nil {
@@ -236,6 +243,8 @@ func TestTextMenuRendersTargetDetails(t *testing.T) {
 		"options:",
 		"text-install bool Text install fragment=textmode=1",
 		"mirror-url string Installer mirror URL template=install={value}",
+		"secrets:",
+		"installer-password required staged-file Installer password purpose=Used by the installer automation profile.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output = %q, want %q", got, want)

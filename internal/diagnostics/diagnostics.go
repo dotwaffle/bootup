@@ -49,6 +49,8 @@ type Summary struct {
 	TargetID          string                `json:"target_id,omitzero"`
 	DiscoveryFamilyID string                `json:"discovery_family_id,omitzero"`
 	SelectedOptionIDs []string              `json:"selected_option_ids,omitzero"`
+	SecretInputIDs    []string              `json:"secret_input_ids,omitzero"`
+	SecretRefIDs      []string              `json:"secret_ref_ids,omitzero"`
 	Catalog           CatalogPosture        `json:"catalog"`
 	ProviderConfig    ProviderConfigPosture `json:"provider_config"`
 	Error             string                `json:"error,omitzero"`
@@ -60,6 +62,8 @@ type SummaryInput struct {
 	TargetID          string
 	DiscoveryFamilyID string
 	SelectedOptions   []provider.SelectedOption
+	SecretInputIDs    []string
+	SecretRefIDs      []string
 	Catalog           CatalogPosture
 	ProviderConfig    ProviderConfigPosture
 	Error             error
@@ -83,6 +87,8 @@ func BuildSummary(input SummaryInput) Summary {
 		TargetID:          input.TargetID,
 		DiscoveryFamilyID: input.DiscoveryFamilyID,
 		SelectedOptionIDs: optionIDs,
+		SecretInputIDs:    append([]string(nil), input.SecretInputIDs...),
+		SecretRefIDs:      append([]string(nil), input.SecretRefIDs...),
 		Catalog:           input.Catalog,
 		ProviderConfig:    input.ProviderConfig,
 		Error:             redactError(input.Error, redactions),

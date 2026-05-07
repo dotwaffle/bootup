@@ -73,6 +73,26 @@ configure Ubuntu release key material plus pinned SHA-256 hashes for those
 netboot artifacts. Ubuntu's signed release `SHA256SUMS` currently covers the
 ISO set, not the extracted netboot kernel and initrd.
 
+## Secret inputs
+
+Target options, provider runtime configuration, catalogs, boot plans, loader
+arguments, kernel command lines, logs, and diagnostics are treated as
+operator-visible surfaces. Do not place passwords, password hashes, SSH keys,
+API tokens, or other secret material in those fields.
+
+Targets that need sensitive material must declare separate secret inputs.
+Operators provide each value as a local file-backed input with repeatable
+`--secret id=/absolute/path` flags. Bootup validates the path before provider
+planning, requires a regular readable file below the configured size limit, and
+rejects group- or other-readable files by default. Secret values are kept out
+of public boot plan fields; providers receive a secret store and can request a
+private staged file when the target declaration uses `staged-file` delivery.
+
+Diagnostics may include secret IDs so an operator can see which declaration was
+involved, but they must not include the secret value, the operator source path,
+the staged private path, value hashes, provider config contents, or derived boot
+arguments containing secret material.
+
 Local builders that want a self-contained Debian-capable initramfs can include
 their chosen Debian archive public keyring as an initramfs file and point
 `--provider-config` at a JSON file that references that path. The trust root is

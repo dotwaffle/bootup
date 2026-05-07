@@ -76,6 +76,7 @@ func Generate(data []byte) ([]byte, error) {
 				Source:    targetSource.Source,
 				Lifecycle: targetSource.Lifecycle,
 				Options:   targetSource.Options,
+				Secrets:   targetSource.Secrets,
 			}
 			if err := provider.ValidateTarget(providerSource.ID, target); err != nil {
 				return nil, fmt.Errorf("%w: %w", ErrInvalidCatalog, err)
@@ -191,6 +192,7 @@ type sourceTarget struct {
 	Source       provider.SourceEntry    `json:"source,omitzero"`
 	Lifecycle    provider.LifecycleEntry `json:"lifecycle,omitzero"`
 	Options      []provider.TargetOption `json:"options,omitzero"`
+	Secrets      []provider.SecretInput  `json:"secrets,omitzero"`
 }
 
 func (t sourceTarget) distribution(fallback string) string {

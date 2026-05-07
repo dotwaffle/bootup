@@ -22,6 +22,7 @@ import (
 	"github.com/dotwaffle/bootup/internal/provider"
 	"github.com/dotwaffle/bootup/internal/providerconfig"
 	"github.com/dotwaffle/bootup/internal/runtime"
+	bootsecrets "github.com/dotwaffle/bootup/internal/secrets"
 
 	_ "github.com/breml/rootcerts"
 )
@@ -63,6 +64,8 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 	cmdlineAppend := flags.String("append-cmdline", "", "additional kernel command-line parameters for selected targets")
 	var targetOptions optionFlags
 	flags.Var(&targetOptions, "option", "target option selection as id=value; repeatable")
+	var secretInputs secretFlags
+	flags.Var(&secretInputs, "secret", "secret input as id=/absolute/path; repeatable")
 	netIface := flags.String("net-iface", "", "network interface to configure before provider operations")
 	netAddress := flags.String("net-address", "", "CIDR address to configure before provider operations")
 	netGateway := flags.String("net-gateway", "", "default gateway to configure before provider operations")
@@ -136,6 +139,10 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		if err := registerProviders(registry, providerConfig, catalogDoc); err != nil {
 			return err
 		}
+		secretStore, err := bootsecrets.Load([]bootsecrets.Selection(secretInputs), bootsecrets.Options{})
+		if err != nil {
+			return fmt.Errorf("load secret inputs: %w", err)
+		}
 
 		runner := app.New(app.Config{
 			Registry:          registry,
@@ -147,6 +154,7 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 			UIMode:            app.UIMode(*uiMode),
 			TargetID:          *targetID,
 			TargetOptions:     []provider.SelectedOption(targetOptions),
+			SecretStore:       secretStore,
 			DiscoveryFamilyID: *discoveryFamilyID,
 			StagingDir:        *stagingDir,
 			CmdlineAppend:     *cmdlineAppend,
@@ -164,6 +172,8 @@ func runWithIO(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 			TargetID:          *targetID,
 			DiscoveryFamilyID: *discoveryFamilyID,
 			TargetOptions:     []provider.SelectedOption(targetOptions),
+			SecretInputIDs:    secretInputIDs([]bootsecrets.Selection(secretInputs)),
+			SecretRedactions:  secretRedactValues([]bootsecrets.Selection(secretInputs)),
 			CatalogSource:     catalogSource,
 			ProviderConfig:    *providerConfigPath,
 		})
@@ -178,6 +188,8 @@ type failureDiagnosticsInput struct {
 	TargetID          string
 	DiscoveryFamilyID string
 	TargetOptions     []provider.SelectedOption
+	SecretInputIDs    []string
+	SecretRedactions  []string
 	CatalogSource     catalogSource
 	ProviderConfig    string
 }
@@ -188,10 +200,11 @@ func writeFailureDiagnostics(runErr error, input failureDiagnosticsInput) error 
 		TargetID:          input.TargetID,
 		DiscoveryFamilyID: input.DiscoveryFamilyID,
 		SelectedOptions:   input.TargetOptions,
+		SecretInputIDs:    input.SecretInputIDs,
 		Catalog:           diagnosticsCatalogPosture(input.CatalogSource),
 		ProviderConfig:    diagnostics.ProviderConfigPosture{PathSet: input.ProviderConfig != ""},
 		Error:             runErr,
-		RedactValues:      diagnosticsRedactValues(input.CatalogSource, input.ProviderConfig),
+		RedactValues:      append(diagnosticsRedactValues(input.CatalogSource, input.ProviderConfig), input.SecretRedactions...),
 	})
 	bundleDir, diagnosticsErr := diagnostics.WriteBundle(diagnostics.Bundle{
 		RootDir: input.RootDir,
@@ -249,6 +262,28 @@ func diagnosticsRedactValues(source catalogSource, providerConfigPath string) []
 	return redactions
 }
 
+func secretInputIDs(selections []bootsecrets.Selection) []string {
+	ids := make([]string, 0, len(selections))
+	for _, selection := range selections {
+		id := strings.TrimSpace(selection.ID)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func secretRedactValues(selections []bootsecrets.Selection) []string {
+	values := make([]string, 0, len(selections))
+	for _, selection := range selections {
+		path := strings.TrimSpace(selection.Path)
+		if path != "" {
+			values = append(values, path)
+		}
+	}
+	return values
+}
+
 type optionFlags []provider.SelectedOption
 
 func (f *optionFlags) String() string {
@@ -275,6 +310,35 @@ func (f *optionFlags) Set(value string) error {
 		return fmt.Errorf("target option %s value is required", id)
 	}
 	*f = append(*f, provider.SelectedOption{ID: id, Value: optionValue})
+	return nil
+}
+
+type secretFlags []bootsecrets.Selection
+
+func (f *secretFlags) String() string {
+	if f == nil || len(*f) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(*f))
+	for _, selection := range *f {
+		parts = append(parts, selection.ID+"=<redacted>")
+	}
+	return strings.Join(parts, ",")
+}
+
+func (f *secretFlags) Set(value string) error {
+	id, path, ok := strings.Cut(value, "=")
+	if !ok {
+		return errors.New("secret input must use id=/absolute/path")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("secret input ID is required")
+	}
+	if path == "" {
+		return fmt.Errorf("secret input %s path is required", id)
+	}
+	*f = append(*f, bootsecrets.Selection{ID: id, Path: path})
 	return nil
 }
 

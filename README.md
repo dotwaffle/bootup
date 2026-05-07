@@ -17,6 +17,8 @@ selected kernel and initrd, and hands off with kexec.
 - Ubuntu 24.04.4, 25.10, and 26.04 amd64 netboot targets.
 - Generated embedded static provider catalog with local/hosted replacement and
   opt-in default catalog composition.
+- File-backed secret input validation, provider plumbing, and redacted
+  diagnostics for targets that declare provider-owned secret consumers.
 - Bright terminal menu with plain serial fallback.
 - In-process `kexec_file_load` handoff.
 - Embedded Mozilla TLS roots via `github.com/breml/rootcerts`.
@@ -128,6 +130,17 @@ Append installer or utility kernel parameters without editing provider code:
 ```sh
 bootup --mode=boot-target --target=fedora-44-amd64-server-netboot --append-cmdline='inst.vnc console=ttyS1'
 ```
+
+Provide secret inputs for targets that declare provider-owned secret consumers:
+
+```sh
+bootup --mode=stage-target --target=site-installer --secret installer-password=/run/bootup/secrets/installer-password
+```
+
+Secret inputs are local file paths only. Bootup validates them before provider
+planning, rejects unsafe permissions by default, and redacts source paths and
+staged secret paths from diagnostics. The default catalog does not currently
+include a distro target that consumes a secret input.
 
 Configure networking directly before provider operations when kernel DHCP is
 not available:

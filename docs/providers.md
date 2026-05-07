@@ -17,6 +17,8 @@ Each static target carries typed catalog metadata:
   kernel path, initrd path, or command line
 - optional target option definitions that validate operator-selected values
   and append command-line fragments
+- optional secret input declarations that describe provider-owned sensitive
+  inputs without embedding secret values
 
 The operator interfaces use that metadata for grouping and labels. Providers
 still own boot planning and artifact staging, so the catalog describes what can
@@ -238,8 +240,19 @@ fragment. String options expand exactly one `{value}` placeholder in
 values, and fragments or templates with surrounding whitespace or control
 characters. Options are non-secret because selected values are expanded into
 operator-visible command-line or loader-argument diagnostics. The `secret`
-marker is reserved and catalogs that set it are rejected until bootup has a
-separate secret-safe delivery path. See [policy.md](policy.md).
+marker remains rejected; secrets use separate target declarations instead. See
+[policy.md](policy.md).
+
+Secret declarations describe provider-owned sensitive inputs. Each declaration
+has an ID, label, purpose, requirement flag, and delivery mode. The first
+delivery mode is `staged-file`: bootup validates the operator input from
+`--secret id=/absolute/path`, keeps the value out of public boot plan fields,
+and lets the provider stage a private `0600` file inside its staging tree.
+Secret source paths and staged paths are diagnostics redaction values. The
+default catalog currently declares no secret inputs, and no compiled distro
+provider consumes a secret input yet; the provider-facing API is covered by
+focused registry tests so a future provider can opt in without using target
+options for secret material.
 
 Operators select options with repeatable `--option id=value` flags. Selected
 fragments are applied by boot action. Linux kexec targets append them after
@@ -275,8 +288,10 @@ bootup --mode=boot-target --target=mfsbsd-142-amd64 \
 
 That option appends `mfsbsd.hostname=rescue-a` to the `loader.kboot` argument
 list after the default `mfsbsd.hostname=mfsbsd` argument. Bootup does not expose
-root password, password hash, or SSH key options yet because plan and stage
-output prints loader arguments.
+root password, password hash, or SSH key options yet. The secret input API
+avoids loader-argument leakage, but mfsBSD would still need a provider-specific
+consumer that safely modifies the memory-root image or another private delivery
+point before those values can be used.
 
 ## Implemented mode: provider discovery
 

@@ -95,6 +95,11 @@ Linux artifacts; when an initrd path is present and either hash is set, both
 hashes are required.
 Targets may also declare `options`; each option is validated catalog data that
 can append a kernel command-line fragment when selected with `--option`.
+Sensitive inputs use a separate `secrets` declaration list instead of options.
+Operators provide values through repeatable `--secret id=/absolute/path` flags;
+bootup validates those files before planning and redacts source and staged
+paths from diagnostics. The default catalog has no secret-consuming distro
+target yet.
 The `localboot` action does not download artifacts and hands off to u-root's
 local disk boot path.
 

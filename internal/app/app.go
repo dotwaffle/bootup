@@ -96,6 +96,8 @@ type Config struct {
 	UIMode              UIMode
 	TargetID            string
 	TargetOptions       []provider.SelectedOption
+	SecretStore         provider.SecretStore
+	SecretRefs          []provider.SecretRef
 	DiscoveryFamilyID   string
 	StagingDir          string
 	CmdlineAppend       string
@@ -303,8 +305,10 @@ func (a *App) planTarget(ctx context.Context) error {
 		return fmt.Errorf("render status: %w", err)
 	}
 	plan, err := a.config.Registry.Plan(ctx, provider.PlanInput{
-		Target:  target,
-		Options: a.config.TargetOptions,
+		Target:     target,
+		Options:    a.config.TargetOptions,
+		Secrets:    a.config.SecretStore,
+		SecretRefs: a.config.SecretRefs,
 	})
 	if err != nil {
 		if renderErr := menu.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
@@ -345,8 +349,10 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 		return provider.BootPlan{}, fmt.Errorf("render status: %w", err)
 	}
 	plan, err := a.config.Registry.Plan(ctx, provider.PlanInput{
-		Target:  target,
-		Options: a.config.TargetOptions,
+		Target:     target,
+		Options:    a.config.TargetOptions,
+		Secrets:    a.config.SecretStore,
+		SecretRefs: a.config.SecretRefs,
 	})
 	if err != nil {
 		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {
@@ -364,6 +370,7 @@ func (a *App) stageSelectedTarget(ctx context.Context, target provider.Target, r
 	staged, err := a.config.Registry.Stage(ctx, provider.StageConfig{
 		Plan:       plan,
 		StagingDir: stagingDir,
+		Secrets:    a.config.SecretStore,
 	})
 	if err != nil {
 		if renderErr := renderer.RenderFatal(a.config.Stdout, err.Error()); renderErr != nil {

@@ -4,18 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dotwaffle/bootup/internal/provider"
 )
 
 type testProvider struct {
-	id      string
-	targets []provider.Target
-	plan    provider.BootPlan
-	staged  provider.BootPlan
-	planned *provider.PlanInput
+	id           string
+	targets      []provider.Target
+	plan         provider.BootPlan
+	staged       provider.BootPlan
+	planned      *provider.PlanInput
+	stagedConfig *provider.StageConfig
 }
 
 func (p testProvider) ID() string {
@@ -33,7 +36,10 @@ func (p testProvider) Plan(_ context.Context, input provider.PlanInput) (provide
 	return p.plan, nil
 }
 
-func (p testProvider) Stage(context.Context, provider.StageConfig) (provider.BootPlan, error) {
+func (p testProvider) Stage(_ context.Context, config provider.StageConfig) (provider.BootPlan, error) {
+	if p.stagedConfig != nil {
+		*p.stagedConfig = config
+	}
 	return p.staged, nil
 }
 
@@ -294,6 +300,25 @@ func TestRegistryRejectsInvalidProviderTargets(t *testing.T) {
 				}},
 			},
 		},
+		{
+			name: "invalid secret input",
+			target: provider.Target{
+				ID:         "ubuntu-2604-amd64-netboot",
+				ProviderID: "ubuntu",
+				Name:       "Ubuntu 26.04 amd64 netboot",
+				Catalog: provider.CatalogEntry{
+					Distribution: "ubuntu",
+					Release:      "26.04",
+					Architecture: "amd64",
+					Kind:         "installer",
+				},
+				Secrets: []provider.SecretInput{{
+					ID:       "installer-password",
+					Label:    "Installer password",
+					Required: true,
+				}},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -522,6 +547,123 @@ func TestRegistryPassesSelectedOptionsToProviderPlan(t *testing.T) {
 	}
 }
 
+func TestRegistryValidatesRequiredSecretsBeforeProviderPlan(t *testing.T) {
+	t.Parallel()
+
+	target := targetWithRequiredSecret()
+	var planned provider.PlanInput
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{
+		id:      "ubuntu",
+		targets: []provider.Target{target},
+		plan:    provider.BootPlan{Target: target},
+		planned: &planned,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	_, err := registry.Plan(context.Background(), provider.PlanInput{Target: target})
+	if !errors.Is(err, provider.ErrInvalidSecretInput) {
+		t.Fatalf("plan error = %v, want invalid secret input", err)
+	}
+	if planned.Target.ID != "" {
+		t.Fatalf("provider planned target = %#v, want no provider call", planned.Target)
+	}
+}
+
+func TestRegistryPassesValidatedSecretRefsToPlanAndStage(t *testing.T) {
+	t.Parallel()
+
+	target := targetWithRequiredSecret()
+	store := staticSecretStore{id: "installer-password"}
+	var planned provider.PlanInput
+	var stagedConfig provider.StageConfig
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{
+		id:           "ubuntu",
+		targets:      []provider.Target{target},
+		plan:         provider.BootPlan{Target: target},
+		staged:       provider.BootPlan{Target: target},
+		planned:      &planned,
+		stagedConfig: &stagedConfig,
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	plan, err := registry.Plan(context.Background(), provider.PlanInput{
+		Target:  target,
+		Secrets: store,
+	})
+	if err != nil {
+		t.Fatalf("plan target: %v", err)
+	}
+	wantRefs := []provider.SecretRef{{ID: "installer-password", InputID: "installer-password"}}
+	if !reflect.DeepEqual(planned.SecretRefs, wantRefs) {
+		t.Fatalf("planned secret refs = %#v, want %#v", planned.SecretRefs, wantRefs)
+	}
+	if !reflect.DeepEqual(plan.SecretRefs, wantRefs) {
+		t.Fatalf("plan secret refs = %#v, want %#v", plan.SecretRefs, wantRefs)
+	}
+
+	_, err = registry.Stage(context.Background(), provider.StageConfig{
+		Plan:       plan,
+		StagingDir: t.TempDir(),
+		Secrets:    store,
+	})
+	if err != nil {
+		t.Fatalf("stage target: %v", err)
+	}
+	if !reflect.DeepEqual(stagedConfig.SecretRefs, wantRefs) {
+		t.Fatalf("staged secret refs = %#v, want %#v", stagedConfig.SecretRefs, wantRefs)
+	}
+}
+
+func TestRegistryRejectsUndeclaredSecretRef(t *testing.T) {
+	t.Parallel()
+
+	target := targetWithRequiredSecret()
+	registry := provider.NewRegistry()
+	if err := registry.Register(testProvider{
+		id:      "ubuntu",
+		targets: []provider.Target{target},
+		plan:    provider.BootPlan{Target: target},
+	}); err != nil {
+		t.Fatalf("register provider: %v", err)
+	}
+
+	_, err := registry.Plan(context.Background(), provider.PlanInput{
+		Target: target,
+		Secrets: staticSecretStore{
+			id: "site-installer-password",
+		},
+		SecretRefs: []provider.SecretRef{{
+			ID:      "unknown-secret",
+			InputID: "site-installer-password",
+		}},
+	})
+	if !errors.Is(err, provider.ErrInvalidSecretInput) {
+		t.Fatalf("plan error = %v, want invalid secret input", err)
+	}
+}
+
+func TestProviderCanStageSecretFileFromStageConfig(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	store := staticSecretStore{id: "installer-password", value: "secret value"}
+	staged, err := store.StageFile("installer-password", dir, "installer-password")
+	if err != nil {
+		t.Fatalf("stage secret: %v", err)
+	}
+	data, err := os.ReadFile(staged)
+	if err != nil {
+		t.Fatalf("read staged secret: %v", err)
+	}
+	if string(data) != "secret value" {
+		t.Fatalf("staged secret = %q, want secret value", data)
+	}
+}
+
 func TestRegistryRejectsInvalidSelectedOptionsBeforeProviderPlan(t *testing.T) {
 	t.Parallel()
 
@@ -706,4 +848,60 @@ func targetWithOptions() provider.Target {
 			},
 		},
 	}
+}
+
+func targetWithRequiredSecret() provider.Target {
+	return provider.Target{
+		ID:         "ubuntu-2604-amd64-netboot",
+		ProviderID: "ubuntu",
+		Name:       "Ubuntu 26.04 amd64 netboot",
+		Catalog: provider.CatalogEntry{
+			Distribution: "ubuntu",
+			Release:      "26.04",
+			Architecture: "amd64",
+			Kind:         "installer",
+		},
+		Secrets: []provider.SecretInput{{
+			ID:       "installer-password",
+			Label:    "Installer password",
+			Purpose:  "automated installer login",
+			Required: true,
+			Delivery: provider.SecretDeliveryStagedFile,
+		}},
+	}
+}
+
+type staticSecretStore struct {
+	id    string
+	value string
+}
+
+func (s staticSecretStore) IDs() []string {
+	if s.id == "" {
+		return nil
+	}
+	return []string{s.id}
+}
+
+func (s staticSecretStore) Has(id string) bool {
+	return id == s.id
+}
+
+func (s staticSecretStore) StageFile(id string, dir string, name string) (string, error) {
+	if id != s.id {
+		return "", provider.ErrInvalidSecretInput
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = id
+	}
+	value := s.value
+	if value == "" {
+		value = "secret"
+	}
+	path := dir + "/" + name
+	if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }

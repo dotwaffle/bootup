@@ -26,6 +26,8 @@ func TestWriteBundleWritesSummaryAndStreams(t *testing.T) {
 		TargetID:          "opensuse-leap-160-amd64-netboot",
 		DiscoveryFamilyID: "fedora",
 		SelectedOptions:   selected,
+		SecretInputIDs:    []string{"installer-password"},
+		SecretRefIDs:      []string{"installer-password"},
 		Catalog: diagnostics.CatalogPosture{
 			Source:         "hosted",
 			SHA256:         true,
@@ -39,7 +41,8 @@ func TestWriteBundleWritesSummaryAndStreams(t *testing.T) {
 			SignatureFiles: true,
 		},
 		ProviderConfig: diagnostics.ProviderConfigPosture{PathSet: true},
-		Error:          errors.New(`invalid target option: target opensuse option mirror-url value "https://secret.example/install token" is invalid`),
+		Error:          errors.New(`invalid target option: target opensuse option mirror-url value "https://secret.example/install token" is invalid; read secret input installer-password /run/bootup/secrets/installer-password: permission denied`),
+		RedactValues:   []string{"/run/bootup/secrets/installer-password"},
 	})
 
 	bundleDir, err := diagnostics.WriteBundle(diagnostics.Bundle{
@@ -65,6 +68,9 @@ func TestWriteBundleWritesSummaryAndStreams(t *testing.T) {
 	if strings.Contains(string(summaryBytes), "token") {
 		t.Fatalf("summary contains token text: %s", summaryBytes)
 	}
+	if strings.Contains(string(summaryBytes), "/run/bootup/secrets") {
+		t.Fatalf("summary contains secret input path: %s", summaryBytes)
+	}
 
 	var got diagnostics.Summary
 	if err := json.Unmarshal(summaryBytes, &got); err != nil {
@@ -78,6 +84,12 @@ func TestWriteBundleWritesSummaryAndStreams(t *testing.T) {
 	}
 	if !slices.Equal(got.SelectedOptionIDs, []string{"mirror-url", "text-install"}) {
 		t.Fatalf("selected option IDs = %#v, want IDs only", got.SelectedOptionIDs)
+	}
+	if !slices.Equal(got.SecretInputIDs, []string{"installer-password"}) {
+		t.Fatalf("secret input IDs = %#v, want installer-password", got.SecretInputIDs)
+	}
+	if !slices.Equal(got.SecretRefIDs, []string{"installer-password"}) {
+		t.Fatalf("secret ref IDs = %#v, want installer-password", got.SecretRefIDs)
 	}
 	if !strings.Contains(got.Error, "<redacted>") {
 		t.Fatalf("summary error = %q, want redaction marker", got.Error)

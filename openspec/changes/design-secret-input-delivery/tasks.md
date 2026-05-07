@@ -6,8 +6,8 @@
 
 ## 2. Future Implementation
 
-- [ ] 2.1 Add catalog/provider secret declaration parsing and validation.
-- [ ] 2.2 Add CLI or runtime-config secret input mapping.
-- [ ] 2.3 Add secret store plumbing through planning and staging.
-- [ ] 2.4 Add diagnostics redaction tests for secret IDs, values, and paths.
-- [ ] 2.5 Add a first provider consumer behind focused tests.
+- [x] 2.1 Add catalog/provider secret declaration parsing and validation.
+- [x] 2.2 Add CLI or runtime-config secret input mapping.
+- [x] 2.3 Add secret store plumbing through planning and staging.
+- [x] 2.4 Add diagnostics redaction tests for secret IDs, values, and paths.
+- [x] 2.5 Add a first provider consumer behind focused tests.

@@ -110,6 +110,9 @@ func (m TextMenu) RenderTargetDetails(w io.Writer, target provider.Target) error
 	if err := m.renderOptionDetails(w, target.Options); err != nil {
 		return err
 	}
+	if err := m.renderSecretDetails(w, target.Secrets); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -260,6 +263,26 @@ func (m TextMenu) renderOptionDetails(w io.Writer, options []provider.TargetOpti
 		}
 		if err := m.writeLine(w, line); err != nil {
 			return fmt.Errorf("write option detail %s: %w", option.ID, err)
+		}
+	}
+	return nil
+}
+
+func (m TextMenu) renderSecretDetails(w io.Writer, secrets []provider.SecretInput) error {
+	if len(secrets) == 0 {
+		return nil
+	}
+	if err := m.writeLine(w, "secrets:"); err != nil {
+		return fmt.Errorf("write secrets header: %w", err)
+	}
+	for _, secret := range secrets {
+		requirement := "optional"
+		if secret.Required {
+			requirement = "required"
+		}
+		line := fmt.Sprintf("  - %s %s %s %s purpose=%s", secret.ID, requirement, secret.Delivery, secret.Label, secret.Purpose)
+		if err := m.writeLine(w, line); err != nil {
+			return fmt.Errorf("write secret detail %s: %w", secret.ID, err)
 		}
 	}
 	return nil

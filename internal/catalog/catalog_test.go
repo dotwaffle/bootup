@@ -393,6 +393,55 @@ func TestGeneratePreservesTargetOptions(t *testing.T) {
 	}
 }
 
+func TestGeneratePreservesTargetSecretDeclarations(t *testing.T) {
+	t.Parallel()
+
+	generated, err := catalog.Generate([]byte(`{
+		"schema_version": 1,
+		"providers": [{
+			"id": "linux",
+			"targets": [{
+				"id": "site-installer",
+				"name": "Site installer",
+				"distribution": "site",
+				"release": "current",
+				"architecture": "amd64",
+				"kind": "installer",
+				"source": {
+					"base_url": "https://download.example/site",
+					"kernel_path": "linux",
+					"cmdline": "console=ttyS0"
+				},
+				"secrets": [{
+					"id": "installer-password",
+					"label": "Installer password",
+					"purpose": "Used by the installer automation profile.",
+					"required": true,
+					"delivery": "staged-file"
+				}]
+			}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatalf("generate catalog: %v", err)
+	}
+	doc, err := catalog.Parse(generated, []string{"linux"})
+	if err != nil {
+		t.Fatalf("parse generated catalog: %v", err)
+	}
+	target := doc.Targets("linux")[0]
+	if len(target.Secrets) != 1 {
+		t.Fatalf("target secrets = %#v, want one secret", target.Secrets)
+	}
+	secret := target.Secrets[0]
+	if secret.ID != "installer-password" || !secret.Required || string(secret.Delivery) != "staged-file" {
+		t.Fatalf("secret declaration = %#v, want required staged-file installer-password", secret)
+	}
+	if secret.Label == "" || secret.Purpose == "" {
+		t.Fatalf("secret declaration = %#v, want label and purpose", secret)
+	}
+}
+
 func TestGenerateRejectsInvalidTargetOptions(t *testing.T) {
 	t.Parallel()
 
@@ -481,6 +530,62 @@ func TestGenerateRejectsInvalidTargetOptions(t *testing.T) {
 					}]
 				}]
 			}`, "__OPTIONS__", tt.options)
+			_, err := catalog.Generate([]byte(data))
+			if !errors.Is(err, catalog.ErrInvalidCatalog) {
+				t.Fatalf("generate error = %v, want %v", err, catalog.ErrInvalidCatalog)
+			}
+		})
+	}
+}
+
+func TestGenerateRejectsInvalidSecretDeclarations(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		secrets string
+	}{
+		{
+			name:    "missing purpose",
+			secrets: `[{"id": "installer-password", "label": "Installer password", "required": true, "delivery": "staged-file"}]`,
+		},
+		{
+			name: "duplicate ids",
+			secrets: `[
+				{"id": "installer-password", "label": "Installer password", "purpose": "Used by automation.", "required": true, "delivery": "staged-file"},
+				{"id": "installer-password", "label": "Installer password again", "purpose": "Used by automation.", "required": true, "delivery": "staged-file"}
+			]`,
+		},
+		{
+			name:    "unsupported delivery",
+			secrets: `[{"id": "installer-password", "label": "Installer password", "purpose": "Used by automation.", "required": true, "delivery": "inline"}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := strings.ReplaceAll(`{
+				"schema_version": 1,
+				"providers": [{
+					"id": "linux",
+					"targets": [{
+						"id": "site-installer",
+						"name": "Site installer",
+						"distribution": "site",
+						"release": "current",
+						"architecture": "amd64",
+						"kind": "installer",
+						"source": {
+							"base_url": "https://download.example/site",
+							"kernel_path": "linux",
+							"cmdline": "console=ttyS0"
+						},
+						"secrets": __SECRETS__
+					}]
+				}]
+			}`, "__SECRETS__", tt.secrets)
 			_, err := catalog.Generate([]byte(data))
 			if !errors.Is(err, catalog.ErrInvalidCatalog) {
 				t.Fatalf("generate error = %v, want %v", err, catalog.ErrInvalidCatalog)

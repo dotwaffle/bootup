@@ -17,9 +17,33 @@ such as serial console choice, text install mode, installer mirror URL, or
 rescue hostname. Do not use target options for passwords, password hashes, SSH
 keys, API tokens, or policy-generated secrets.
 
-The `secret` target option marker is reserved. Catalogs that set
-`"secret": true` fail validation until bootup has a separate secret-safe
-delivery path with redacted diagnostics.
+The `secret` target option marker remains rejected. Catalogs that set
+`"secret": true` fail validation because secret material must use the separate
+secret input path.
+
+## Secret Inputs
+
+Secret inputs are provider-owned declarations separate from target options. A
+target can declare an ID, label, purpose, whether the input is required, and the
+delivery mode. The current delivery mode is `staged-file`.
+
+Operators provide values with repeatable local file-backed flags:
+
+```sh
+bootup --mode=stage-target --target=site-installer --secret installer-password=/run/bootup/secrets/installer-password
+```
+
+Inline values, environment expansion, provider runtime config values, and
+target option fragments are not supported for secrets. Bootup validates
+absolute local regular files before provider planning, rejects group- or
+other-readable files by default, and fails closed when a required secret is
+missing or unsafe.
+
+Diagnostics may include the secret ID and reference ID. They do not include the
+secret value, the input path, staged file path, value hash, provider config
+contents, or derived boot arguments containing secret material. The default
+catalog does not currently include a distro provider target that consumes a
+secret input.
 
 ## Dynamic Policy
 

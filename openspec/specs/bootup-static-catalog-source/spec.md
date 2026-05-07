@@ -14,14 +14,22 @@ catalog document.
   target source
 
 #### Scenario: Local catalog replaces embedded catalog
-- **WHEN** bootup starts with a local catalog path
+- **WHEN** bootup starts with a local catalog path and does not request default
+  catalog inclusion
 - **THEN** bootup SHALL load that catalog document instead of the embedded
   static catalog document
 
 #### Scenario: Hosted catalog replaces embedded catalog
-- **WHEN** bootup starts with an authenticated hosted catalog URL
+- **WHEN** bootup starts with an authenticated hosted catalog URL and does not
+  request default catalog inclusion
 - **THEN** bootup SHALL load that catalog document instead of the embedded
   static catalog document
+
+#### Scenario: Selected catalog composes with embedded catalog
+- **WHEN** bootup starts with a local catalog path or authenticated hosted
+  catalog URL and explicitly requests default catalog inclusion
+- **THEN** bootup SHALL combine the embedded default catalog targets with the
+  selected catalog targets before provider registration
 
 #### Scenario: Catalog source metadata is loaded
 - **WHEN** a static catalog target includes optional source metadata
@@ -53,6 +61,11 @@ Bootup SHALL validate static catalog documents before provider target discovery.
 #### Scenario: Catalog target IDs collide
 - **WHEN** a catalog document contains duplicate target IDs
 - **THEN** bootup SHALL reject the catalog before registering provider targets
+
+#### Scenario: Composed catalog target IDs collide
+- **WHEN** composed catalog sources contain the same target ID
+- **THEN** bootup SHALL reject the composed catalog before registering provider
+  targets
 
 #### Scenario: Catalog references unknown provider
 - **WHEN** a catalog document references a provider that is not compiled into
